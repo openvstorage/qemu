@@ -218,7 +218,7 @@
 #       'host_floppy', 'http', 'https', 'nbd', 'parallels', 'qcow',
 #       'qcow2', 'raw', 'tftp', 'vdi', 'vmdk', 'vpc', 'vvfat'
 #       2.2: 'archipelago' added, 'cow' dropped
-#       2.3: 'host_floppy' deprecated
+#       2.3: 'host_floppy' deprecated, 'openvstorage'
 #
 # @backing_file: #optional the name of the backing file (for copy-on-write)
 #
@@ -1250,9 +1250,9 @@
 { 'enum': 'BlockdevDriver',
   'data': [ 'archipelago', 'blkdebug', 'blkverify', 'bochs', 'cloop',
             'dmg', 'file', 'ftp', 'ftps', 'host_cdrom', 'host_device',
-            'host_floppy', 'http', 'https', 'null-aio', 'null-co', 'parallels',
-            'qcow', 'qcow2', 'qed', 'quorum', 'raw', 'tftp', 'vdi', 'vhdx',
-            'vmdk', 'vpc', 'vvfat' ] }
+            'host_floppy', 'http', 'https', 'null-aio', 'null-co',
+            'openvstorage', 'parallels', 'qcow', 'qcow2', 'qed', 'quorum',
+            'raw', 'tftp', 'vdi', 'vhdx', 'vmdk', 'vpc', 'vvfat' ] }
 
 ##
 # @BlockdevOptionsBase
@@ -1498,6 +1498,22 @@
             '*vport': 'int',
             '*segment': 'str' } }
 
+##
+# @BlockdevOptionsOpenvStorage
+#
+# Driver specific block device options for OpenvStorage
+#
+# @volume:              Name of the OpenvStorage volume image
+#
+# @snapshot-timeout:    #optional Timeout for snapshot creation.
+#                       This is optional and if not specified, QEMU
+#                       will use the default value (120)
+#
+# Since: 2.3
+##
+{ 'type': 'BlockdevOptionsOpenvStorage',
+  'data': { 'volume': 'str',
+            '*snapshot-timeout': 'int' } }
 
 ##
 # @BlkdebugEvent
@@ -1682,6 +1698,7 @@
 # TODO nfs: Wait for structured options
       'null-aio':   'BlockdevOptionsNull',
       'null-co':    'BlockdevOptionsNull',
+      'openvstorage':'BlockdevOptionsOpenvStorage',
       'parallels':  'BlockdevOptionsGenericFormat',
       'qcow2':      'BlockdevOptionsQcow2',
       'qcow':       'BlockdevOptionsGenericCOWFormat',

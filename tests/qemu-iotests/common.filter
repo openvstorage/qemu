@@ -193,6 +193,7 @@ _filter_img_create()
         -e "s# block_state_zero=\\(on\\|off\\)##g" \
         -e "s# log_size=[0-9]\\+##g" \
         -e "s/archipelago:a/TEST_DIR\//g" \
+        -e "s/openvstorage:\/\//TEST_DIR\//g" \
         -e "s# refcount_bits=[0-9]\\+##g"
 }
 
@@ -215,7 +216,8 @@ _filter_img_info()
         -e "/block_size: [0-9]\\+/d" \
         -e "/block_state_zero: \\(on\\|off\\)/d" \
         -e "/log_size: [0-9]\\+/d" \
-        -e "s/archipelago:a/TEST_DIR\//g"
+        -e "s/archipelago:a/TEST_DIR\//g" \
+        -e "s/openvstorage:\/\//TEST_DIR\//g"
 }
 
 # filter out offsets and file names from qemu-img map

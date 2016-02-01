@@ -66,6 +66,8 @@ elif [ "$IMGPROTO" = "nfs" ]; then
     TEST_IMG=$TEST_DIR/t.$IMGFMT
 elif [ "$IMGPROTO" = "archipelago" ]; then
     TEST_IMG="archipelago:at.$IMGFMT"
+elif [ "$IMGPROTO" = "openvstorage" ]; then
+    TEST_IMG="openvstorage:t.$IMGFMT"
 else
     TEST_IMG=$IMGPROTO:$TEST_DIR/t.$IMGFMT
 fi
@@ -196,6 +198,10 @@ _cleanup_test_img()
 
         archipelago)
             vlmc remove "at.$IMGFMT" > /dev/null
+            ;;
+
+        openvstorage)
+            rm -f /tmp/RemoteTest/remote/mnt/t* > /dev/null
             ;;
 
         sheepdog)
