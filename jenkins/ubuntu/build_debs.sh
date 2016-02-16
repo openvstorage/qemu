@@ -30,7 +30,8 @@ done
 cd ${SRCDIR}
 
 echo ">>> INSTALLING BUILD DEPENDENCIES <<<"
-sudo apt-get install -y libgnutls-dev $(dpkg-checkbuilddeps 2>&1 | sed -e 's/.*dependencies://' -e 's/ ([^)]*)/ /g') 
+sudo apt-get install -y libgnutls-dev
+sudo apt-get install -y $(dpkg-checkbuilddeps 2>&1 | sed -e 's/.*dependencies://' -e 's/ ([^)]*)/ /g') 
 
 echo ">>> BUILDING DEBIAN PACKAGES <<<"
 dpkg-buildpackage -us -uc -b
