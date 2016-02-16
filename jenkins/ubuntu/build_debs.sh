@@ -27,6 +27,9 @@ do
   [ $? -ne 0 ] && echo 'FAILED' || echo 'OK'
 done
 
+## fetch newer seabios package; qemu depends on it so we need to provide it as well
+wget -nc http://archive.ubuntu.com/ubuntu/pool/main/s/seabios/seabios_1.8.2-1ubuntu1_all.deb
+
 cd ${SRCDIR}
 
 echo ">>> INSTALLING BUILD DEPENDENCIES <<<"
