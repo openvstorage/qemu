@@ -1,0 +1,118 @@
+From ab36fe1e25a931989f7a81600461c2856ed606ec Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Tue, 11 Aug 2015 15:13:54 +0200
+Subject: [PATCH 2/3] pci: allow 0 address for PCI IO/MEM regions
+
+Message-id: <1439306034-16826-1-git-send-email-lvivier@redhat.com>
+Patchwork-id: 67470
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] pci: allow 0 address for PCI IO/MEM regions
+Bugzilla: 1241886
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+Some kernels program a 0 address for io regions. PCI 3.0 spec
+section 6.2.5.1 doesn't seem to disallow this.
+
+based on patch by Michael Roth <mdroth@linux.vnet.ibm.com>
+
+Add pci_allow_0_addr in MachineClass to conditionally
+allow addr 0 for pseries, as this can break other architectures.
+
+This patch allows to hotplug PCI card in pseries machine, as the first
+added card BAR0 is always set to 0 address.
+
+This as a temporary hack, waiting to fix PCI memory priorities for more
+machine types...
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/ppc/spapr.c
+	include/hw/boards.h
+Conflicts in the context because of commits:
+    9205579 ich9: add TCO interface emulation
+    386d52f spapr: Memory hotplug support
+
+Upstream: e402463073ae51d00dc6cf98556e2f5c4b008a31
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+---
+ hw/pci/pci.c        | 12 +++++++++---
+ hw/ppc/spapr.c      |  1 +
+ include/hw/boards.h |  3 ++-
+ 3 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index 2688be4..fe37079 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -37,6 +37,7 @@
+ #include "hw/pci/msix.h"
+ #include "exec/address-spaces.h"
+ #include "hw/hotplug.h"
++#include "hw/boards.h"
+ 
+ //#define DEBUG_PCI
+ #ifdef DEBUG_PCI
+@@ -1064,6 +1065,10 @@ static pcibus_t pci_bar_address(PCIDevice *d,
+     pcibus_t new_addr, last_addr;
+     int bar = pci_bar(d, reg);
+     uint16_t cmd = pci_get_word(d->config + PCI_COMMAND);
++    Object *machine = qdev_get_machine();
++    ObjectClass *oc = object_get_class(machine);
++    MachineClass *mc = MACHINE_CLASS(oc);
++    bool allow_0_address = mc->pci_allow_0_address;
+ 
+     if (type & PCI_BASE_ADDRESS_SPACE_IO) {
+         if (!(cmd & PCI_COMMAND_IO)) {
+@@ -1074,7 +1079,8 @@ static pcibus_t pci_bar_address(PCIDevice *d,
+         /* Check if 32 bit BAR wraps around explicitly.
+          * TODO: make priorities correct and remove this work around.
+          */
+-        if (last_addr <= new_addr || new_addr == 0 || last_addr >= UINT32_MAX) {
++        if (last_addr <= new_addr || last_addr >= UINT32_MAX ||
++            (!allow_0_address && new_addr == 0)) {
+             return PCI_BAR_UNMAPPED;
+         }
+         return new_addr;
+@@ -1098,8 +1104,8 @@ static pcibus_t pci_bar_address(PCIDevice *d,
+     /* XXX: as we cannot support really dynamic
+        mappings, we handle specific values as invalid
+        mappings. */
+-    if (last_addr <= new_addr || new_addr == 0 ||
+-        last_addr == PCI_BAR_UNMAPPED) {
++    if (last_addr <= new_addr || last_addr == PCI_BAR_UNMAPPED ||
++        (!allow_0_address && new_addr == 0)) {
+         return PCI_BAR_UNMAPPED;
+     }
+ 
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 8beaac3..4c2753b 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -2196,6 +2196,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
+     mc->default_ram_size = 512 * M_BYTE;
+     mc->kvm_type = spapr_kvm_type;
+     mc->has_dynamic_sysbus = true;
++    mc->pci_allow_0_address = true;
+     mc->get_hotplug_handler = spapr_get_hotpug_handler;
+     hc->plug = spapr_machine_device_plug;
+     hc->unplug = spapr_machine_device_unplug;
+diff --git a/include/hw/boards.h b/include/hw/boards.h
+index 48a604b..11beb31 100644
+--- a/include/hw/boards.h
++++ b/include/hw/boards.h
+@@ -112,7 +112,8 @@ struct MachineClass {
+         no_floppy:1,
+         no_cdrom:1,
+         no_sdcard:1,
+-        has_dynamic_sysbus:1;
++        has_dynamic_sysbus:1,
++        pci_allow_0_address:1;
+     int is_default;
+     const char *default_machine_opts;
+     const char *default_boot_order;
+-- 
+1.8.3.1
+

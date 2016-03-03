@@ -1,0 +1,143 @@
+From f42eee5e10318e17bb7bd6b7dbd6a9894fbde1c3 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:58 +0200
+Subject: [PATCH 13/28] global_state: Make section optional
+
+Message-id: <1438098431-30847-14-git-send-email-quintela@redhat.com>
+Patchwork-id: 67168
+O-Subject: [RHEL-7 qemu-kvm PATCH 13/26] global_state: Make section optional
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+This section would be sent:
+
+a- for all new machine types
+b- for old machine types if section state is different form {running,paused}
+   that were the only giving us troubles.
+
+So, in new qemus: it is alwasy there.  In old qemus: they are only
+there if it an error has happened, basically stoping on target.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 13d16814d2058f10461e6987c8216950389c1310)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/i386/pc_piix.c
+	hw/i386/pc_q35.c
+	hw/ppc/spapr.c
+	include/migration/migration.h
+
+Red Hat Machine types and upstream machine types are completely
+different beasts.
+
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+---
+ hw/i386/pc_piix.c             |  1 +
+ hw/i386/pc_q35.c              |  2 ++
+ include/migration/migration.h |  1 +
+ migration/migration.c         | 29 +++++++++++++++++++++++++++++
+ 4 files changed, 33 insertions(+)
+
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 4fc85f4..ff75277 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -1076,6 +1076,7 @@ static void pc_compat_rhel710(MachineState *machine)
+ 
+     /* Disable all the extra subsections that were added in 2.2 */
+     migrate_pre_2_2 = true;
++    global_state_set_optional();
+ }
+ 
+ static void pc_init_rhel710(MachineState *machine)
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 2236ecf..5b70ef5 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -45,6 +45,7 @@
+ #include "hw/usb.h"
+ #include "hw/cpu/icc_bus.h"
+ #include "qemu/error-report.h"
++#include "migration/migration.h"
+ 
+ /* ICH9 AHCI has 6 ports */
+ #define MAX_SATA_PORTS     6
+@@ -637,6 +638,7 @@ static void pc_q35_compat_rhel700(MachineState *machine)
+     smbios_legacy_mode = true;
+     has_reserved_memory = false;
+     migrate_cve_2014_5263_xhci_fields = true;
++    global_state_set_optional();
+ }
+ 
+ static void pc_q35_init_rhel700(MachineState *machine)
+diff --git a/include/migration/migration.h b/include/migration/migration.h
+index 53fea6a..439e8a8 100644
+--- a/include/migration/migration.h
++++ b/include/migration/migration.h
+@@ -178,4 +178,5 @@ void register_global_state(void);
+  * migration compatibility.
+  */
+ extern bool migrate_pre_2_2;
++void global_state_set_optional(void);
+ #endif
+diff --git a/migration/migration.c b/migration/migration.c
+index 9c548a1..9056977 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -61,6 +61,7 @@ MigrationState *migrate_get_current(void)
+ }
+ 
+ typedef struct {
++    bool optional;
+     uint32_t size;
+     uint8_t runstate[100];
+ } GlobalState;
+@@ -83,6 +84,33 @@ static char *global_state_get_runstate(void)
+     return (char *)global_state.runstate;
+ }
+ 
++void global_state_set_optional(void)
++{
++    global_state.optional = true;
++}
++
++static bool global_state_needed(void *opaque)
++{
++    GlobalState *s = opaque;
++    char *runstate = (char *)s->runstate;
++
++    /* If it is not optional, it is mandatory */
++
++    if (s->optional == false) {
++        return true;
++    }
++
++    /* If state is running or paused, it is not needed */
++
++    if (strcmp(runstate, "running") == 0 ||
++        strcmp(runstate, "paused") == 0) {
++        return false;
++    }
++
++    /* for any other state it is needed */
++    return true;
++}
++
+ static int global_state_post_load(void *opaque, int version_id)
+ {
+     GlobalState *s = opaque;
+@@ -122,6 +150,7 @@ static const VMStateDescription vmstate_globalstate = {
+     .minimum_version_id = 1,
+     .post_load = global_state_post_load,
+     .pre_save = global_state_pre_save,
++    .needed = global_state_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT32(size, GlobalState),
+         VMSTATE_BUFFER(runstate, GlobalState),
+-- 
+1.8.3.1
+

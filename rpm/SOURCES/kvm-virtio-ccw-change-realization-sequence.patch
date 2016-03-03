@@ -1,0 +1,166 @@
+From 12290d0d20e1b6034dcf4bb0858ec2ed76d79017 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:39 +0200
+Subject: [PATCH 03/20] virtio-ccw: change realization sequence
+
+Message-id: <1434607916-15166-4-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66302
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 03/20] virtio-ccw: change realization sequence
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+virtio-ccw has an odd sequence of realizing devices: first the
+device-specific relization (net, block, ...), then the generic
+realization. It feels less odd to have the generic realization
+callback trigger the device-specific realization instead (and this
+also matches what virtio-pci does).
+
+One thing to note: We need to defer initializing the cu model in the
+sense id data until after the device-specific realization has been
+performed, as we need to refer to the virtio device's device_id.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Message-Id: <1429627016-30656-2-git-send-email-cornelia.huck@de.ibm.com>
+(cherry picked from commit 1fa755234e24697cc76f326782edbb09bd0a3a53)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/s390x/virtio-ccw.c | 41 +++++++++++++++++------------------------
+ 1 file changed, 17 insertions(+), 24 deletions(-)
+
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index f102974..e06ebea 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -615,8 +615,7 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+     return ret;
+ }
+ 
+-static void virtio_ccw_device_realize(VirtioCcwDevice *dev,
+-                                      VirtIODevice *vdev, Error **errp)
++static void virtio_ccw_device_realize(VirtioCcwDevice *dev, Error **errp)
+ {
+     unsigned int cssid = 0;
+     unsigned int ssid = 0;
+@@ -627,6 +626,9 @@ static void virtio_ccw_device_realize(VirtioCcwDevice *dev,
+     SubchDev *sch;
+     int num;
+     DeviceState *parent = DEVICE(dev);
++    Error *err = NULL;
++    VirtIOCCWDeviceClass *k = VIRTIO_CCW_DEVICE_GET_CLASS(dev);
++    VirtIODevice *vdev;
+ 
+     sch = g_malloc0(sizeof(SubchDev));
+ 
+@@ -739,6 +741,18 @@ static void virtio_ccw_device_realize(VirtioCcwDevice *dev,
+     memset(&sch->id, 0, sizeof(SenseId));
+     sch->id.reserved = 0xff;
+     sch->id.cu_type = VIRTIO_CCW_CU_TYPE;
++
++    if (k->realize) {
++        k->realize(dev, &err);
++    }
++    if (err) {
++        error_propagate(errp, err);
++        css_subch_assign(cssid, ssid, schid, devno, NULL);
++        goto out_err;
++    }
++
++    /* device_id is only set after vdev has been realized */
++    vdev = virtio_ccw_get_vdev(sch);
+     sch->id.cu_model = vdev->device_id;
+ 
+     /* Only the first 32 feature bits are used. */
+@@ -786,10 +800,7 @@ static void virtio_ccw_net_realize(VirtioCcwDevice *ccw_dev, Error **errp)
+     object_property_set_bool(OBJECT(vdev), true, "realized", &err);
+     if (err) {
+         error_propagate(errp, err);
+-        return;
+     }
+-
+-    virtio_ccw_device_realize(ccw_dev, VIRTIO_DEVICE(vdev), errp);
+ }
+ 
+ static void virtio_ccw_net_instance_init(Object *obj)
+@@ -812,10 +823,7 @@ static void virtio_ccw_blk_realize(VirtioCcwDevice *ccw_dev, Error **errp)
+     object_property_set_bool(OBJECT(vdev), true, "realized", &err);
+     if (err) {
+         error_propagate(errp, err);
+-        return;
+     }
+-
+-    virtio_ccw_device_realize(ccw_dev, VIRTIO_DEVICE(vdev), errp);
+ }
+ 
+ static void virtio_ccw_blk_instance_init(Object *obj)
+@@ -852,10 +860,7 @@ static void virtio_ccw_serial_realize(VirtioCcwDevice *ccw_dev, Error **errp)
+     object_property_set_bool(OBJECT(vdev), true, "realized", &err);
+     if (err) {
+         error_propagate(errp, err);
+-        return;
+     }
+-
+-    virtio_ccw_device_realize(ccw_dev, VIRTIO_DEVICE(vdev), errp);
+ }
+ 
+ 
+@@ -877,10 +882,7 @@ static void virtio_ccw_balloon_realize(VirtioCcwDevice *ccw_dev, Error **errp)
+     object_property_set_bool(OBJECT(vdev), true, "realized", &err);
+     if (err) {
+         error_propagate(errp, err);
+-        return;
+     }
+-
+-    virtio_ccw_device_realize(ccw_dev, VIRTIO_DEVICE(vdev), errp);
+ }
+ 
+ static void balloon_ccw_stats_get_all(Object *obj, struct Visitor *v,
+@@ -945,10 +947,7 @@ static void virtio_ccw_scsi_realize(VirtioCcwDevice *ccw_dev, Error **errp)
+     object_property_set_bool(OBJECT(vdev), true, "realized", &err);
+     if (err) {
+         error_propagate(errp, err);
+-        return;
+     }
+-
+-    virtio_ccw_device_realize(ccw_dev, VIRTIO_DEVICE(vdev), errp);
+ }
+ 
+ static void virtio_ccw_scsi_instance_init(Object *obj)
+@@ -972,10 +971,7 @@ static void vhost_ccw_scsi_realize(VirtioCcwDevice *ccw_dev, Error **errp)
+     object_property_set_bool(OBJECT(vdev), true, "realized", &err);
+     if (err) {
+         error_propagate(errp, err);
+-        return;
+     }
+-
+-    virtio_ccw_device_realize(ccw_dev, VIRTIO_DEVICE(vdev), errp);
+ }
+ 
+ static void vhost_ccw_scsi_instance_init(Object *obj)
+@@ -1003,8 +999,6 @@ static void virtio_ccw_rng_realize(VirtioCcwDevice *ccw_dev, Error **errp)
+     object_property_set_link(OBJECT(dev),
+                              OBJECT(dev->vdev.conf.rng), "rng",
+                              NULL);
+-
+-    virtio_ccw_device_realize(ccw_dev, VIRTIO_DEVICE(vdev), errp);
+ }
+ 
+ /* DeviceState to VirtioCcwDevice. Note: used on datapath,
+@@ -1605,10 +1599,9 @@ static const TypeInfo virtio_ccw_rng = {
+ static void virtio_ccw_busdev_realize(DeviceState *dev, Error **errp)
+ {
+     VirtioCcwDevice *_dev = (VirtioCcwDevice *)dev;
+-    VirtIOCCWDeviceClass *_info = VIRTIO_CCW_DEVICE_GET_CLASS(dev);
+ 
+     virtio_ccw_bus_new(&_dev->bus, sizeof(_dev->bus), _dev);
+-    _info->realize(_dev, errp);
++    virtio_ccw_device_realize(_dev, errp);
+ }
+ 
+ static int virtio_ccw_busdev_exit(DeviceState *dev)
+-- 
+1.8.3.1
+

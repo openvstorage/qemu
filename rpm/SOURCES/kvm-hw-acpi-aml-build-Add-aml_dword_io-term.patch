@@ -1,0 +1,82 @@
+From e029ece2cfb87dfcaa7f851d576a7213be8453e0 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:37 +0200
+Subject: [PATCH 33/44] hw/acpi/aml-build: Add aml_dword_io() term
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-26-git-send-email-drjones@redhat.com>
+Patchwork-id: 66258
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 25/33] hw/acpi/aml-build: Add aml_dword_io() term
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-21-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 616ef329adbb671be783a1dba96d881b9218ff80)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 18 ++++++++++++++++++
+ include/hw/acpi/aml-build.h |  5 +++++
+ 2 files changed, 23 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 54d652d..439c24e 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -960,6 +960,24 @@ Aml *aml_word_io(AmlMinFixed min_fixed, AmlMaxFixed max_fixed,
+ }
+ 
+ /*
++ * ACPI 1.0b: 6.4.3.5.4 ASL Macros for DWORD Address Descriptor
++ *
++ * More verbose description at:
++ * ACPI 5.0: 19.5.33 DWordIO (DWord IO Resource Descriptor Macro)
++ */
++Aml *aml_dword_io(AmlMinFixed min_fixed, AmlMaxFixed max_fixed,
++                 AmlDecode dec, AmlISARanges isa_ranges,
++                 uint32_t addr_gran, uint32_t addr_min,
++                 uint32_t addr_max, uint32_t addr_trans,
++                 uint32_t len)
++
++{
++    return aml_dword_as_desc(AML_IO_RANGE, min_fixed, max_fixed, dec,
++                            addr_gran, addr_min, addr_max, addr_trans, len,
++                            isa_ranges);
++}
++
++/*
+  * ACPI 1.0b: 6.4.3.5.4 ASL Macros for DWORD Address Space Descriptor
+  *
+  * More verbose description at:
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index e02010d..5fce62c 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -236,6 +236,11 @@ Aml *aml_word_io(AmlMinFixed min_fixed, AmlMaxFixed max_fixed,
+                  uint16_t addr_gran, uint16_t addr_min,
+                  uint16_t addr_max, uint16_t addr_trans,
+                  uint16_t len);
++Aml *aml_dword_io(AmlMinFixed min_fixed, AmlMaxFixed max_fixed,
++                 AmlDecode dec, AmlISARanges isa_ranges,
++                 uint32_t addr_gran, uint32_t addr_min,
++                 uint32_t addr_max, uint32_t addr_trans,
++                 uint32_t len);
+ Aml *aml_dword_memory(AmlDecode dec, AmlMinFixed min_fixed,
+                       AmlMaxFixed max_fixed, AmlCacheable cacheable,
+                       AmlReadAndWrite read_and_write,
+-- 
+1.8.3.1
+

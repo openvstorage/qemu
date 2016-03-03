@@ -1,0 +1,68 @@
+From c7053e14e3bfae0692d02d6a473a77c70dfd828a Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:34 +0200
+Subject: [PATCH 30/44] hw/acpi/aml-build: Add aml_lnot() term
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-23-git-send-email-drjones@redhat.com>
+Patchwork-id: 66256
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 22/33] hw/acpi/aml-build: Add aml_lnot() term
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-18-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ea7df04a0217fe6314a1520dde1883c45fefcaaa)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 8 ++++++++
+ include/hw/acpi/aml-build.h | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 882f34c..e925fd9 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -608,6 +608,14 @@ Aml *aml_irq_no_flags(uint8_t irq)
+     return var;
+ }
+ 
++/* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefLNot */
++Aml *aml_lnot(Aml *arg)
++{
++    Aml *var = aml_opcode(0x92 /* LNotOp */);
++    aml_append(var, arg);
++    return var;
++}
++
+ /* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefLEqual */
+ Aml *aml_equal(Aml *arg1, Aml *arg2)
+ {
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index fbd0d0c..fdc5f4a 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -222,6 +222,7 @@ Aml *aml_named_field(const char *name, unsigned length);
+ Aml *aml_reserved_field(unsigned length);
+ Aml *aml_local(int num);
+ Aml *aml_string(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
++Aml *aml_lnot(Aml *arg);
+ Aml *aml_equal(Aml *arg1, Aml *arg2);
+ Aml *aml_processor(uint8_t proc_id, uint32_t pblk_addr, uint8_t pblk_len,
+                    const char *name_format, ...) GCC_FMT_ATTR(4, 5);
+-- 
+1.8.3.1
+

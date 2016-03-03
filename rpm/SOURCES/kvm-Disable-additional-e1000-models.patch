@@ -1,0 +1,65 @@
+From ec1615d583c0086afa137807d180caf6fb9381a3 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Thu, 24 Sep 2015 06:28:36 +0200
+Subject: [PATCH 2/5] Disable additional e1000 models
+
+Message-id: <0cd8c76bb0297025fc682f038e98f59fd6b05a75.1443075059.git.mrezanin@redhat.com>
+Patchwork-id: 67920
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCHv2 2/3] Disable additional e1000 models
+Bugzilla: 1224542 1265161
+RH-Acked-by: Jeff Nelson <jenelson@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+
+From: Miroslav Rezanina <mrezanin@redhat.com>
+
+Qemu 2.1 introduced new e1000 variants. We do not plan to use them so disable
+newly added variants. We have to fix tests too to pass "make check".
+
+We left e1000-82540em device that is used as e1000 device (e1000 is alias
+for e1000-82540em) so it won't add any additional support effort.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/e1000.c     | 2 ++
+ tests/e1000-test.c | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/hw/net/e1000.c b/hw/net/e1000.c
+index 577f879..9c94c97 100644
+--- a/hw/net/e1000.c
++++ b/hw/net/e1000.c
+@@ -1658,6 +1658,7 @@ static const E1000Info e1000_devices[] = {
+         .revision  = 0x03,
+         .phy_id2   = E1000_PHY_ID2_8254xx_DEFAULT,
+     },
++#if 0 /* Disabled for Red Hat Enterprise Linux 7 */
+     {
+         .name      = "e1000-82544gc",
+         .device_id = E1000_DEV_ID_82544GC_COPPER,
+@@ -1670,6 +1671,7 @@ static const E1000Info e1000_devices[] = {
+         .revision  = 0x03,
+         .phy_id2   = E1000_PHY_ID2_8254xx_DEFAULT,
+     },
++#endif
+ };
+ 
+ static const TypeInfo e1000_default_info = {
+diff --git a/tests/e1000-test.c b/tests/e1000-test.c
+index 81f164d..09015d4 100644
+--- a/tests/e1000-test.c
++++ b/tests/e1000-test.c
+@@ -31,8 +31,10 @@ static void test_device(gconstpointer data)
+ static const char *models[] = {
+     "e1000",
+     "e1000-82540em",
++#if 0 /* Disabled in Red Hat Enterprise Linux 7 */
+     "e1000-82544gc",
+     "e1000-82545em",
++#endif
+ };
+ 
+ int main(int argc, char **argv)
+-- 
+1.8.3.1
+

@@ -1,0 +1,126 @@
+From 4fb7a7bed5b4897754a8f2f6968dbd5ec1d66d52 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Fri, 14 Aug 2015 02:54:33 +0200
+Subject: [PATCH 14/16] virtio: fix 1.0 virtqueue migration
+
+Message-id: <1439520873-30483-1-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67548
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 14/14 V2] virtio: fix 1.0 virtqueue migration
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+
+1.0 does not requires physically-contiguous pages layout for a
+virtqueue. So we could not infer avail and used from desc. This means
+we need to migrate vring.avail and vring.used when host support virtio
+1.0. This fixes malfunction of virtio 1.0 device after migration.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Cornelia Huck <cornelia.huck@de.ibm.com>
+Cc: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 74aae7b22b8a67cf31937b2f4bdefe2881e799e9)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio.c         | 56 ++++++++++++++++++++++++++++++++++++++++++++++
+ include/hw/virtio/virtio.h |  6 +++++
+ 2 files changed, 62 insertions(+)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index ee4e07c..788b556 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -1049,6 +1049,61 @@ static bool virtio_64bit_features_needed(void *opaque)
+     return (vdev->host_features >> 32) != 0;
+ }
+ 
++static bool virtio_virtqueue_needed(void *opaque)
++{
++    VirtIODevice *vdev = opaque;
++
++    return virtio_host_has_feature(vdev, VIRTIO_F_VERSION_1);
++}
++
++static void put_virtqueue_state(QEMUFile *f, void *pv, size_t size)
++{
++    VirtIODevice *vdev = pv;
++    int i;
++
++    for (i = 0; i < VIRTIO_QUEUE_MAX; i++) {
++        qemu_put_be64(f, vdev->vq[i].vring.avail);
++        qemu_put_be64(f, vdev->vq[i].vring.used);
++    }
++}
++
++static int get_virtqueue_state(QEMUFile *f, void *pv, size_t size)
++{
++    VirtIODevice *vdev = pv;
++    int i;
++
++    for (i = 0; i < VIRTIO_QUEUE_MAX; i++) {
++        vdev->vq[i].vring.avail = qemu_get_be64(f);
++        vdev->vq[i].vring.used = qemu_get_be64(f);
++    }
++    return 0;
++}
++
++static VMStateInfo vmstate_info_virtqueue = {
++    .name = "virtqueue_state",
++    .get = get_virtqueue_state,
++    .put = put_virtqueue_state,
++};
++
++static const VMStateDescription vmstate_virtio_virtqueues = {
++    .name = "virtio/virtqueues",
++    .version_id = 1,
++    .minimum_version_id = 1,
++    .needed = &virtio_virtqueue_needed,
++    .fields = (VMStateField[]) {
++        {
++            .name         = "virtqueues",
++            .version_id   = 0,
++            .field_exists = NULL,
++            .size         = 0,
++            .info         = &vmstate_info_virtqueue,
++            .flags        = VMS_SINGLE,
++            .offset       = 0,
++        },
++        VMSTATE_END_OF_LIST()
++    }
++};
++
+ static const VMStateDescription vmstate_virtio_device_endian = {
+     .name = "virtio/device_endian",
+     .version_id = 1,
+@@ -1082,6 +1137,7 @@ static const VMStateDescription vmstate_virtio = {
+     .subsections = (const VMStateDescription*[]) {
+         &vmstate_virtio_device_endian,
+         &vmstate_virtio_64bit_features,
++        &vmstate_virtio_virtqueues,
+         NULL
+     }
+ };
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 219a18f..fae4351 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -272,6 +272,12 @@ static inline bool virtio_has_feature(VirtIODevice *vdev, unsigned int fbit)
+     return __virtio_has_feature(vdev->guest_features, fbit);
+ }
+ 
++static inline bool virtio_host_has_feature(VirtIODevice *vdev,
++                                           unsigned int fbit)
++{
++    return __virtio_has_feature(vdev->host_features, fbit);
++}
++
+ static inline bool virtio_is_big_endian(VirtIODevice *vdev)
+ {
+     if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
+-- 
+1.8.3.1
+

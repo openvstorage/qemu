@@ -1,0 +1,147 @@
+From 12d0f10f570de692107bd5614cc3602c3a932ad1 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:19 +0200
+Subject: [PATCH 045/100] s390-virtio: use common features
+
+Message-id: <1436260751-25015-17-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66791
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 16/68] s390-virtio: use common features
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+Notes: conflicts because there's also an merge conflict upstream:
+       commit 0403b0f539f40a21da60409b825b4653b273ab39
+       ("Merge remote-tracking branch 'remotes/mst/tags/for_upstream'
+       into staging"). Fixing by squash the changes of upstream
+       and quote the upstream comments for how to fix the conflict:
+
+       [PMM: fixed conflict in s390_virtio_scsi_properties and
+       s390_virtio_net_properties arrays; since the result of the
+       two conflicting patches is to empty the property arrays
+       completely, the conflict resolution is to remove them entirely.]
+
+We used to avoid enabling event_idx for virtio-blk devices via
+s390-virtio, but we now have a workaround in place for guests trying
+to use the device before setting DRIVER_OK. Therefore, let's add
+DEFINE_VIRTIO_COMMON_FEATURES to the base device so all devices get
+those common features - and make s390-virtio use the same mechanism
+as the other transports do.
+
+Acked-by: Christian Borntraeger <borntraeger@de.ibm.com>
+Reviewed-by: Shannon Zhao <shannon.zhao@linaro.org>
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+(cherry picked from commit f50616a81b7f88a9adac16f3ea0236311a748eca)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/s390x/s390-virtio-bus.c
+---
+ hw/s390x/s390-virtio-bus.c | 30 ++++++------------------------
+ 1 file changed, 6 insertions(+), 24 deletions(-)
+
+diff --git a/hw/s390x/s390-virtio-bus.c b/hw/s390x/s390-virtio-bus.c
+index bb25487..c10b002 100644
+--- a/hw/s390x/s390-virtio-bus.c
++++ b/hw/s390x/s390-virtio-bus.c
+@@ -543,18 +543,12 @@ static void virtio_s390_device_plugged(DeviceState *d, Error **errp)
+ 
+ /**************** S390 Virtio Bus Device Descriptions *******************/
+ 
+-static Property s390_virtio_net_properties[] = {
+-    DEFINE_VIRTIO_COMMON_FEATURES(VirtIOS390Device, host_features),
+-    DEFINE_PROP_END_OF_LIST(),
+-};
+-
+ static void s390_virtio_net_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     VirtIOS390DeviceClass *k = VIRTIO_S390_DEVICE_CLASS(klass);
+ 
+     k->realize = s390_virtio_net_realize;
+-    dc->props = s390_virtio_net_properties;
+     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
+ }
+ 
+@@ -605,18 +599,12 @@ static const TypeInfo s390_virtio_serial = {
+     .class_init    = s390_virtio_serial_class_init,
+ };
+ 
+-static Property s390_virtio_rng_properties[] = {
+-    DEFINE_VIRTIO_COMMON_FEATURES(VirtIOS390Device, host_features),
+-    DEFINE_PROP_END_OF_LIST(),
+-};
+-
+ static void s390_virtio_rng_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     VirtIOS390DeviceClass *k = VIRTIO_S390_DEVICE_CLASS(klass);
+ 
+     k->realize = s390_virtio_rng_realize;
+-    dc->props = s390_virtio_rng_properties;
+     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+ }
+ 
+@@ -645,10 +633,16 @@ static void s390_virtio_busdev_reset(DeviceState *dev)
+     virtio_reset(_dev->vdev);
+ }
+ 
++static Property virtio_s390_properties[] = {
++    DEFINE_VIRTIO_COMMON_FEATURES(VirtIOS390Device, host_features),
++    DEFINE_PROP_END_OF_LIST(),
++};
++
+ static void virtio_s390_device_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+ 
++    dc->props = virtio_s390_properties;
+     dc->realize = s390_virtio_busdev_realize;
+     dc->bus_type = TYPE_S390_VIRTIO_BUS;
+     dc->reset = s390_virtio_busdev_reset;
+@@ -663,18 +657,12 @@ static const TypeInfo virtio_s390_device_info = {
+     .abstract = true,
+ };
+ 
+-static Property s390_virtio_scsi_properties[] = {
+-    DEFINE_VIRTIO_COMMON_FEATURES(VirtIOS390Device, host_features),
+-    DEFINE_PROP_END_OF_LIST(),
+-};
+-
+ static void s390_virtio_scsi_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     VirtIOS390DeviceClass *k = VIRTIO_S390_DEVICE_CLASS(klass);
+ 
+     k->realize = s390_virtio_scsi_realize;
+-    dc->props = s390_virtio_scsi_properties;
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+@@ -687,18 +675,12 @@ static const TypeInfo s390_virtio_scsi = {
+ };
+ 
+ #ifdef CONFIG_VHOST_SCSI
+-static Property s390_vhost_scsi_properties[] = {
+-    DEFINE_VIRTIO_COMMON_FEATURES(VirtIOS390Device, host_features),
+-    DEFINE_PROP_END_OF_LIST(),
+-};
+-
+ static void s390_vhost_scsi_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     VirtIOS390DeviceClass *k = VIRTIO_S390_DEVICE_CLASS(klass);
+ 
+     k->realize = s390_vhost_scsi_realize;
+-    dc->props = s390_vhost_scsi_properties;
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+-- 
+1.8.3.1
+

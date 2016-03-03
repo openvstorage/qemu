@@ -1,0 +1,69 @@
+From b252defabedd2fe567e3ebcd7c37538b260fe9aa Mon Sep 17 00:00:00 2001
+Message-Id: <b252defabedd2fe567e3ebcd7c37538b260fe9aa.1448914830.git.jen@redhat.com>
+In-Reply-To: <bcfe0f8f7ca6c670783cfaa98f45b6985fcbcc39.1448914830.git.jen@redhat.com>
+References: <bcfe0f8f7ca6c670783cfaa98f45b6985fcbcc39.1448914830.git.jen@redhat.com>
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 25 Nov 2015 05:13:14 -0600
+Subject: [CHANGE 4/5] spapr: Abort when HTAB of requested size isn't allocated
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: David Gibson <dgibson@redhat.com>
+Message-id: <1448428394-23427-3-git-send-email-dgibson@redhat.com>
+Patchwork-id: 68463
+O-Subject: [RHEL-7.2.z qemu-kvm-rhev PATCH 2/2] spapr: Abort when HTAB of requested size isn't allocated
+Bugzilla: 1282833 1285337
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+
+Terminate the guest when HTAB of requested size isn't allocated by
+the host.
+
+When memory hotplug is attempted on a guest that has booted with
+less than requested HTAB size, the guest kernel will not be able
+to gracefully fail the hotplug request. This patch will ensure that
+we never end up in a situation where memory hotplug fails due to
+less than requested HTAB size.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit 7735fedaf490cf9213cd8d487272b69a4987c851)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1282833
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ hw/ppc/spapr.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 7eba589..927daf1 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -998,6 +998,10 @@ static void spapr_alloc_htab(sPAPRMachineState *spapr)
+ 
+     if (shift > 0) {
+         /* Kernel handles htab, we don't need to allocate one */
++        if (shift != spapr->htab_shift) {
++            error_setg(&error_abort, "Failed to allocate HTAB of requested size, try with smaller maxmem");
++        }
++
+         spapr->htab_shift = shift;
+         kvmppc_kern_htab = true;
+     } else {
+@@ -1026,6 +1030,10 @@ static void spapr_reset_htab(sPAPRMachineState *spapr)
+ 
+     shift = kvmppc_reset_htab(spapr->htab_shift);
+     if (shift > 0) {
++        if (shift != spapr->htab_shift) {
++            error_setg(&error_abort, "Requested HTAB allocation failed during reset");
++        }
++
+         /* Tell readers to update their file descriptor */
+         if (spapr->htab_fd >= 0) {
+             spapr->htab_fd_stale = true;
+-- 
+2.5.0
+

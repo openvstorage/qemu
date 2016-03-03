@@ -1,0 +1,90 @@
+From 0baa0f745f6af34ed88d7aa42ff029bffafff621 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Thu, 25 Jun 2015 13:44:38 +0200
+Subject: [PATCH 013/100] spapr_pci: create DRConnectors for each PCI slot
+ during PHB realize
+
+Message-id: <1435239881-28541-12-git-send-email-lvivier@redhat.com>
+Patchwork-id: 66488
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 11/14] spapr_pci: create DRConnectors for each PCI slot during PHB realize
+Bugzilla: 1172478
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Michael Roth <mdroth@linux.vnet.ibm.com>
+
+These will be used to support hotplug/unplug of PCI devices to the PCI
+bus associated with a particular PHB.
+
+We also set up device-tree properties in each PHBs initial FDT to
+describe the DRCs associated with them. This advertises to guests that
+each PHB is DR-capable device with physical hotpluggable slots, each
+managed by the corresponding DRC. This is necessary for allowing
+hotplugging of devices to it later via bus rescan or guest rpaphp
+hotplug module.
+
+Signed-off-by: Michael Roth <mdroth@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 62083979b0471ac07da6d94944bf12a9b18baa1f)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_pci.c | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/hw/ppc/spapr_pci.c b/hw/ppc/spapr_pci.c
+index 8b76017..4017279 100644
+--- a/hw/ppc/spapr_pci.c
++++ b/hw/ppc/spapr_pci.c
+@@ -35,6 +35,7 @@
+ #include "qemu/error-report.h"
+ 
+ #include "hw/pci/pci_bus.h"
++#include "hw/ppc/spapr_drc.h"
+ 
+ /* Copied from the kernel arch/powerpc/platforms/pseries/msi.c */
+ #define RTAS_QUERY_FN           0
+@@ -880,6 +881,15 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
+         sphb->lsi_table[i].irq = irq;
+     }
+ 
++    /* allocate connectors for child PCI devices */
++    if (sphb->dr_enabled) {
++        for (i = 0; i < PCI_SLOT_MAX * 8; i++) {
++            spapr_dr_connector_new(OBJECT(phb),
++                                   SPAPR_DR_CONNECTOR_TYPE_PCI,
++                                   (sphb->index << 16) | i);
++        }
++    }
++
+     if (!info->finish_realize) {
+         error_setg(errp, "finish_realize not defined");
+         return;
+@@ -1119,7 +1129,7 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
+                           uint32_t xics_phandle,
+                           void *fdt)
+ {
+-    int bus_off, i, j;
++    int bus_off, i, j, ret;
+     char nodename[256];
+     uint32_t bus_range[] = { cpu_to_be32(0), cpu_to_be32(0xff) };
+     const uint64_t mmiosize = memory_region_size(&phb->memwindow);
+@@ -1208,6 +1218,12 @@ int spapr_populate_pci_dt(sPAPRPHBState *phb,
+     object_child_foreach(OBJECT(phb), spapr_phb_children_dt,
+                          &((sPAPRTCEDT){ .fdt = fdt, .node_off = bus_off }));
+ 
++    ret = spapr_drc_populate_dt(fdt, bus_off, OBJECT(phb),
++                                SPAPR_DR_CONNECTOR_TYPE_PCI);
++    if (ret) {
++        return ret;
++    }
++
+     return 0;
+ }
+ 
+-- 
+1.8.3.1
+

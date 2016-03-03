@@ -1,0 +1,38 @@
+From 1eda8a9c8137792f5cb561afd0d9be580c7330cc Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Mon, 7 Sep 2015 08:05:41 +0200
+Subject: [PATCH 3/8] qemu-iotests: Disable 099 (requires blkverify)
+
+Message-id: <1441613141-11292-2-git-send-email-kwolf@redhat.com>
+Patchwork-id: 67677
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 1/1] qemu-iotests: Disable 099 (requires blkverify)
+Bugzilla: 1257059
+RH-Acked-by: Max Reitz <mreitz@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Fam Zheng <famz@redhat.com>
+
+blkverify isn't enabled in the block drivers whilelist, so test cases
+using it must be disabled like we already disabled 071.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/qemu-iotests/group | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/qemu-iotests/group b/tests/qemu-iotests/group
+index ea7bcc0..497b583 100644
+--- a/tests/qemu-iotests/group
++++ b/tests/qemu-iotests/group
+@@ -104,7 +104,7 @@
+ 095 rw auto quick
+ 097 rw auto backing
+ 098 rw auto backing quick
+-099 rw auto quick
++# 099 rw auto quick -- requires whitelisted blkverifiy
+ 100 rw auto quick
+ 101 rw auto quick
+ 102 rw auto quick
+-- 
+1.8.3.1
+

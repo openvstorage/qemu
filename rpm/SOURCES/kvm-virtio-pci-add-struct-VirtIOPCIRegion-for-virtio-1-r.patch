@@ -1,0 +1,111 @@
+From 26dd9526db3d13c080ed43ce6e097a234a08cdce Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:49 +0200
+Subject: [PATCH 075/100] virtio-pci: add struct VirtIOPCIRegion for virtio-1
+ regions
+
+Message-id: <1436260751-25015-47-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66821
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 46/68] virtio-pci: add struct VirtIOPCIRegion for virtio-1 regions
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+For now just place the MemoryRegion there,
+following patches will add more.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 588255ad5021f06789f438f7b045015c54e30841)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 20 +++++++++++---------
+ hw/virtio/virtio-pci.h | 12 ++++++++----
+ 2 files changed, 19 insertions(+), 13 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 9677ec2..ed47a6d 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -145,7 +145,7 @@ static int virtio_pci_set_host_notifier_internal(VirtIOPCIProxy *proxy,
+     EventNotifier *notifier = virtio_queue_get_host_notifier(vq);
+     bool legacy = !(proxy->flags & VIRTIO_PCI_FLAG_DISABLE_LEGACY);
+     bool modern = !(proxy->flags & VIRTIO_PCI_FLAG_DISABLE_MODERN);
+-    MemoryRegion *modern_mr = &proxy->notify;
++    MemoryRegion *modern_mr = &proxy->notify.mr;
+     MemoryRegion *legacy_mr = &proxy->bar;
+     hwaddr modern_addr = QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
+                          virtio_get_queue_index(vq);
+@@ -1340,28 +1340,30 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+         memory_region_init(&proxy->modern_bar, OBJECT(proxy), "virtio-pci",
+                            2 * QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
+                            VIRTIO_QUEUE_MAX);
+-        memory_region_init_io(&proxy->common, OBJECT(proxy),
++        memory_region_init_io(&proxy->common.mr, OBJECT(proxy),
+                               &common_ops,
+                               proxy,
+                               "virtio-pci-common", 0x1000);
+-        memory_region_add_subregion(&proxy->modern_bar, 0, &proxy->common);
+-        memory_region_init_io(&proxy->isr, OBJECT(proxy),
++        memory_region_add_subregion(&proxy->modern_bar, 0, &proxy->common.mr);
++        memory_region_init_io(&proxy->isr.mr, OBJECT(proxy),
+                               &isr_ops,
+                               proxy,
+                               "virtio-pci-isr", 0x1000);
+-        memory_region_add_subregion(&proxy->modern_bar, 0x1000, &proxy->isr);
+-        memory_region_init_io(&proxy->device, OBJECT(proxy),
++        memory_region_add_subregion(&proxy->modern_bar, 0x1000, &proxy->isr.mr);
++        memory_region_init_io(&proxy->device.mr, OBJECT(proxy),
+                               &device_ops,
+                               virtio_bus_get_device(&proxy->bus),
+                               "virtio-pci-device", 0x1000);
+-        memory_region_add_subregion(&proxy->modern_bar, 0x2000, &proxy->device);
+-        memory_region_init_io(&proxy->notify, OBJECT(proxy),
++        memory_region_add_subregion(&proxy->modern_bar, 0x2000,
++                                    &proxy->device.mr);
++        memory_region_init_io(&proxy->notify.mr, OBJECT(proxy),
+                               &notify_ops,
+                               virtio_bus_get_device(&proxy->bus),
+                               "virtio-pci-notify",
+                               QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
+                               VIRTIO_QUEUE_MAX);
+-        memory_region_add_subregion(&proxy->modern_bar, 0x3000, &proxy->notify);
++        memory_region_add_subregion(&proxy->modern_bar, 0x3000,
++                                    &proxy->notify.mr);
+         pci_register_bar(&proxy->pci_dev, modern_mem_bar,
+                          PCI_BASE_ADDRESS_SPACE_MEMORY |
+                          PCI_BASE_ADDRESS_MEM_PREFETCH |
+diff --git a/hw/virtio/virtio-pci.h b/hw/virtio/virtio-pci.h
+index 4e9b2db..8f1fc02 100644
+--- a/hw/virtio/virtio-pci.h
++++ b/hw/virtio/virtio-pci.h
+@@ -91,13 +91,17 @@ typedef struct VirtioPCIClass {
+     void (*realize)(VirtIOPCIProxy *vpci_dev, Error **errp);
+ } VirtioPCIClass;
+ 
++typedef struct VirtIOPCIRegion {
++    MemoryRegion mr;
++} VirtIOPCIRegion;
++
+ struct VirtIOPCIProxy {
+     PCIDevice pci_dev;
+     MemoryRegion bar;
+-    MemoryRegion common;
+-    MemoryRegion isr;
+-    MemoryRegion device;
+-    MemoryRegion notify;
++    VirtIOPCIRegion common;
++    VirtIOPCIRegion isr;
++    VirtIOPCIRegion device;
++    VirtIOPCIRegion notify;
+     MemoryRegion modern_bar;
+     uint32_t flags;
+     uint32_t class_code;
+-- 
+1.8.3.1
+

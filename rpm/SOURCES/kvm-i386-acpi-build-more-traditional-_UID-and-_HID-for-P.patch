@@ -1,0 +1,77 @@
+From ee7a08d5310a92a168827f50fb0f9eafd9864ac9 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Mon, 13 Jul 2015 19:17:38 +0200
+Subject: [PATCH 12/23] i386/acpi-build: more traditional _UID and _HID for PXB
+ root buses
+
+Message-id: <1436815069-15106-2-git-send-email-lersek@redhat.com>
+Patchwork-id: 66992
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 01/12] i386/acpi-build: more traditional _UID and _HID for PXB root buses
+Bugzilla: 1242479
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+The ACPI specification permits the _HID and _UID objects to evaluate to
+strings. (See "6.1.5 _HID (Hardware ID)" and "6.1.12 _UID (Unique ID)" in
+the ACPI v6.0 spec.)
+
+With regard to related standards, the UEFI specification can also express
+a device address composed from string _HID and _UID identifiers, inside
+the Expanded ACPI Device Path Node. (See "9.3.3 ACPI Device Path", Table
+49, in the UEFI v2.5 spec.)
+
+However, numeric (integer) contents for both _HID and _UID are more
+traditional. They are recommended by the UEFI spec for size reasons:
+
+  [...] the ACPI Device Path node is smaller and should be used if
+  possible to reduce the size of device paths that may potentially be
+  stored in nonvolatile storage [...]
+
+External tools support them better (for example the --acpi_hid and
+--acpi_uid options of "efibootmgr" only take numeric identifiers).
+Finally, numeric _HID and _UID contents are existing practice in the QEMU
+source.
+
+This patch was tested with a Fedora 20 LiveCD and a preexistent Windows
+Server 2012 R2 guest. Using "acpidump" and "iasl" in the Fedora guest, we
+get, in the SSDT:
+
+> Scope (\_SB)
+> {
+>   Device (PC04)
+>   {
+>     Name (_UID, 0x04)  // _UID: Unique ID
+>     Name (_HID, EisaId ("PNP0A03") /* PCI Bus */)  // _HID: Hardware ID
+
+Cc: Marcel Apfelbaum <marcel@redhat.com>
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit c96d9286a6d70452e5fa4f1e3f840715e325be95)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index 589534e..b84f4e6 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -942,9 +942,8 @@ build_ssdt(GArray *table_data, GArray *linker,
+ 
+             scope = aml_scope("\\_SB");
+             dev = aml_device("PC%.02X", bus_num);
+-            aml_append(dev,
+-                       aml_name_decl("_UID", aml_string("PC%.02X", bus_num)));
+-            aml_append(dev, aml_name_decl("_HID", aml_string("PNP0A03")));
++            aml_append(dev, aml_name_decl("_UID", aml_int(bus_num)));
++            aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0A03")));
+             aml_append(dev, aml_name_decl("_BBN", aml_int(bus_num)));
+ 
+             if (numa_node != NUMA_NODE_UNASSIGNED) {
+-- 
+1.8.3.1
+

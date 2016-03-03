@@ -1,0 +1,78 @@
+From 72763d5d08c3958c5b9fa696b4b1e6421f0691b7 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:05 +0200
+Subject: [PATCH 43/58] spapr: Remove obsolete entry_point field from
+ sPAPRMachineState
+
+Message-id: <1437715580-14817-14-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67130
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 13/28] spapr: Remove obsolete entry_point field from sPAPRMachineState
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+The sPAPRMachineState structure includes an entry_point field containing
+the initial PC value for starting the machine, even though this always has
+the value 0x100.
+
+I think this is a hangover from very early versions which bypassed the
+firmware when using -kernel.  In any case it has no function now, so remove
+it.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 1b71890729953825c57d52ace48a7671c295e899)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c         | 4 +---
+ include/hw/ppc/spapr.h | 2 +-
+ 2 files changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index dc7aca0..891c7bf 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -932,7 +932,7 @@ static void ppc_spapr_reset(void)
+     first_ppc_cpu->env.gpr[3] = spapr->fdt_addr;
+     first_ppc_cpu->env.gpr[5] = 0;
+     first_cpu->halted = 0;
+-    first_ppc_cpu->env.nip = spapr->entry_point;
++    first_ppc_cpu->env.nip = SPAPR_ENTRY_POINT;
+ 
+ }
+ 
+@@ -1644,8 +1644,6 @@ static void ppc_spapr_init(MachineState *machine)
+     }
+     g_free(filename);
+ 
+-    spapr->entry_point = 0x100;
+-
+     /* FIXME: Should register things through the MachineState's qdev
+      * interface, this is a legacy from the sPAPREnvironment structure
+      * which predated MachineState but had a similar function */
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index e5c619b..d9dde83 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -13,6 +13,7 @@ typedef struct sPAPRConfigureConnectorState sPAPRConfigureConnectorState;
+ typedef struct sPAPREventLogEntry sPAPREventLogEntry;
+ 
+ #define HPTE64_V_HPTE_DIRTY     0x0000000000000040ULL
++#define SPAPR_ENTRY_POINT       0x100
+ 
+ typedef struct sPAPRMachineState sPAPRMachineState;
+ 
+@@ -41,7 +42,6 @@ struct sPAPRMachineState {
+     ssize_t rtas_size;
+     void *rtas_blob;
+     void *fdt_skel;
+-    target_ulong entry_point;
+     uint64_t rtc_offset; /* Now used only during incoming migration */
+     struct PPCTimebase tb;
+     bool has_graphics;
+-- 
+1.8.3.1
+

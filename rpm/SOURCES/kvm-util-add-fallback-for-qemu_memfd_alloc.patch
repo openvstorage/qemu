@@ -1,0 +1,77 @@
+From c476e7dfd209770816b3eee62c9ff387f1eec670 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:13 +0100
+Subject: [PATCH 14/44] util: add fallback for qemu_memfd_alloc()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-8-git-send-email-mst@redhat.com>
+Patchwork-id: 68369
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 07/36] util: add fallback for qemu_memfd_alloc()
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Add an open/unlink/mmap fallback for system that do not support
+memfd (only available since 3.17, ~1y ago).
+
+This patch may require additional SELinux policies to work for enforced
+systems, but should fail gracefully in this case.
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit 35f9b6ef3acc9d0546c395a566b04e63ca84e302)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ util/memfd.c | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/util/memfd.c b/util/memfd.c
+index f3ae34e..53dd38d 100644
+--- a/util/memfd.c
++++ b/util/memfd.c
+@@ -30,6 +30,7 @@
+ #include <glib.h>
+ #include <glib/gprintf.h>
+ 
++#include <stdlib.h>
+ #include <sys/mman.h>
+ #include <fcntl.h>
+ 
+@@ -99,8 +100,24 @@ void *qemu_memfd_alloc(const char *name, size_t size, unsigned int seals,
+             return NULL;
+         }
+     } else {
+-        perror("memfd");
+-        return NULL;
++        const char *tmpdir = g_get_tmp_dir();
++        gchar *fname;
++
++        fname = g_strdup_printf("%s/memfd-XXXXXX", tmpdir);
++        mfd = mkstemp(fname);
++        unlink(fname);
++        g_free(fname);
++
++        if (mfd == -1) {
++            perror("mkstemp");
++            return NULL;
++        }
++
++        if (ftruncate(mfd, size) == -1) {
++            perror("ftruncate");
++            close(mfd);
++            return NULL;
++        }
+     }
+ 
+     ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, 0);
+-- 
+1.8.3.1
+

@@ -1,0 +1,54 @@
+From 48c857be9165ca927b7aa7e4abe394d73eeaed14 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 11 Sep 2015 12:57:00 +0200
+Subject: [PATCH 7/8] pc: memhotplug: fix incorrectly set reserved-memory-end
+
+Message-id: <1441976221-97646-2-git-send-email-imammedo@redhat.com>
+Patchwork-id: 67739
+O-Subject: [RHEL-7.2 qemu-kvm-rhev 1/2] pc: memhotplug: fix incorrectly set reserved-memory-end
+Bugzilla: 1261846
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+Upstream: 3385e8e2640e5c38582f6e8413042bd23d97c640
+
+reserved-memory-end tells firmware address from which
+it could start treating memory as PCI address space
+and map PCI BARs after it to avoid collisions with
+RAM.
+Currently it is incorrectly pointing to address where
+hotplugged memory range starts which could redirect
+hotplugged RAM accesses to PCI BARs when firmware
+maps them over RAM or viceverse.
+Fix this by pointing reserved-memory-end to the end
+of memory hotplug area.
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Eduardo Habkost <ehabkost@redhat.com>
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index a3de32a..8f69424 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1411,7 +1411,9 @@ FWCfgState *pc_memory_init(MachineState *machine,
+ 
+     if (guest_info->has_reserved_memory && pcms->hotplug_memory.base) {
+         uint64_t *val = g_malloc(sizeof(*val));
+-        *val = cpu_to_le64(ROUND_UP(pcms->hotplug_memory.base, 0x1ULL << 30));
++        uint64_t res_mem_end = pcms->hotplug_memory.base +
++                               memory_region_size(&pcms->hotplug_memory.mr);
++        *val = cpu_to_le64(ROUND_UP(res_mem_end, 0x1ULL << 30));
+         fw_cfg_add_file(fw_cfg, "etc/reserved-memory-end", val, sizeof(*val));
+     }
+ 
+-- 
+1.8.3.1
+

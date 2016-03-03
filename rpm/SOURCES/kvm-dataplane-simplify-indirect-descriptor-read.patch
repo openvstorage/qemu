@@ -1,0 +1,85 @@
+From fabd7b9e36003010a63e8a8b4180c2e1bd35fb92 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 20 Nov 2015 10:44:40 +0100
+Subject: [PATCH 7/9] dataplane: simplify indirect descriptor read
+
+Message-id: <1448016282-257478-8-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68412
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 7/9] dataplane: simplify indirect descriptor read
+Bugzilla: 1288096
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Michael S. Tsirkin <mst@redhat.com>
+
+Use address_space_read to make sure we handle the case of an indirect
+descriptor crossing DIMM boundary correctly.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Tested-by: Igor Mammedov <imammedo@redhat.com>
+Message-id: 1446047243-3221-1-git-send-email-mst@redhat.com
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 572ec519ed6fe68f10ec65963527536c2322eab0)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/dataplane/vring.c | 28 ++++++++++++++++++----------
+ 1 file changed, 18 insertions(+), 10 deletions(-)
+
+diff --git a/hw/virtio/dataplane/vring.c b/hw/virtio/dataplane/vring.c
+index 2a6bf22..e27a834 100644
+--- a/hw/virtio/dataplane/vring.c
++++ b/hw/virtio/dataplane/vring.c
+@@ -216,6 +216,21 @@ static void copy_in_vring_desc(VirtIODevice *vdev,
+     host->next = virtio_lduw_p(vdev, &guest->next);
+ }
+ 
++static bool read_vring_desc(VirtIODevice *vdev,
++                            hwaddr guest,
++                            struct vring_desc *host)
++{
++    if (address_space_read(&address_space_memory, guest, MEMTXATTRS_UNSPECIFIED,
++                           (uint8_t *)host, sizeof *host)) {
++        return false;
++    }
++    host->addr = virtio_tswap64(vdev, host->addr);
++    host->len = virtio_tswap32(vdev, host->len);
++    host->flags = virtio_tswap16(vdev, host->flags);
++    host->next = virtio_tswap16(vdev, host->next);
++    return true;
++}
++
+ /* This is stolen from linux/drivers/vhost/vhost.c. */
+ static int get_indirect(VirtIODevice *vdev, Vring *vring,
+                         VirtQueueElement *elem, struct vring_desc *indirect)
+@@ -243,23 +258,16 @@ static int get_indirect(VirtIODevice *vdev, Vring *vring,
+     }
+ 
+     do {
+-        struct vring_desc *desc_ptr;
+-        MemoryRegion *mr;
+-
+         /* Translate indirect descriptor */
+-        desc_ptr = vring_map(&mr,
+-                             indirect->addr + found * sizeof(desc),
+-                             sizeof(desc), false);
+-        if (!desc_ptr) {
+-            error_report("Failed to map indirect descriptor "
++        if (!read_vring_desc(vdev, indirect->addr + found * sizeof(desc),
++                             &desc)) {
++            error_report("Failed to read indirect descriptor "
+                          "addr %#" PRIx64 " len %zu",
+                          (uint64_t)indirect->addr + found * sizeof(desc),
+                          sizeof(desc));
+             vring->broken = true;
+             return -EFAULT;
+         }
+-        copy_in_vring_desc(vdev, desc_ptr, &desc);
+-        memory_region_unref(mr);
+ 
+         /* Ensure descriptor has been loaded before accessing fields */
+         barrier(); /* read_barrier_depends(); */
+-- 
+1.8.3.1
+

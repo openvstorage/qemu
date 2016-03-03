@@ -1,0 +1,113 @@
+From b20d26b6c37d20486ee30000155e01fdabc445a1 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Mon, 6 Jul 2015 13:05:56 +0200
+Subject: [PATCH 30/31] sPAPR: Clear stale MSIx table during EEH reset
+
+Message-id: <1436187956-15948-4-git-send-email-lvivier@redhat.com>
+Patchwork-id: 66741
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 3/3] sPAPR: Clear stale MSIx table during EEH reset
+Bugzilla: 1213681
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Gavin Shan <gwshan@linux.vnet.ibm.com>
+
+The PCI device MSIx table is cleaned out in hardware after EEH PE
+reset. However, we still hold the stale MSIx entries in QEMU, which
+should be cleared accordingly. Otherwise, we will run into another
+(recursive) EEH error and the PCI devices contained in the PE have
+to be offlined exceptionally.
+
+The patch introduces function spapr_phb_vfio_eeh_pre_reset(), which
+is called by sPAPR when asserting hot or fundamental reset, to clear
+stale MSIx table for VFIO PCI devices before EEH PE reset so that
+MSIx table could be restored properly after EEH PE reset.
+
+Signed-off-by: Gavin Shan <gwshan@linux.vnet.ibm.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit d46e951b62cac411ecba490a4266f4bfe771ed48)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Upstream: 6319b1dad04e66f450fb3ac6c31d2bf3940068b8
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_pci_vfio.c | 46 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 46 insertions(+)
+
+diff --git a/hw/ppc/spapr_pci_vfio.c b/hw/ppc/spapr_pci_vfio.c
+index 8104074..cca45ed 100644
+--- a/hw/ppc/spapr_pci_vfio.c
++++ b/hw/ppc/spapr_pci_vfio.c
+@@ -19,6 +19,7 @@
+ 
+ #include "hw/ppc/spapr.h"
+ #include "hw/pci-host/spapr.h"
++#include "hw/pci/msix.h"
+ #include "linux/vfio.h"
+ #include "hw/vfio/vfio.h"
+ 
+@@ -159,6 +160,49 @@ static int spapr_phb_vfio_eeh_get_state(sPAPRPHBState *sphb, int *state)
+     return RTAS_OUT_SUCCESS;
+ }
+ 
++static void spapr_phb_vfio_eeh_clear_dev_msix(PCIBus *bus,
++                                              PCIDevice *pdev,
++                                              void *opaque)
++{
++    /* Check if the device is VFIO PCI device */
++    if (!object_dynamic_cast(OBJECT(pdev), "vfio-pci")) {
++        return;
++    }
++
++    /*
++     * The MSIx table will be cleaned out by reset. We need
++     * disable it so that it can be reenabled properly. Also,
++     * the cached MSIx table should be cleared as it's not
++     * reflecting the contents in hardware.
++     */
++    if (msix_enabled(pdev)) {
++        uint16_t flags;
++
++        flags = pci_host_config_read_common(pdev,
++                                            pdev->msix_cap + PCI_MSIX_FLAGS,
++                                            pci_config_size(pdev), 2);
++        flags &= ~PCI_MSIX_FLAGS_ENABLE;
++        pci_host_config_write_common(pdev,
++                                     pdev->msix_cap + PCI_MSIX_FLAGS,
++                                     pci_config_size(pdev), flags, 2);
++    }
++
++    msix_reset(pdev);
++}
++
++static void spapr_phb_vfio_eeh_clear_bus_msix(PCIBus *bus, void *opaque)
++{
++       pci_for_each_device(bus, pci_bus_num(bus),
++                           spapr_phb_vfio_eeh_clear_dev_msix, NULL);
++}
++
++static void spapr_phb_vfio_eeh_pre_reset(sPAPRPHBState *sphb)
++{
++       PCIHostState *phb = PCI_HOST_BRIDGE(sphb);
++
++       pci_for_each_bus(phb->bus, spapr_phb_vfio_eeh_clear_bus_msix, NULL);
++}
++
+ static int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
+ {
+     sPAPRPHBVFIOState *svphb = SPAPR_PCI_VFIO_HOST_BRIDGE(sphb);
+@@ -170,9 +214,11 @@ static int spapr_phb_vfio_eeh_reset(sPAPRPHBState *sphb, int option)
+         op.op = VFIO_EEH_PE_RESET_DEACTIVATE;
+         break;
+     case RTAS_SLOT_RESET_HOT:
++        spapr_phb_vfio_eeh_pre_reset(sphb);
+         op.op = VFIO_EEH_PE_RESET_HOT;
+         break;
+     case RTAS_SLOT_RESET_FUNDAMENTAL:
++        spapr_phb_vfio_eeh_pre_reset(sphb);
+         op.op = VFIO_EEH_PE_RESET_FUNDAMENTAL;
+         break;
+     default:
+-- 
+1.8.3.1
+

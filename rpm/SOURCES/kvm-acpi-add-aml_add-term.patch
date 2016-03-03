@@ -1,0 +1,63 @@
+From 96e9cb3e2339a47b55d3aa12d9115b3f7274bdcb Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:12 +0200
+Subject: [PATCH 04/31] acpi: add aml_add() term
+
+Message-id: <1435154016-26233-20-git-send-email-marcel@redhat.com>
+Patchwork-id: 66449
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 19/43] acpi: add aml_add() term
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Add encoding for ACPI DefAdd Opcode.
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Shannon Zhao <shannon.zhao@linaro.org>
+(cherry picked from commit c08cf0704247aa55e9b0bb14cf34d845629e0e3e)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 10 ++++++++++
+ include/hw/acpi/aml-build.h |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 709ddc3..19c81dd 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -456,6 +456,16 @@ Aml *aml_or(Aml *arg1, Aml *arg2)
+     return var;
+ }
+ 
++/* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefAdd */
++Aml *aml_add(Aml *arg1, Aml *arg2)
++{
++    Aml *var = aml_opcode(0x72 /* AddOp */);
++    aml_append(var, arg1);
++    aml_append(var, arg2);
++    build_append_byte(var->buf, 0x00 /* NullNameOp */);
++    return var;
++}
++
+ /* ACPI 1.0b: 16.2.5.3 Type 1 Opcodes Encoding: DefNotify */
+ Aml *aml_notify(Aml *arg1, Aml *arg2)
+ {
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 9773bfd..42448ae 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -202,6 +202,7 @@ Aml *aml_arg(int pos);
+ Aml *aml_store(Aml *val, Aml *target);
+ Aml *aml_and(Aml *arg1, Aml *arg2);
+ Aml *aml_or(Aml *arg1, Aml *arg2);
++Aml *aml_add(Aml *arg1, Aml *arg2);
+ Aml *aml_notify(Aml *arg1, Aml *arg2);
+ Aml *aml_call1(const char *method, Aml *arg1);
+ Aml *aml_call2(const char *method, Aml *arg1, Aml *arg2);
+-- 
+1.8.3.1
+

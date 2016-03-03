@@ -1,0 +1,253 @@
+From cbdea8fb58d2f6ce4134ba2b72f1528a44565511 Mon Sep 17 00:00:00 2001
+Message-Id: <cbdea8fb58d2f6ce4134ba2b72f1528a44565511.1444668695.git.jen@redhat.com>
+In-Reply-To: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+References: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+From: Markus Armbruster <armbru@redhat.com>
+Date: Fri, 9 Oct 2015 14:37:35 -0500
+Subject: [CHANGE 08/11] device-introspect-test: New, covering device
+ introspection
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Markus Armbruster <armbru@redhat.com>
+Message-id: <1444401458-7995-7-git-send-email-armbru@redhat.com>
+Patchwork-id: 68115
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 6/9] device-introspect-test: New, covering device introspection
+Bugzilla: 1264347
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+The test doesn't check that the output makes any sense, only that QEMU
+survives.  Useful since we've had an astounding number of crash bugs
+around there.
+
+In fact, we have a bunch of them right now: a few devices crash or
+hang, and some leave dangling pointers behind.  The test skips testing
+the broken parts.  The next commits will fix them up, and drop the
+skipping.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Message-Id: <1443689999-12182-8-git-send-email-armbru@redhat.com>
+(cherry picked from commit 2d1abb850fd15fd6eb75a92290be5f93b2772ec5)
+---
+ tests/Makefile                 |   8 ++-
+ tests/device-introspect-test.c | 158 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 163 insertions(+), 3 deletions(-)
+ create mode 100644 tests/device-introspect-test.c
+
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ tests/Makefile                 |   8 ++-
+ tests/device-introspect-test.c | 158 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 163 insertions(+), 3 deletions(-)
+ create mode 100644 tests/device-introspect-test.c
+
+diff --git a/tests/Makefile b/tests/Makefile
+index 7590534..8d7522e 100644
+--- a/tests/Makefile
++++ b/tests/Makefile
+@@ -78,7 +78,8 @@ check-block-$(CONFIG_POSIX) += tests/qemu-iotests-quick.sh
+ # All QTests for now are POSIX-only, but the dependencies are
+ # really in libqtest, not in the testcases themselves.
+ 
+-check-qtest-generic-y =
++check-qtest-generic-y = tests/device-introspect-test$(EXESUF)
++gcov-files-generic-y = qdev-monitor.c qmp.c
+ 
+ gcov-files-ipack-y += hw/ipack/ipack.c
+ 
+@@ -299,6 +300,7 @@ libqos-omap-obj-y = $(libqos-obj-y) tests/libqos/i2c-omap.o
+ libqos-usb-obj-y = $(libqos-pc-obj-y) tests/libqos/usb.o
+ libqos-virtio-obj-y = $(libqos-pc-obj-y) tests/libqos/virtio.o tests/libqos/virtio-pci.o tests/libqos/virtio-mmio.o tests/libqos/malloc-generic.o
+ 
++tests/device-introspect-test$(EXESUF): tests/device-introspect-test.o
+ tests/rtc-test$(EXESUF): tests/rtc-test.o
+ tests/m48t59-test$(EXESUF): tests/m48t59-test.o
+ tests/endianness-test$(EXESUF): tests/endianness-test.o
+@@ -393,7 +395,7 @@ $(patsubst %, check-qtest-%, $(QTEST_TARGETS)): check-qtest-%: $(check-qtest-y)
+ 	$(call quiet-command,QTEST_QEMU_BINARY=$*-softmmu/qemu-system-$* \
+ 		MALLOC_PERTURB_=$${MALLOC_PERTURB_:-$$((RANDOM % 255 + 1))} \
+ 		gtester $(GTESTER_OPTIONS) -m=$(SPEED) $(check-qtest-$*-y) $(check-qtest-generic-y),"GTESTER $@")
+-	$(if $(CONFIG_GCOV),@for f in $(gcov-files-$*-y); do \
++	$(if $(CONFIG_GCOV),@for f in $(gcov-files-$*-y) $(gcov-files-generic-y); do \
+ 	  echo Gcov report for $$f:;\
+ 	  $(GCOV) $(GCOV_OPTIONS) $$f -o `dirname $$f`; \
+ 	done,)
+@@ -404,7 +406,7 @@ $(patsubst %, check-%, $(check-unit-y)): check-%: %
+ 	$(call quiet-command, \
+ 		MALLOC_PERTURB_=$${MALLOC_PERTURB_:-$$((RANDOM % 255 + 1))} \
+ 		gtester $(GTESTER_OPTIONS) -m=$(SPEED) $*,"GTESTER $*")
+-	$(if $(CONFIG_GCOV),@for f in $(gcov-files-$(subst tests/,,$*)-y); do \
++	$(if $(CONFIG_GCOV),@for f in $(gcov-files-$(subst tests/,,$*)-y) $(gcov-files-generic-y); do \
+ 	  echo Gcov report for $$f:;\
+ 	  $(GCOV) $(GCOV_OPTIONS) $$f -o `dirname $$f`; \
+ 	done,)
+diff --git a/tests/device-introspect-test.c b/tests/device-introspect-test.c
+new file mode 100644
+index 0000000..f240b5c
+--- /dev/null
++++ b/tests/device-introspect-test.c
+@@ -0,0 +1,158 @@
++/*
++ * Device introspection test cases
++ *
++ * Copyright (c) 2015 Red Hat Inc.
++ *
++ * Authors:
++ *  Markus Armbruster <armbru@redhat.com>,
++ *
++ * This work is licensed under the terms of the GNU GPL, version 2 or later.
++ * See the COPYING file in the top-level directory.
++ */
++
++/*
++ * Covers QMP device-list-properties and HMP device_add help.  We
++ * currently don't check that their output makes sense, only that QEMU
++ * survives.  Useful since we've had an astounding number of crash
++ * bugs around here.
++ */
++
++#include <glib.h>
++#include <stdarg.h>
++#include "qemu-common.h"
++#include "qapi/qmp/qstring.h"
++#include "libqtest.h"
++
++const char common_args[] = "-nodefaults -machine none";
++
++static QList *device_type_list(bool abstract)
++{
++    QDict *resp;
++    QList *ret;
++
++    resp = qmp("{'execute': 'qom-list-types',"
++               " 'arguments': {'implements': 'device', 'abstract': %i}}",
++               abstract);
++    g_assert(qdict_haskey(resp, "return"));
++    ret = qdict_get_qlist(resp, "return");
++    QINCREF(ret);
++    QDECREF(resp);
++    return ret;
++}
++
++static void test_one_device(const char *type)
++{
++    QDict *resp;
++    char *help, *qom_tree;
++
++    /*
++     * Skip this part for the abstract device test case, because
++     * device-list-properties crashes for such devices.
++     * FIXME fix it not to crash
++     */
++    if (strcmp(type, "device")) {
++        resp = qmp("{'execute': 'device-list-properties',"
++                   " 'arguments': {'typename': %s}}",
++                   type);
++        QDECREF(resp);
++    }
++
++    help = hmp("device_add \"%s,help\"", type);
++    g_free(help);
++
++    /*
++     * Some devices leave dangling pointers in QOM behind.
++     * "info qom-tree" has a good chance at crashing then
++     */
++    qom_tree = hmp("info qom-tree");
++    g_free(qom_tree);
++}
++
++static void test_device_intro_list(void)
++{
++    QList *types;
++    char *help;
++
++    qtest_start(common_args);
++
++    types = device_type_list(true);
++    QDECREF(types);
++
++    help = hmp("device_add help");
++    g_free(help);
++
++    qtest_end();
++}
++
++static void test_device_intro_none(void)
++{
++    qtest_start(common_args);
++    test_one_device("nonexistent");
++    qtest_end();
++}
++
++static void test_device_intro_abstract(void)
++{
++    qtest_start(common_args);
++    test_one_device("device");
++    qtest_end();
++}
++
++static bool blacklisted(const char *type)
++{
++    static const char *blacklist[] = {
++        /* hang in object_unref(): */
++        "realview_pci", "versatile_pci",
++        /* create a CPU, thus use after free (see below): */
++        "allwinner-a10", "digic", "fsl,imx25", "fsl,imx31", "xlnx,zynqmp",
++    };
++    size_t len = strlen(type);
++    int i;
++
++    if (len >= 4 && !strcmp(type + len - 4, "-cpu")) {
++        /* use after free: cpu_exec_init() saves CPUState in cpus */
++        return true;
++    }
++
++    for (i = 0; i < ARRAY_SIZE(blacklist); i++) {
++        if (!strcmp(blacklist[i], type)) {
++            return true;
++        }
++    }
++    return false;
++}
++
++static void test_device_intro_concrete(void)
++{
++    QList *types;
++    QListEntry *entry;
++    const char *type;
++
++    qtest_start(common_args);
++    types = device_type_list(false);
++
++    QLIST_FOREACH_ENTRY(types, entry) {
++        type = qdict_get_try_str(qobject_to_qdict(qlist_entry_obj(entry)),
++                                "name");
++        g_assert(type);
++        if (blacklisted(type)) {
++            continue;           /* FIXME broken device, skip */
++        }
++        test_one_device(type);
++    }
++
++    QDECREF(types);
++    qtest_end();
++}
++
++int main(int argc, char **argv)
++{
++    g_test_init(&argc, &argv, NULL);
++
++    qtest_add_func("device/introspect/list", test_device_intro_list);
++    qtest_add_func("device/introspect/none", test_device_intro_none);
++    qtest_add_func("device/introspect/abstract", test_device_intro_abstract);
++    qtest_add_func("device/introspect/concrete", test_device_intro_concrete);
++
++    return g_test_run();
++}
+-- 
+2.4.3
+

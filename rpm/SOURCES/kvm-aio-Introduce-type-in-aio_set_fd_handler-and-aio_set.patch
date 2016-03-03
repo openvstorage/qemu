@@ -1,0 +1,831 @@
+From dc9b289743c42918ae76eccc1a666f1e80e0b5bd Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:02 +0200
+Subject: [PATCH 13/22] aio: Introduce "type" in aio_set_fd_handler and
+ aio_set_event_notifier
+
+Message-id: <1442456951-3827-4-git-send-email-famz@redhat.com>
+Patchwork-id: 67794
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 03/12] aio: Introduce "type" in aio_set_fd_handler and aio_set_event_notifier
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+The parameter is added but not used.
+
+The callers are converted with following coccinelle semantic patch:
+
+    @@
+    expression E1, E2, E3, E4, E5;
+    @@
+    (
+    -aio_set_event_notifier(E1, E2, E3)
+    +aio_set_event_notifier(E1, E2, AIO_CLIENT_UNSPECIFIED, E3)
+    |
+    -aio_set_fd_handler(E1, E2, E3, E4, E5)
+    +aio_set_fd_handler(E1, E2, AIO_CLIENT_UNSPECIFIED, E3, E4, E5)
+    )
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+---
+ aio-posix.c                     |  4 ++-
+ aio-win32.c                     |  2 ++
+ async.c                         |  3 ++-
+ block/curl.c                    | 14 +++++-----
+ block/iscsi.c                   |  9 +++----
+ block/linux-aio.c               |  5 ++--
+ block/nbd-client.c              | 10 ++++---
+ block/nfs.c                     | 17 +++++-------
+ block/sheepdog.c                | 32 +++++++++++++++--------
+ block/ssh.c                     |  5 ++--
+ block/win32-aio.c               |  5 ++--
+ hw/block/dataplane/virtio-blk.c |  6 +++--
+ hw/scsi/virtio-scsi-dataplane.c | 24 +++++++++++------
+ include/block/aio.h             |  5 ++++
+ nbd.c                           |  4 ++-
+ tests/test-aio.c                | 58 +++++++++++++++++++++++------------------
+ 16 files changed, 122 insertions(+), 81 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ aio-posix.c                     |  4 ++-
+ aio-win32.c                     |  2 ++
+ async.c                         |  3 ++-
+ block/curl.c                    | 14 +++++-----
+ block/iscsi.c                   |  9 +++----
+ block/linux-aio.c               |  5 ++--
+ block/nbd-client.c              | 10 ++++---
+ block/nfs.c                     | 17 +++++-------
+ block/sheepdog.c                | 32 +++++++++++++++--------
+ block/ssh.c                     |  5 ++--
+ block/win32-aio.c               |  5 ++--
+ hw/block/dataplane/virtio-blk.c |  6 +++--
+ hw/scsi/virtio-scsi-dataplane.c | 24 +++++++++++------
+ include/block/aio.h             |  5 ++++
+ nbd.c                           |  4 ++-
+ tests/test-aio.c                | 58 +++++++++++++++++++++++------------------
+ 16 files changed, 122 insertions(+), 81 deletions(-)
+
+diff --git a/aio-posix.c b/aio-posix.c
+index 296cd9b..3e3eab4 100644
+--- a/aio-posix.c
++++ b/aio-posix.c
+@@ -43,6 +43,7 @@ static AioHandler *find_aio_handler(AioContext *ctx, int fd)
+ 
+ void aio_set_fd_handler(AioContext *ctx,
+                         int fd,
++                        int type,
+                         IOHandler *io_read,
+                         IOHandler *io_write,
+                         void *opaque)
+@@ -92,10 +93,11 @@ void aio_set_fd_handler(AioContext *ctx,
+ 
+ void aio_set_event_notifier(AioContext *ctx,
+                             EventNotifier *notifier,
++                            int type,
+                             EventNotifierHandler *io_read)
+ {
+     aio_set_fd_handler(ctx, event_notifier_get_fd(notifier),
+-                       (IOHandler *)io_read, NULL, notifier);
++                       type, (IOHandler *)io_read, NULL, notifier);
+ }
+ 
+ bool aio_prepare(AioContext *ctx)
+diff --git a/aio-win32.c b/aio-win32.c
+index e6f4ced..d5ba633 100644
+--- a/aio-win32.c
++++ b/aio-win32.c
+@@ -33,6 +33,7 @@ struct AioHandler {
+ 
+ void aio_set_fd_handler(AioContext *ctx,
+                         int fd,
++                        int type,
+                         IOHandler *io_read,
+                         IOHandler *io_write,
+                         void *opaque)
+@@ -98,6 +99,7 @@ void aio_set_fd_handler(AioContext *ctx,
+ 
+ void aio_set_event_notifier(AioContext *ctx,
+                             EventNotifier *e,
++                            int type,
+                             EventNotifierHandler *io_notify)
+ {
+     AioHandler *node;
+diff --git a/async.c b/async.c
+index fc5f43a..51631d2 100644
+--- a/async.c
++++ b/async.c
+@@ -226,7 +226,7 @@ aio_ctx_finalize(GSource     *source)
+     AioContext *ctx = (AioContext *) source;
+ 
+     thread_pool_free(ctx->thread_pool);
+-    aio_set_event_notifier(ctx, &ctx->notifier, NULL);
++    aio_set_event_notifier(ctx, &ctx->notifier, AIO_CLIENT_UNSPECIFIED, NULL);
+     event_notifier_cleanup(&ctx->notifier);
+     rfifolock_destroy(&ctx->lock);
+     qemu_mutex_destroy(&ctx->bh_lock);
+@@ -302,6 +302,7 @@ AioContext *aio_context_new(Error **errp)
+     }
+     g_source_set_can_recurse(&ctx->source, true);
+     aio_set_event_notifier(ctx, &ctx->notifier,
++                           AIO_CLIENT_UNSPECIFIED,
+                            (EventNotifierHandler *)
+                            event_notifier_test_and_clear);
+     ctx->thread_pool = NULL;
+diff --git a/block/curl.c b/block/curl.c
+index affccc9..1e3bbf5 100644
+--- a/block/curl.c
++++ b/block/curl.c
+@@ -153,18 +153,20 @@ static int curl_sock_cb(CURL *curl, curl_socket_t fd, int action,
+     DPRINTF("CURL (AIO): Sock action %d on fd %d\n", action, fd);
+     switch (action) {
+         case CURL_POLL_IN:
+-            aio_set_fd_handler(s->aio_context, fd, curl_multi_read,
+-                               NULL, state);
++            aio_set_fd_handler(s->aio_context, fd, AIO_CLIENT_UNSPECIFIED,
++                               curl_multi_read, NULL, state);
+             break;
+         case CURL_POLL_OUT:
+-            aio_set_fd_handler(s->aio_context, fd, NULL, curl_multi_do, state);
++            aio_set_fd_handler(s->aio_context, fd, AIO_CLIENT_UNSPECIFIED,
++                               NULL, curl_multi_do, state);
+             break;
+         case CURL_POLL_INOUT:
+-            aio_set_fd_handler(s->aio_context, fd, curl_multi_read,
+-                               curl_multi_do, state);
++            aio_set_fd_handler(s->aio_context, fd, AIO_CLIENT_UNSPECIFIED,
++                               curl_multi_read, curl_multi_do, state);
+             break;
+         case CURL_POLL_REMOVE:
+-            aio_set_fd_handler(s->aio_context, fd, NULL, NULL, NULL);
++            aio_set_fd_handler(s->aio_context, fd, AIO_CLIENT_UNSPECIFIED,
++                               NULL, NULL, NULL);
+             break;
+     }
+ 
+diff --git a/block/iscsi.c b/block/iscsi.c
+index ba33290..3b666e0 100644
+--- a/block/iscsi.c
++++ b/block/iscsi.c
+@@ -261,8 +261,8 @@ iscsi_set_events(IscsiLun *iscsilun)
+     int ev = iscsi_which_events(iscsi);
+ 
+     if (ev != iscsilun->events) {
+-        aio_set_fd_handler(iscsilun->aio_context,
+-                           iscsi_get_fd(iscsi),
++        aio_set_fd_handler(iscsilun->aio_context, iscsi_get_fd(iscsi),
++                           AIO_CLIENT_UNSPECIFIED,
+                            (ev & POLLIN) ? iscsi_process_read : NULL,
+                            (ev & POLLOUT) ? iscsi_process_write : NULL,
+                            iscsilun);
+@@ -1215,9 +1215,8 @@ static void iscsi_detach_aio_context(BlockDriverState *bs)
+ {
+     IscsiLun *iscsilun = bs->opaque;
+ 
+-    aio_set_fd_handler(iscsilun->aio_context,
+-                       iscsi_get_fd(iscsilun->iscsi),
+-                       NULL, NULL, NULL);
++    aio_set_fd_handler(iscsilun->aio_context, iscsi_get_fd(iscsilun->iscsi),
++                       AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
+     iscsilun->events = 0;
+ 
+     if (iscsilun->nop_timer) {
+diff --git a/block/linux-aio.c b/block/linux-aio.c
+index c991443..0921bde 100644
+--- a/block/linux-aio.c
++++ b/block/linux-aio.c
+@@ -287,7 +287,7 @@ void laio_detach_aio_context(void *s_, AioContext *old_context)
+ {
+     struct qemu_laio_state *s = s_;
+ 
+-    aio_set_event_notifier(old_context, &s->e, NULL);
++    aio_set_event_notifier(old_context, &s->e, AIO_CLIENT_UNSPECIFIED, NULL);
+     qemu_bh_delete(s->completion_bh);
+ }
+ 
+@@ -296,7 +296,8 @@ void laio_attach_aio_context(void *s_, AioContext *new_context)
+     struct qemu_laio_state *s = s_;
+ 
+     s->completion_bh = aio_bh_new(new_context, qemu_laio_completion_bh, s);
+-    aio_set_event_notifier(new_context, &s->e, qemu_laio_completion_cb);
++    aio_set_event_notifier(new_context, &s->e, AIO_CLIENT_UNSPECIFIED,
++                           qemu_laio_completion_cb);
+ }
+ 
+ void *laio_init(void)
+diff --git a/block/nbd-client.c b/block/nbd-client.c
+index e1bb919..36c46c5 100644
+--- a/block/nbd-client.c
++++ b/block/nbd-client.c
+@@ -124,7 +124,7 @@ static int nbd_co_send_request(BlockDriverState *bs,
+     s->send_coroutine = qemu_coroutine_self();
+     aio_context = bdrv_get_aio_context(bs);
+ 
+-    aio_set_fd_handler(aio_context, s->sock,
++    aio_set_fd_handler(aio_context, s->sock, AIO_CLIENT_UNSPECIFIED,
+                        nbd_reply_ready, nbd_restart_write, bs);
+     if (qiov) {
+         if (!s->is_unix) {
+@@ -144,7 +144,8 @@ static int nbd_co_send_request(BlockDriverState *bs,
+     } else {
+         rc = nbd_send_request(s->sock, request);
+     }
+-    aio_set_fd_handler(aio_context, s->sock, nbd_reply_ready, NULL, bs);
++    aio_set_fd_handler(aio_context, s->sock, AIO_CLIENT_UNSPECIFIED,
++                       nbd_reply_ready, NULL, bs);
+     s->send_coroutine = NULL;
+     qemu_co_mutex_unlock(&s->send_mutex);
+     return rc;
+@@ -348,14 +349,15 @@ int nbd_client_co_discard(BlockDriverState *bs, int64_t sector_num,
+ void nbd_client_detach_aio_context(BlockDriverState *bs)
+ {
+     aio_set_fd_handler(bdrv_get_aio_context(bs),
+-                       nbd_get_client_session(bs)->sock, NULL, NULL, NULL);
++                       nbd_get_client_session(bs)->sock,
++                       AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
+ }
+ 
+ void nbd_client_attach_aio_context(BlockDriverState *bs,
+                                    AioContext *new_context)
+ {
+     aio_set_fd_handler(new_context, nbd_get_client_session(bs)->sock,
+-                       nbd_reply_ready, NULL, bs);
++                       AIO_CLIENT_UNSPECIFIED, nbd_reply_ready, NULL, bs);
+ }
+ 
+ void nbd_client_close(BlockDriverState *bs)
+diff --git a/block/nfs.c b/block/nfs.c
+index ca9e24e..2f00e76 100644
+--- a/block/nfs.c
++++ b/block/nfs.c
+@@ -60,11 +60,10 @@ static void nfs_set_events(NFSClient *client)
+ {
+     int ev = nfs_which_events(client->context);
+     if (ev != client->events) {
+-        aio_set_fd_handler(client->aio_context,
+-                           nfs_get_fd(client->context),
++        aio_set_fd_handler(client->aio_context, nfs_get_fd(client->context),
++                           AIO_CLIENT_UNSPECIFIED,
+                            (ev & POLLIN) ? nfs_process_read : NULL,
+-                           (ev & POLLOUT) ? nfs_process_write : NULL,
+-                           client);
++                           (ev & POLLOUT) ? nfs_process_write : NULL, client);
+ 
+     }
+     client->events = ev;
+@@ -239,9 +238,8 @@ static void nfs_detach_aio_context(BlockDriverState *bs)
+ {
+     NFSClient *client = bs->opaque;
+ 
+-    aio_set_fd_handler(client->aio_context,
+-                       nfs_get_fd(client->context),
+-                       NULL, NULL, NULL);
++    aio_set_fd_handler(client->aio_context, nfs_get_fd(client->context),
++                       AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
+     client->events = 0;
+ }
+ 
+@@ -260,9 +258,8 @@ static void nfs_client_close(NFSClient *client)
+         if (client->fh) {
+             nfs_close(client->context, client->fh);
+         }
+-        aio_set_fd_handler(client->aio_context,
+-                           nfs_get_fd(client->context),
+-                           NULL, NULL, NULL);
++        aio_set_fd_handler(client->aio_context, nfs_get_fd(client->context),
++                           AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
+         nfs_destroy_context(client->context);
+     }
+     memset(client, 0, sizeof(NFSClient));
+diff --git a/block/sheepdog.c b/block/sheepdog.c
+index c14172c..fd3746e 100644
+--- a/block/sheepdog.c
++++ b/block/sheepdog.c
+@@ -624,14 +624,16 @@ static coroutine_fn void do_co_req(void *opaque)
+     unsigned int *rlen = srco->rlen;
+ 
+     co = qemu_coroutine_self();
+-    aio_set_fd_handler(srco->aio_context, sockfd, NULL, restart_co_req, co);
++    aio_set_fd_handler(srco->aio_context, sockfd, AIO_CLIENT_UNSPECIFIED,
++                       NULL, restart_co_req, co);
+ 
+     ret = send_co_req(sockfd, hdr, data, wlen);
+     if (ret < 0) {
+         goto out;
+     }
+ 
+-    aio_set_fd_handler(srco->aio_context, sockfd, restart_co_req, NULL, co);
++    aio_set_fd_handler(srco->aio_context, sockfd, AIO_CLIENT_UNSPECIFIED,
++                       restart_co_req, NULL, co);
+ 
+     ret = qemu_co_recv(sockfd, hdr, sizeof(*hdr));
+     if (ret != sizeof(*hdr)) {
+@@ -656,7 +658,8 @@ static coroutine_fn void do_co_req(void *opaque)
+ out:
+     /* there is at most one request for this sockfd, so it is safe to
+      * set each handler to NULL. */
+-    aio_set_fd_handler(srco->aio_context, sockfd, NULL, NULL, NULL);
++    aio_set_fd_handler(srco->aio_context, sockfd, AIO_CLIENT_UNSPECIFIED,
++                       NULL, NULL, NULL);
+ 
+     srco->ret = ret;
+     srco->finished = true;
+@@ -740,7 +743,8 @@ static coroutine_fn void reconnect_to_sdog(void *opaque)
+     BDRVSheepdogState *s = opaque;
+     AIOReq *aio_req, *next;
+ 
+-    aio_set_fd_handler(s->aio_context, s->fd, NULL, NULL, NULL);
++    aio_set_fd_handler(s->aio_context, s->fd, AIO_CLIENT_UNSPECIFIED, NULL,
++                       NULL, NULL);
+     close(s->fd);
+     s->fd = -1;
+ 
+@@ -953,7 +957,8 @@ static int get_sheep_fd(BDRVSheepdogState *s, Error **errp)
+         return fd;
+     }
+ 
+-    aio_set_fd_handler(s->aio_context, fd, co_read_response, NULL, s);
++    aio_set_fd_handler(s->aio_context, fd, AIO_CLIENT_UNSPECIFIED,
++                       co_read_response, NULL, s);
+     return fd;
+ }
+ 
+@@ -1208,7 +1213,7 @@ static void coroutine_fn add_aio_request(BDRVSheepdogState *s, AIOReq *aio_req,
+ 
+     qemu_co_mutex_lock(&s->lock);
+     s->co_send = qemu_coroutine_self();
+-    aio_set_fd_handler(s->aio_context, s->fd,
++    aio_set_fd_handler(s->aio_context, s->fd, AIO_CLIENT_UNSPECIFIED,
+                        co_read_response, co_write_request, s);
+     socket_set_cork(s->fd, 1);
+ 
+@@ -1227,7 +1232,8 @@ static void coroutine_fn add_aio_request(BDRVSheepdogState *s, AIOReq *aio_req,
+     }
+ out:
+     socket_set_cork(s->fd, 0);
+-    aio_set_fd_handler(s->aio_context, s->fd, co_read_response, NULL, s);
++    aio_set_fd_handler(s->aio_context, s->fd, AIO_CLIENT_UNSPECIFIED,
++                       co_read_response, NULL, s);
+     s->co_send = NULL;
+     qemu_co_mutex_unlock(&s->lock);
+ }
+@@ -1405,7 +1411,8 @@ static void sd_detach_aio_context(BlockDriverState *bs)
+ {
+     BDRVSheepdogState *s = bs->opaque;
+ 
+-    aio_set_fd_handler(s->aio_context, s->fd, NULL, NULL, NULL);
++    aio_set_fd_handler(s->aio_context, s->fd, AIO_CLIENT_UNSPECIFIED, NULL,
++                       NULL, NULL);
+ }
+ 
+ static void sd_attach_aio_context(BlockDriverState *bs,
+@@ -1414,7 +1421,8 @@ static void sd_attach_aio_context(BlockDriverState *bs,
+     BDRVSheepdogState *s = bs->opaque;
+ 
+     s->aio_context = new_context;
+-    aio_set_fd_handler(new_context, s->fd, co_read_response, NULL, s);
++    aio_set_fd_handler(new_context, s->fd, AIO_CLIENT_UNSPECIFIED,
++                       co_read_response, NULL, s);
+ }
+ 
+ /* TODO Convert to fine grained options */
+@@ -1528,7 +1536,8 @@ static int sd_open(BlockDriverState *bs, QDict *options, int flags,
+     g_free(buf);
+     return 0;
+ out:
+-    aio_set_fd_handler(bdrv_get_aio_context(bs), s->fd, NULL, NULL, NULL);
++    aio_set_fd_handler(bdrv_get_aio_context(bs), s->fd,
++                       AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
+     if (s->fd >= 0) {
+         closesocket(s->fd);
+     }
+@@ -1912,7 +1921,8 @@ static void sd_close(BlockDriverState *bs)
+         error_report("%s, %s", sd_strerror(rsp->result), s->name);
+     }
+ 
+-    aio_set_fd_handler(bdrv_get_aio_context(bs), s->fd, NULL, NULL, NULL);
++    aio_set_fd_handler(bdrv_get_aio_context(bs), s->fd,
++                       AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
+     closesocket(s->fd);
+     g_free(s->host_spec);
+ }
+diff --git a/block/ssh.c b/block/ssh.c
+index f466cbf..a6cf1d2 100644
+--- a/block/ssh.c
++++ b/block/ssh.c
+@@ -801,14 +801,15 @@ static coroutine_fn void set_fd_handler(BDRVSSHState *s, BlockDriverState *bs)
+             rd_handler, wr_handler);
+ 
+     aio_set_fd_handler(bdrv_get_aio_context(bs), s->sock,
+-                       rd_handler, wr_handler, co);
++                       AIO_CLIENT_UNSPECIFIED, rd_handler, wr_handler, co);
+ }
+ 
+ static coroutine_fn void clear_fd_handler(BDRVSSHState *s,
+                                           BlockDriverState *bs)
+ {
+     DPRINTF("s->sock=%d", s->sock);
+-    aio_set_fd_handler(bdrv_get_aio_context(bs), s->sock, NULL, NULL, NULL);
++    aio_set_fd_handler(bdrv_get_aio_context(bs), s->sock,
++                       AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
+ }
+ 
+ /* A non-blocking call returned EAGAIN, so yield, ensuring the
+diff --git a/block/win32-aio.c b/block/win32-aio.c
+index 64e8682..0081886 100644
+--- a/block/win32-aio.c
++++ b/block/win32-aio.c
+@@ -174,7 +174,7 @@ int win32_aio_attach(QEMUWin32AIOState *aio, HANDLE hfile)
+ void win32_aio_detach_aio_context(QEMUWin32AIOState *aio,
+                                   AioContext *old_context)
+ {
+-    aio_set_event_notifier(old_context, &aio->e, NULL);
++    aio_set_event_notifier(old_context, &aio->e, AIO_CLIENT_UNSPECIFIED, NULL);
+     aio->is_aio_context_attached = false;
+ }
+ 
+@@ -182,7 +182,8 @@ void win32_aio_attach_aio_context(QEMUWin32AIOState *aio,
+                                   AioContext *new_context)
+ {
+     aio->is_aio_context_attached = true;
+-    aio_set_event_notifier(new_context, &aio->e, win32_aio_completion_cb);
++    aio_set_event_notifier(new_context, &aio->e, AIO_CLIENT_UNSPECIFIED,
++                           win32_aio_completion_cb);
+ }
+ 
+ QEMUWin32AIOState *win32_aio_init(void)
+diff --git a/hw/block/dataplane/virtio-blk.c b/hw/block/dataplane/virtio-blk.c
+index 3db139b..e472154 100644
+--- a/hw/block/dataplane/virtio-blk.c
++++ b/hw/block/dataplane/virtio-blk.c
+@@ -283,7 +283,8 @@ void virtio_blk_data_plane_start(VirtIOBlockDataPlane *s)
+ 
+     /* Get this show started by hooking up our callbacks */
+     aio_context_acquire(s->ctx);
+-    aio_set_event_notifier(s->ctx, &s->host_notifier, handle_notify);
++    aio_set_event_notifier(s->ctx, &s->host_notifier, AIO_CLIENT_UNSPECIFIED,
++                           handle_notify);
+     aio_context_release(s->ctx);
+     return;
+ 
+@@ -319,7 +320,8 @@ void virtio_blk_data_plane_stop(VirtIOBlockDataPlane *s)
+     aio_context_acquire(s->ctx);
+ 
+     /* Stop notifications for new requests from guest */
+-    aio_set_event_notifier(s->ctx, &s->host_notifier, NULL);
++    aio_set_event_notifier(s->ctx, &s->host_notifier, AIO_CLIENT_UNSPECIFIED,
++                           NULL);
+ 
+     /* Drain and switch bs back to the QEMU main loop */
+     blk_set_aio_context(s->conf->conf.blk, qemu_get_aio_context());
+diff --git a/hw/scsi/virtio-scsi-dataplane.c b/hw/scsi/virtio-scsi-dataplane.c
+index 5575648..f7bab09 100644
+--- a/hw/scsi/virtio-scsi-dataplane.c
++++ b/hw/scsi/virtio-scsi-dataplane.c
+@@ -60,7 +60,8 @@ static VirtIOSCSIVring *virtio_scsi_vring_init(VirtIOSCSI *s,
+     r = g_slice_new(VirtIOSCSIVring);
+     r->host_notifier = *virtio_queue_get_host_notifier(vq);
+     r->guest_notifier = *virtio_queue_get_guest_notifier(vq);
+-    aio_set_event_notifier(s->ctx, &r->host_notifier, handler);
++    aio_set_event_notifier(s->ctx, &r->host_notifier, AIO_CLIENT_UNSPECIFIED,
++                           handler);
+ 
+     r->parent = s;
+ 
+@@ -71,7 +72,8 @@ static VirtIOSCSIVring *virtio_scsi_vring_init(VirtIOSCSI *s,
+     return r;
+ 
+ fail_vring:
+-    aio_set_event_notifier(s->ctx, &r->host_notifier, NULL);
++    aio_set_event_notifier(s->ctx, &r->host_notifier, AIO_CLIENT_UNSPECIFIED,
++                           NULL);
+     k->set_host_notifier(qbus->parent, n, false);
+     g_slice_free(VirtIOSCSIVring, r);
+     return NULL;
+@@ -162,14 +164,17 @@ static void virtio_scsi_clear_aio(VirtIOSCSI *s)
+     int i;
+ 
+     if (s->ctrl_vring) {
+-        aio_set_event_notifier(s->ctx, &s->ctrl_vring->host_notifier, NULL);
++        aio_set_event_notifier(s->ctx, &s->ctrl_vring->host_notifier,
++                               AIO_CLIENT_UNSPECIFIED, NULL);
+     }
+     if (s->event_vring) {
+-        aio_set_event_notifier(s->ctx, &s->event_vring->host_notifier, NULL);
++        aio_set_event_notifier(s->ctx, &s->event_vring->host_notifier,
++                               AIO_CLIENT_UNSPECIFIED, NULL);
+     }
+     if (s->cmd_vrings) {
+         for (i = 0; i < vs->conf.num_queues && s->cmd_vrings[i]; i++) {
+-            aio_set_event_notifier(s->ctx, &s->cmd_vrings[i]->host_notifier, NULL);
++            aio_set_event_notifier(s->ctx, &s->cmd_vrings[i]->host_notifier,
++                                   AIO_CLIENT_UNSPECIFIED, NULL);
+         }
+     }
+ }
+@@ -290,10 +295,13 @@ void virtio_scsi_dataplane_stop(VirtIOSCSI *s)
+ 
+     aio_context_acquire(s->ctx);
+ 
+-    aio_set_event_notifier(s->ctx, &s->ctrl_vring->host_notifier, NULL);
+-    aio_set_event_notifier(s->ctx, &s->event_vring->host_notifier, NULL);
++    aio_set_event_notifier(s->ctx, &s->ctrl_vring->host_notifier,
++                           AIO_CLIENT_UNSPECIFIED, NULL);
++    aio_set_event_notifier(s->ctx, &s->event_vring->host_notifier,
++                           AIO_CLIENT_UNSPECIFIED, NULL);
+     for (i = 0; i < vs->conf.num_queues; i++) {
+-        aio_set_event_notifier(s->ctx, &s->cmd_vrings[i]->host_notifier, NULL);
++        aio_set_event_notifier(s->ctx, &s->cmd_vrings[i]->host_notifier,
++                               AIO_CLIENT_UNSPECIFIED, NULL);
+     }
+ 
+     blk_drain_all(); /* ensure there are no in-flight requests */
+diff --git a/include/block/aio.h b/include/block/aio.h
+index 0dc7a25..ae1740f 100644
+--- a/include/block/aio.h
++++ b/include/block/aio.h
+@@ -224,6 +224,9 @@ bool aio_pending(AioContext *ctx);
+  */
+ bool aio_dispatch(AioContext *ctx);
+ 
++#define AIO_CLIENT_UNSPECIFIED    (1 << 0)
++#define AIO_CLIENT_MASK_ALL       -1
++
+ /* Progress in completing AIO work to occur.  This can issue new pending
+  * aio as a result of executing I/O completion or bh callbacks.
+  *
+@@ -248,6 +251,7 @@ bool aio_poll(AioContext *ctx, bool blocking);
+  */
+ void aio_set_fd_handler(AioContext *ctx,
+                         int fd,
++                        int type,
+                         IOHandler *io_read,
+                         IOHandler *io_write,
+                         void *opaque);
+@@ -261,6 +265,7 @@ void aio_set_fd_handler(AioContext *ctx,
+  */
+ void aio_set_event_notifier(AioContext *ctx,
+                             EventNotifier *notifier,
++                            int type,
+                             EventNotifierHandler *io_read);
+ 
+ /* Return a GSource that lets the main loop poll the file descriptors attached
+diff --git a/nbd.c b/nbd.c
+index 91b7d56..acbe535 100644
+--- a/nbd.c
++++ b/nbd.c
+@@ -1380,6 +1380,7 @@ static void nbd_set_handlers(NBDClient *client)
+ {
+     if (client->exp && client->exp->ctx) {
+         aio_set_fd_handler(client->exp->ctx, client->sock,
++                           AIO_CLIENT_UNSPECIFIED,
+                            client->can_read ? nbd_read : NULL,
+                            client->send_coroutine ? nbd_restart_write : NULL,
+                            client);
+@@ -1389,7 +1390,8 @@ static void nbd_set_handlers(NBDClient *client)
+ static void nbd_unset_handlers(NBDClient *client)
+ {
+     if (client->exp && client->exp->ctx) {
+-        aio_set_fd_handler(client->exp->ctx, client->sock, NULL, NULL, NULL);
++        aio_set_fd_handler(client->exp->ctx, client->sock,
++                           AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
+     }
+ }
+ 
+diff --git a/tests/test-aio.c b/tests/test-aio.c
+index 35163ab..e179356 100644
+--- a/tests/test-aio.c
++++ b/tests/test-aio.c
+@@ -127,6 +127,12 @@ static void *test_acquire_thread(void *opaque)
+     return NULL;
+ }
+ 
++static void set_event_notifier(AioContext *ctx, EventNotifier *notifier,
++                               EventNotifierHandler *handler)
++{
++    aio_set_event_notifier(ctx, notifier, AIO_CLIENT_UNSPECIFIED, handler);
++}
++
+ static void dummy_notifier_read(EventNotifier *unused)
+ {
+     g_assert(false); /* should never be invoked */
+@@ -140,7 +146,7 @@ static void test_acquire(void)
+ 
+     /* Dummy event notifier ensures aio_poll() will block */
+     event_notifier_init(&notifier, false);
+-    aio_set_event_notifier(ctx, &notifier, dummy_notifier_read);
++    set_event_notifier(ctx, &notifier, dummy_notifier_read);
+     g_assert(!aio_poll(ctx, false)); /* consume aio_notify() */
+ 
+     qemu_mutex_init(&data.start_lock);
+@@ -158,7 +164,7 @@ static void test_acquire(void)
+     aio_context_release(ctx);
+ 
+     qemu_thread_join(&thread);
+-    aio_set_event_notifier(ctx, &notifier, NULL);
++    set_event_notifier(ctx, &notifier, NULL);
+     event_notifier_cleanup(&notifier);
+ 
+     g_assert(data.thread_acquired);
+@@ -317,11 +323,11 @@ static void test_set_event_notifier(void)
+ {
+     EventNotifierTestData data = { .n = 0, .active = 0 };
+     event_notifier_init(&data.e, false);
+-    aio_set_event_notifier(ctx, &data.e, event_ready_cb);
++    set_event_notifier(ctx, &data.e, event_ready_cb);
+     g_assert(!aio_poll(ctx, false));
+     g_assert_cmpint(data.n, ==, 0);
+ 
+-    aio_set_event_notifier(ctx, &data.e, NULL);
++    set_event_notifier(ctx, &data.e, NULL);
+     g_assert(!aio_poll(ctx, false));
+     g_assert_cmpint(data.n, ==, 0);
+     event_notifier_cleanup(&data.e);
+@@ -331,7 +337,7 @@ static void test_wait_event_notifier(void)
+ {
+     EventNotifierTestData data = { .n = 0, .active = 1 };
+     event_notifier_init(&data.e, false);
+-    aio_set_event_notifier(ctx, &data.e, event_ready_cb);
++    set_event_notifier(ctx, &data.e, event_ready_cb);
+     while (aio_poll(ctx, false));
+     g_assert_cmpint(data.n, ==, 0);
+     g_assert_cmpint(data.active, ==, 1);
+@@ -345,7 +351,7 @@ static void test_wait_event_notifier(void)
+     g_assert_cmpint(data.n, ==, 1);
+     g_assert_cmpint(data.active, ==, 0);
+ 
+-    aio_set_event_notifier(ctx, &data.e, NULL);
++    set_event_notifier(ctx, &data.e, NULL);
+     g_assert(!aio_poll(ctx, false));
+     g_assert_cmpint(data.n, ==, 1);
+ 
+@@ -356,7 +362,7 @@ static void test_flush_event_notifier(void)
+ {
+     EventNotifierTestData data = { .n = 0, .active = 10, .auto_set = true };
+     event_notifier_init(&data.e, false);
+-    aio_set_event_notifier(ctx, &data.e, event_ready_cb);
++    set_event_notifier(ctx, &data.e, event_ready_cb);
+     while (aio_poll(ctx, false));
+     g_assert_cmpint(data.n, ==, 0);
+     g_assert_cmpint(data.active, ==, 10);
+@@ -372,7 +378,7 @@ static void test_flush_event_notifier(void)
+     g_assert_cmpint(data.active, ==, 0);
+     g_assert(!aio_poll(ctx, false));
+ 
+-    aio_set_event_notifier(ctx, &data.e, NULL);
++    set_event_notifier(ctx, &data.e, NULL);
+     g_assert(!aio_poll(ctx, false));
+     event_notifier_cleanup(&data.e);
+ }
+@@ -383,7 +389,7 @@ static void test_wait_event_notifier_noflush(void)
+     EventNotifierTestData dummy = { .n = 0, .active = 1 };
+ 
+     event_notifier_init(&data.e, false);
+-    aio_set_event_notifier(ctx, &data.e, event_ready_cb);
++    set_event_notifier(ctx, &data.e, event_ready_cb);
+ 
+     g_assert(!aio_poll(ctx, false));
+     g_assert_cmpint(data.n, ==, 0);
+@@ -396,7 +402,7 @@ static void test_wait_event_notifier_noflush(void)
+ 
+     /* An active event notifier forces aio_poll to look at EventNotifiers.  */
+     event_notifier_init(&dummy.e, false);
+-    aio_set_event_notifier(ctx, &dummy.e, event_ready_cb);
++    set_event_notifier(ctx, &dummy.e, event_ready_cb);
+ 
+     event_notifier_set(&data.e);
+     g_assert(aio_poll(ctx, false));
+@@ -416,10 +422,10 @@ static void test_wait_event_notifier_noflush(void)
+     g_assert_cmpint(dummy.n, ==, 1);
+     g_assert_cmpint(dummy.active, ==, 0);
+ 
+-    aio_set_event_notifier(ctx, &dummy.e, NULL);
++    set_event_notifier(ctx, &dummy.e, NULL);
+     event_notifier_cleanup(&dummy.e);
+ 
+-    aio_set_event_notifier(ctx, &data.e, NULL);
++    set_event_notifier(ctx, &data.e, NULL);
+     g_assert(!aio_poll(ctx, false));
+     g_assert_cmpint(data.n, ==, 2);
+ 
+@@ -437,7 +443,7 @@ static void test_timer_schedule(void)
+      * an fd to wait on. Fixing this breaks other tests. So create a dummy one.
+      */
+     event_notifier_init(&e, false);
+-    aio_set_event_notifier(ctx, &e, dummy_io_handler_read);
++    set_event_notifier(ctx, &e, dummy_io_handler_read);
+     aio_poll(ctx, false);
+ 
+     aio_timer_init(ctx, &data.timer, data.clock_type,
+@@ -476,7 +482,7 @@ static void test_timer_schedule(void)
+     g_assert(!aio_poll(ctx, false));
+     g_assert_cmpint(data.n, ==, 2);
+ 
+-    aio_set_event_notifier(ctx, &e, NULL);
++    set_event_notifier(ctx, &e, NULL);
+     event_notifier_cleanup(&e);
+ 
+     timer_del(&data.timer);
+@@ -655,11 +661,11 @@ static void test_source_set_event_notifier(void)
+ {
+     EventNotifierTestData data = { .n = 0, .active = 0 };
+     event_notifier_init(&data.e, false);
+-    aio_set_event_notifier(ctx, &data.e, event_ready_cb);
++    set_event_notifier(ctx, &data.e, event_ready_cb);
+     while (g_main_context_iteration(NULL, false));
+     g_assert_cmpint(data.n, ==, 0);
+ 
+-    aio_set_event_notifier(ctx, &data.e, NULL);
++    set_event_notifier(ctx, &data.e, NULL);
+     while (g_main_context_iteration(NULL, false));
+     g_assert_cmpint(data.n, ==, 0);
+     event_notifier_cleanup(&data.e);
+@@ -669,7 +675,7 @@ static void test_source_wait_event_notifier(void)
+ {
+     EventNotifierTestData data = { .n = 0, .active = 1 };
+     event_notifier_init(&data.e, false);
+-    aio_set_event_notifier(ctx, &data.e, event_ready_cb);
++    set_event_notifier(ctx, &data.e, event_ready_cb);
+     while (g_main_context_iteration(NULL, false));
+     g_assert_cmpint(data.n, ==, 0);
+     g_assert_cmpint(data.active, ==, 1);
+@@ -683,7 +689,7 @@ static void test_source_wait_event_notifier(void)
+     g_assert_cmpint(data.n, ==, 1);
+     g_assert_cmpint(data.active, ==, 0);
+ 
+-    aio_set_event_notifier(ctx, &data.e, NULL);
++    set_event_notifier(ctx, &data.e, NULL);
+     while (g_main_context_iteration(NULL, false));
+     g_assert_cmpint(data.n, ==, 1);
+ 
+@@ -694,7 +700,7 @@ static void test_source_flush_event_notifier(void)
+ {
+     EventNotifierTestData data = { .n = 0, .active = 10, .auto_set = true };
+     event_notifier_init(&data.e, false);
+-    aio_set_event_notifier(ctx, &data.e, event_ready_cb);
++    set_event_notifier(ctx, &data.e, event_ready_cb);
+     while (g_main_context_iteration(NULL, false));
+     g_assert_cmpint(data.n, ==, 0);
+     g_assert_cmpint(data.active, ==, 10);
+@@ -710,7 +716,7 @@ static void test_source_flush_event_notifier(void)
+     g_assert_cmpint(data.active, ==, 0);
+     g_assert(!g_main_context_iteration(NULL, false));
+ 
+-    aio_set_event_notifier(ctx, &data.e, NULL);
++    set_event_notifier(ctx, &data.e, NULL);
+     while (g_main_context_iteration(NULL, false));
+     event_notifier_cleanup(&data.e);
+ }
+@@ -721,7 +727,7 @@ static void test_source_wait_event_notifier_noflush(void)
+     EventNotifierTestData dummy = { .n = 0, .active = 1 };
+ 
+     event_notifier_init(&data.e, false);
+-    aio_set_event_notifier(ctx, &data.e, event_ready_cb);
++    set_event_notifier(ctx, &data.e, event_ready_cb);
+ 
+     while (g_main_context_iteration(NULL, false));
+     g_assert_cmpint(data.n, ==, 0);
+@@ -734,7 +740,7 @@ static void test_source_wait_event_notifier_noflush(void)
+ 
+     /* An active event notifier forces aio_poll to look at EventNotifiers.  */
+     event_notifier_init(&dummy.e, false);
+-    aio_set_event_notifier(ctx, &dummy.e, event_ready_cb);
++    set_event_notifier(ctx, &dummy.e, event_ready_cb);
+ 
+     event_notifier_set(&data.e);
+     g_assert(g_main_context_iteration(NULL, false));
+@@ -754,10 +760,10 @@ static void test_source_wait_event_notifier_noflush(void)
+     g_assert_cmpint(dummy.n, ==, 1);
+     g_assert_cmpint(dummy.active, ==, 0);
+ 
+-    aio_set_event_notifier(ctx, &dummy.e, NULL);
++    set_event_notifier(ctx, &dummy.e, NULL);
+     event_notifier_cleanup(&dummy.e);
+ 
+-    aio_set_event_notifier(ctx, &data.e, NULL);
++    set_event_notifier(ctx, &data.e, NULL);
+     while (g_main_context_iteration(NULL, false));
+     g_assert_cmpint(data.n, ==, 2);
+ 
+@@ -776,7 +782,7 @@ static void test_source_timer_schedule(void)
+      * an fd to wait on. Fixing this breaks other tests. So create a dummy one.
+      */
+     event_notifier_init(&e, false);
+-    aio_set_event_notifier(ctx, &e, dummy_io_handler_read);
++    set_event_notifier(ctx, &e, dummy_io_handler_read);
+     do {} while (g_main_context_iteration(NULL, false));
+ 
+     aio_timer_init(ctx, &data.timer, data.clock_type,
+@@ -801,7 +807,7 @@ static void test_source_timer_schedule(void)
+     g_assert_cmpint(data.n, ==, 2);
+     g_assert(qemu_clock_get_ns(data.clock_type) > expiry);
+ 
+-    aio_set_event_notifier(ctx, &e, NULL);
++    set_event_notifier(ctx, &e, NULL);
+     event_notifier_cleanup(&e);
+ 
+     timer_del(&data.timer);
+-- 
+1.8.3.1
+

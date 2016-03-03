@@ -1,0 +1,52 @@
+From 9772495c305c469698f263e03a13c70ebf4d5131 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 6 Nov 2015 16:12:40 +0100
+Subject: [PATCH 05/44] file_ram_alloc: propagate error to caller instead of
+ terminating QEMU
+
+Message-id: <1446826360-166520-1-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68303
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev] file_ram_alloc: propagate error to caller instead of terminating QEMU
+Bugzilla: 1283079
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+QEMU shouldn't exits from file_ram_alloc() if -mem-prealloc option is specified
+and "object_add memory-backend-file,..." fails allocation during memory hotplug.
+
+Propagate error to a caller and let it decide what to do with allocation failure.
+That leaves QEMU alive if it can't create backend during hotplug time and
+kills QEMU at startup time if backends or initial memory were misconfigured/
+too large.
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Message-Id: <1445274671-17704-1-git-send-email-imammedo@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+
+cherry-picked from cc57501dee37376d0a2fbc5921e0f3a9ed4b117d
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ exec.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/exec.c b/exec.c
+index 6a6e11f..a457b76 100644
+--- a/exec.c
++++ b/exec.c
+@@ -1188,10 +1188,6 @@ static void *file_ram_alloc(RAMBlock *block,
+     return area;
+ 
+ error:
+-    if (mem_prealloc) {
+-        error_report("%s", error_get_pretty(*errp));
+-        exit(1);
+-    }
+     return NULL;
+ }
+ #endif
+-- 
+1.8.3.1
+

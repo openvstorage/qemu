@@ -1,0 +1,74 @@
+From a6997853d163a39b8f9c866b89346c2749ab4eee Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:02 +0200
+Subject: [PATCH 088/100] virtio-rng: move qdev properties into virtio-rng.c
+
+Message-id: <1436260751-25015-60-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66833
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 59/68] virtio-rng: move qdev properties into virtio-rng.c
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Shannon Zhao <shannon.zhao@linaro.org>
+
+As only one place in virtio-rng.c uses DEFINE_VIRTIO_RNG_PROPERTIES,
+there is no need to expose it. Inline it into virtio-rng.c to avoid
+wrongly use.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Acked-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit fe704809b974d8dd8e020b4d3f48ede338a886fe)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-rng.c         |  8 +++++++-
+ include/hw/virtio/virtio-rng.h | 10 ----------
+ 2 files changed, 7 insertions(+), 11 deletions(-)
+
+diff --git a/hw/virtio/virtio-rng.c b/hw/virtio/virtio-rng.c
+index 420c39f..22b1d87 100644
+--- a/hw/virtio/virtio-rng.c
++++ b/hw/virtio/virtio-rng.c
+@@ -219,7 +219,13 @@ static void virtio_rng_device_unrealize(DeviceState *dev, Error **errp)
+ }
+ 
+ static Property virtio_rng_properties[] = {
+-    DEFINE_VIRTIO_RNG_PROPERTIES(VirtIORNG, conf),
++    /* Set a default rate limit of 2^47 bytes per minute or roughly 2TB/s.  If
++     * you have an entropy source capable of generating more entropy than this
++     * and you can pass it through via virtio-rng, then hats off to you.  Until
++     * then, this is unlimited for all practical purposes.
++     */
++    DEFINE_PROP_UINT64("max-bytes", VirtIORNG, conf.max_bytes, INT64_MAX),
++    DEFINE_PROP_UINT32("period", VirtIORNG, conf.period_ms, 1 << 16),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/include/hw/virtio/virtio-rng.h b/include/hw/virtio/virtio-rng.h
+index 7702ff4..0316488 100644
+--- a/include/hw/virtio/virtio-rng.h
++++ b/include/hw/virtio/virtio-rng.h
+@@ -46,14 +46,4 @@ typedef struct VirtIORNG {
+     int64_t quota_remaining;
+ } VirtIORNG;
+ 
+-/* Set a default rate limit of 2^47 bytes per minute or roughly 2TB/s.  If
+-   you have an entropy source capable of generating more entropy than this
+-   and you can pass it through via virtio-rng, then hats off to you.  Until
+-   then, this is unlimited for all practical purposes.
+-*/
+-#define DEFINE_VIRTIO_RNG_PROPERTIES(_state, _conf_field)                    \
+-        DEFINE_PROP_UINT64("max-bytes", _state, _conf_field.max_bytes,       \
+-                           INT64_MAX),                                       \
+-        DEFINE_PROP_UINT32("period", _state, _conf_field.period_ms, 1 << 16)
+-
+ #endif
+-- 
+1.8.3.1
+

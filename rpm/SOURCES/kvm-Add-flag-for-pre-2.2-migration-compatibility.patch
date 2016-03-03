@@ -1,0 +1,82 @@
+From a7d610532cdfaa9ea8895b49b3be548dc0714b85 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Wed, 24 Jun 2015 13:39:55 +0200
+Subject: [PATCH 3/5] Add flag for pre-2.2 migration compatibility
+
+Message-id: <1435153196-26350-2-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66379
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v3 1/2] Add flag for pre-2.2 migration compatibility
+Bugzilla: 1215087
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+There are a series of subsections added in some of the older
+devices (serial, kbd, rtc etc) in qemu 2.2, and to be sure that
+backwards migration doesn't error we need to make sure we don't
+generate those.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc_piix.c             | 4 ++++
+ include/migration/migration.h | 6 ++++++
+ migration/migration.c         | 2 ++
+ 3 files changed, 12 insertions(+)
+
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 49a8a12..e24f20a 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -49,6 +49,7 @@
+ #include "hw/acpi/acpi.h"
+ #include "cpu.h"
+ #include "qemu/error-report.h"
++#include "migration/migration.h"
+ #ifdef CONFIG_XEN
+ #  include <xen/hvm/hvm_info_table.h>
+ #endif
+@@ -1074,6 +1075,9 @@ static void pc_compat_rhel710(MachineState *machine)
+     x86_cpu_compat_set_features("core2duo", FEAT_1_ECX, CPUID_EXT_VMX, 0);
+     x86_cpu_compat_kvm_no_autodisable(FEAT_8000_0001_ECX, CPUID_EXT3_SVM);
+     pcms->enforce_aligned_dimm = false;
++
++    /* Disable all the extra subsections that were added in 2.2 */
++    migrate_pre_2_2 = true;
+ }
+ 
+ static void pc_init_rhel710(MachineState *machine)
+diff --git a/include/migration/migration.h b/include/migration/migration.h
+index bf09968..7e66aed 100644
+--- a/include/migration/migration.h
++++ b/include/migration/migration.h
+@@ -170,4 +170,10 @@ size_t ram_control_save_page(QEMUFile *f, ram_addr_t block_offset,
+                              ram_addr_t offset, size_t size,
+                              uint64_t *bytes_sent);
+ 
++
++/*
++ * Disables a load of subsections that were added in 2.2/rh7.2 for backwards
++ * migration compatibility.
++ */
++extern bool migrate_pre_2_2;
+ #endif
+diff --git a/migration/migration.c b/migration/migration.c
+index b97ce67..8216044 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -41,6 +41,8 @@ static NotifierList migration_state_notifiers =
+ 
+ static bool deferred_incoming;
+ 
++bool migrate_pre_2_2;
++
+ /* When we add fault tolerance, we could have several
+    migrations at once.  For now we don't need to add
+    dynamic creation of migration */
+-- 
+1.8.3.1
+

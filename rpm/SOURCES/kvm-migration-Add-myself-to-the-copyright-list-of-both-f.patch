@@ -1,0 +1,59 @@
+From aeda76d171bed325307c78033bf58b67e41716d9 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:49 +0200
+Subject: [PATCH 04/28] migration: Add myself to the copyright list of both
+ files
+
+Message-id: <1438098431-30847-5-git-send-email-quintela@redhat.com>
+Patchwork-id: 67164
+O-Subject: [RHEL-7 qemu-kvm PATCH 04/26] migration: Add myself to the copyright list of both files
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+If anyone feels like adding himself to the list, just sent me a patch.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit 76cc7b587f1cd1679821e034a2d9974af9bc7d2b)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/ram.c    | 4 ++++
+ migration/savevm.c | 4 ++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/migration/ram.c b/migration/ram.c
+index 8548d26..6ee8354 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -2,6 +2,10 @@
+  * QEMU System Emulator
+  *
+  * Copyright (c) 2003-2008 Fabrice Bellard
++ * Copyright (c) 2011-2015 Red Hat Inc
++ *
++ * Authors:
++ *  Juan Quintela <quintela@redhat.com>
+  *
+  * Permission is hereby granted, free of charge, to any person obtaining a copy
+  * of this software and associated documentation files (the "Software"), to deal
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 416bd3e..158123b 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -2,6 +2,10 @@
+  * QEMU System Emulator
+  *
+  * Copyright (c) 2003-2008 Fabrice Bellard
++ * Copyright (c) 2009-2015 Red Hat Inc
++ *
++ * Authors:
++ *  Juan Quintela <quintela@redhat.com>
+  *
+  * Permission is hereby granted, free of charge, to any person obtaining a copy
+  * of this software and associated documentation files (the "Software"), to deal
+-- 
+1.8.3.1
+

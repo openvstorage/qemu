@@ -1,0 +1,78 @@
+From 68aaf88039b2336be0697023a01798921298ac4e Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:03 +0200
+Subject: [PATCH 14/22] aio: Save type to AioHandler
+
+Message-id: <1442456951-3827-5-git-send-email-famz@redhat.com>
+Patchwork-id: 67795
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 04/12] aio: Save type to AioHandler
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+So it can be used by aio_poll later.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+---
+ aio-posix.c | 2 ++
+ aio-win32.c | 3 +++
+ 2 files changed, 5 insertions(+)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ aio-posix.c | 2 ++
+ aio-win32.c | 3 +++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/aio-posix.c b/aio-posix.c
+index 3e3eab4..8d6350b 100644
+--- a/aio-posix.c
++++ b/aio-posix.c
+@@ -25,6 +25,7 @@ struct AioHandler
+     IOHandler *io_write;
+     int deleted;
+     void *opaque;
++    int type;
+     QLIST_ENTRY(AioHandler) node;
+ };
+ 
+@@ -83,6 +84,7 @@ void aio_set_fd_handler(AioContext *ctx,
+         node->io_read = io_read;
+         node->io_write = io_write;
+         node->opaque = opaque;
++        node->type = type;
+ 
+         node->pfd.events = (io_read ? G_IO_IN | G_IO_HUP | G_IO_ERR : 0);
+         node->pfd.events |= (io_write ? G_IO_OUT | G_IO_ERR : 0);
+diff --git a/aio-win32.c b/aio-win32.c
+index d5ba633..1243623 100644
+--- a/aio-win32.c
++++ b/aio-win32.c
+@@ -28,6 +28,7 @@ struct AioHandler {
+     GPollFD pfd;
+     int deleted;
+     void *opaque;
++    int type;
+     QLIST_ENTRY(AioHandler) node;
+ };
+ 
+@@ -87,6 +88,7 @@ void aio_set_fd_handler(AioContext *ctx,
+         node->opaque = opaque;
+         node->io_read = io_read;
+         node->io_write = io_write;
++        node->type = type;
+ 
+         event = event_notifier_get_handle(&ctx->notifier);
+         WSAEventSelect(node->pfd.fd, event,
+@@ -135,6 +137,7 @@ void aio_set_event_notifier(AioContext *ctx,
+             node->e = e;
+             node->pfd.fd = (uintptr_t)event_notifier_get_handle(e);
+             node->pfd.events = G_IO_IN;
++            node->type = type;
+             QLIST_INSERT_HEAD(&ctx->aio_handlers, node, node);
+ 
+             g_source_add_poll(&ctx->source, &node->pfd);
+-- 
+1.8.3.1
+

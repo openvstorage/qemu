@@ -1,0 +1,166 @@
+From 532a778393131d696feb1482cfd031a78cf580e1 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:40 +0200
+Subject: [PATCH 066/100] virtio: add modern config accessors
+
+Message-id: <1436260751-25015-38-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66812
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 37/68] virtio: add modern config accessors
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+virtio 1.0 defines config space as LE,
+as opposed to pre-1.0 which was native endian.
+
+Add API for transports to execute word/dword accesses in
+little endian format - will be useful for mmio
+and pci (byte access is also wrapped, for completeness).
+
+For simplicity, we still keep config in host native
+endian format, byteswap to LE on guest access.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit adfb743c90c7aa5e92907ce875e4f35747ee1963)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio.c         | 96 ++++++++++++++++++++++++++++++++++++++++++++++
+ include/hw/virtio/virtio.h |  9 +++++
+ 2 files changed, 105 insertions(+)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index cae5eca..fb49ffc 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -729,6 +729,102 @@ void virtio_config_writel(VirtIODevice *vdev, uint32_t addr, uint32_t data)
+     }
+ }
+ 
++uint32_t virtio_config_modern_readb(VirtIODevice *vdev, uint32_t addr)
++{
++    VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
++    uint8_t val;
++
++    if (addr + sizeof(val) > vdev->config_len) {
++        return (uint32_t)-1;
++    }
++
++    k->get_config(vdev, vdev->config);
++
++    val = ldub_p(vdev->config + addr);
++    return val;
++}
++
++uint32_t virtio_config_modern_readw(VirtIODevice *vdev, uint32_t addr)
++{
++    VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
++    uint16_t val;
++
++    if (addr + sizeof(val) > vdev->config_len) {
++        return (uint32_t)-1;
++    }
++
++    k->get_config(vdev, vdev->config);
++
++    val = lduw_le_p(vdev->config + addr);
++    return val;
++}
++
++uint32_t virtio_config_modern_readl(VirtIODevice *vdev, uint32_t addr)
++{
++    VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
++    uint32_t val;
++
++    if (addr + sizeof(val) > vdev->config_len) {
++        return (uint32_t)-1;
++    }
++
++    k->get_config(vdev, vdev->config);
++
++    val = ldl_le_p(vdev->config + addr);
++    return val;
++}
++
++void virtio_config_modern_writeb(VirtIODevice *vdev,
++                                 uint32_t addr, uint32_t data)
++{
++    VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
++    uint8_t val = data;
++
++    if (addr + sizeof(val) > vdev->config_len) {
++        return;
++    }
++
++    stb_p(vdev->config + addr, val);
++
++    if (k->set_config) {
++        k->set_config(vdev, vdev->config);
++    }
++}
++
++void virtio_config_modern_writew(VirtIODevice *vdev,
++                                 uint32_t addr, uint32_t data)
++{
++    VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
++    uint16_t val = data;
++
++    if (addr + sizeof(val) > vdev->config_len) {
++        return;
++    }
++
++    stw_le_p(vdev->config + addr, val);
++
++    if (k->set_config) {
++        k->set_config(vdev, vdev->config);
++    }
++}
++
++void virtio_config_modern_writel(VirtIODevice *vdev,
++                                 uint32_t addr, uint32_t data)
++{
++    VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
++    uint32_t val = data;
++
++    if (addr + sizeof(val) > vdev->config_len) {
++        return;
++    }
++
++    stl_le_p(vdev->config + addr, val);
++
++    if (k->set_config) {
++        k->set_config(vdev, vdev->config);
++    }
++}
++
+ void virtio_queue_set_addr(VirtIODevice *vdev, int n, hwaddr addr)
+ {
+     vdev->vq[n].vring.desc = addr;
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 96a32a1..2bf9cc1 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -174,6 +174,15 @@ uint32_t virtio_config_readl(VirtIODevice *vdev, uint32_t addr);
+ void virtio_config_writeb(VirtIODevice *vdev, uint32_t addr, uint32_t data);
+ void virtio_config_writew(VirtIODevice *vdev, uint32_t addr, uint32_t data);
+ void virtio_config_writel(VirtIODevice *vdev, uint32_t addr, uint32_t data);
++uint32_t virtio_config_modern_readb(VirtIODevice *vdev, uint32_t addr);
++uint32_t virtio_config_modern_readw(VirtIODevice *vdev, uint32_t addr);
++uint32_t virtio_config_modern_readl(VirtIODevice *vdev, uint32_t addr);
++void virtio_config_modern_writeb(VirtIODevice *vdev,
++                                 uint32_t addr, uint32_t data);
++void virtio_config_modern_writew(VirtIODevice *vdev,
++                                 uint32_t addr, uint32_t data);
++void virtio_config_modern_writel(VirtIODevice *vdev,
++                                 uint32_t addr, uint32_t data);
+ void virtio_queue_set_addr(VirtIODevice *vdev, int n, hwaddr addr);
+ hwaddr virtio_queue_get_addr(VirtIODevice *vdev, int n);
+ void virtio_queue_set_num(VirtIODevice *vdev, int n, int num);
+-- 
+1.8.3.1
+

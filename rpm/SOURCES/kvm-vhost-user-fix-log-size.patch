@@ -1,0 +1,53 @@
+From 66f6b64116837071920e116a08fa25f2ea476734 Mon Sep 17 00:00:00 2001
+From: Victor Kaplansky <victork@redhat.com>
+Date: Wed, 18 Nov 2015 17:08:40 +0100
+Subject: [PATCH 2/2] vhost-user: fix log size
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447866376-5885-3-git-send-email-victork@redhat.com>
+Patchwork-id: 68402
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 2/2] vhost-user: fix log size
+Bugzilla: 1279388
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+commit 2b8819c6eee517c1582983773f8555bb3f9ed645
+("vhost-user: modify SET_LOG_BASE to pass mmap size and offset")
+passes log size in units of 4 byte chunks instead of the
+expected size in bytes.
+
+Fix this up.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry-picked from commit 423e1f05bbc0533e987dd36955e8262e4807bac4)
+(in maintainer's tree)
+---
+ hw/virtio/vhost-user.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost-user.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 0397a37..18818d2 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -392,7 +392,7 @@ static int vhost_set_log_base(struct vhost_dev *dev, uint64_t base,
+     VhostUserMsg msg = {
+         .request = VHOST_USER_SET_LOG_BASE,
+         .flags = VHOST_USER_VERSION,
+-        .log.mmap_size = log->size,
++        .log.mmap_size = log->size * sizeof(*(log->log)),
+         .log.mmap_offset = 0,
+         .size = sizeof(msg.log),
+     };
+-- 
+1.8.3.1
+

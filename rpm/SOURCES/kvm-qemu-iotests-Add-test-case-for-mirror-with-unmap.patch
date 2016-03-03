@@ -1,0 +1,118 @@
+From e4e91f7c7f338d0fd7ad22caa1fd4a9d6bfbe2cd Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Mon, 13 Jul 2015 03:27:26 +0200
+Subject: [PATCH 08/58] qemu-iotests: Add test case for mirror with unmap
+
+Message-id: <1436758047-4639-9-git-send-email-famz@redhat.com>
+Patchwork-id: 66966
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 8/9] qemu-iotests: Add test case for mirror with unmap
+Bugzilla: 1242316
+RH-Acked-by: Jeffrey Cody <jcody@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+This checks that the discard on mirror source that effectively zeroes
+data is also reflected by the data of target.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Reviewed-by: John Snow <jsnow@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit c615091793f53ff33b8f6c1b1ba711cf7c93e97b)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/qemu-iotests/132     | 59 ++++++++++++++++++++++++++++++++++++++++++++++
+ tests/qemu-iotests/132.out |  5 ++++
+ tests/qemu-iotests/group   |  1 +
+ 3 files changed, 65 insertions(+)
+ create mode 100644 tests/qemu-iotests/132
+ create mode 100644 tests/qemu-iotests/132.out
+
+diff --git a/tests/qemu-iotests/132 b/tests/qemu-iotests/132
+new file mode 100644
+index 0000000..f53ef6e
+--- /dev/null
++++ b/tests/qemu-iotests/132
+@@ -0,0 +1,59 @@
++#!/usr/bin/env python
++#
++# Test mirror with unmap
++#
++# Copyright (C) 2015 Red Hat, Inc.
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2 of the License, or
++# (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
++#
++
++import time
++import os
++import iotests
++from iotests import qemu_img, qemu_io
++
++test_img = os.path.join(iotests.test_dir, 'test.img')
++target_img = os.path.join(iotests.test_dir, 'target.img')
++
++class TestSingleDrive(iotests.QMPTestCase):
++    image_len = 2 * 1024 * 1024 # MB
++
++    def setUp(self):
++        # Write data to the image so we can compare later
++        qemu_img('create', '-f', iotests.imgfmt, test_img, str(TestSingleDrive.image_len))
++        qemu_io('-f', iotests.imgfmt, '-c', 'write -P0x5d 0 2M', test_img)
++
++        self.vm = iotests.VM().add_drive(test_img, 'discard=unmap')
++        self.vm.launch()
++
++    def tearDown(self):
++        self.vm.shutdown()
++        os.remove(test_img)
++        try:
++            os.remove(target_img)
++        except OSError:
++            pass
++
++    def test_mirror_discard(self):
++        result = self.vm.qmp('drive-mirror', device='drive0', sync='full',
++                             target=target_img)
++        self.assert_qmp(result, 'return', {})
++        self.vm.hmp_qemu_io('drive0', 'discard 0 64k')
++        self.complete_and_wait('drive0')
++        self.vm.shutdown()
++        self.assertTrue(iotests.compare_images(test_img, target_img),
++                        'target image does not match source after mirroring')
++
++if __name__ == '__main__':
++    iotests.main(supported_fmts=['raw', 'qcow2'])
+diff --git a/tests/qemu-iotests/132.out b/tests/qemu-iotests/132.out
+new file mode 100644
+index 0000000..ae1213e
+--- /dev/null
++++ b/tests/qemu-iotests/132.out
+@@ -0,0 +1,5 @@
++.
++----------------------------------------------------------------------
++Ran 1 tests
++
++OK
+diff --git a/tests/qemu-iotests/group b/tests/qemu-iotests/group
+index fd03fe0..ea7bcc0 100644
+--- a/tests/qemu-iotests/group
++++ b/tests/qemu-iotests/group
+@@ -125,3 +125,4 @@
+ 123 rw auto quick
+ 128 rw auto quick
+ 130 rw auto quick
++132 rw auto quick
+-- 
+1.8.3.1
+

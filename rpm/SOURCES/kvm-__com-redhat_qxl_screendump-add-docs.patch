@@ -1,0 +1,87 @@
+From d242b46a7c2ac6ff68dfc257cb779b9df793ea39 Mon Sep 17 00:00:00 2001
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Wed, 11 Dec 2013 09:36:11 +0100
+Subject: __com.redhat_qxl_screendump: add docs
+
+RH-Author: Gerd Hoffmann <kraxel@redhat.com>
+Message-id: <1386754571-21520-2-git-send-email-kraxel@redhat.com>
+Patchwork-id: 56149
+O-Subject: [RHEL-7 qemu-kvm PATCH 1/1] __com.redhat_qxl_screendump: add docs
+Bugzilla: 903910
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+RH-Acked-by: Orit Wasserman <owasserm@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+$subject says all.
+Patch by armbru, thanks.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+
+diff --git a/hmp-commands.hx b/hmp-commands.hx
+index 5224b6b..2697fa9 100644
+--- a/hmp-commands.hx
++++ b/hmp-commands.hx
+@@ -245,6 +245,13 @@ ETEXI
+         .help       = "save screen into PPM image 'filename'",
+         .mhandler.cmd = hmp_screendump,
+     },
++
++STEXI
++@item screendump @var{filename}
++@findex screendump
++Save screen into PPM image @var{filename}.
++ETEXI
++
+     {
+         .name       = "__com.redhat_qxl_screendump",
+         .args_type  = "id:s,filename:F",
+@@ -254,9 +261,9 @@ ETEXI
+     },
+ 
+ STEXI
+-@item screendump @var{filename}
+-@findex screendump
+-Save screen into PPM image @var{filename}.
++@item __com.redhat_screendump @var{id} @var{filename}
++@findex __com.redhat_screendump
++Save screen from qxl device @var{id} into PPM image @var{filename}.
+ ETEXI
+ 
+     {
+diff --git a/qmp-commands.hx b/qmp-commands.hx
+index a40dd7d..4abb90d 100644
+--- a/qmp-commands.hx
++++ b/qmp-commands.hx
+@@ -231,11 +231,6 @@ EQMP
+         .args_type  = "filename:F",
+         .mhandler.cmd_new = qmp_marshal_input_screendump,
+     },
+-    {
+-        .name       = "__com.redhat_qxl_screendump",
+-        .args_type  = "id:s,filename:F",
+-        .mhandler.cmd_new = qmp_marshal_input___com_redhat_qxl_screendump,
+-    },
+ 
+ SQMP
+ screendump
+@@ -255,6 +250,20 @@ Example:
+ EQMP
+ 
+     {
++        .name       = "__com.redhat_qxl_screendump",
++        .args_type  = "id:s,filename:F",
++        .mhandler.cmd_new = qmp_marshal_input___com_redhat_qxl_screendump,
++    },
++
++SQMP
++__com.redhat_qxl_screendump
++---------------------------
++
++Save screen from qxl device @var{id} into PPM image @var{filename}.
++
++EQMP
++
++    {
+         .name       = "stop",
+         .args_type  = "",
+         .mhandler.cmd_new = qmp_marshal_input_stop,

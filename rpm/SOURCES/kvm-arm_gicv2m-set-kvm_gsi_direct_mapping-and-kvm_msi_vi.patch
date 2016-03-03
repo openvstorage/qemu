@@ -1,0 +1,46 @@
+From 248f7d54f00c4fed7faece4df1e5996177e5e127 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 30 Jun 2015 14:14:38 +0200
+Subject: [PATCH 09/11] arm_gicv2m: set kvm_gsi_direct_mapping and
+ kvm_msi_via_irqfd_allowed
+
+Message-id: <1435673680-9996-7-git-send-email-drjones@redhat.com>
+Patchwork-id: 66572
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 6/8] arm_gicv2m: set kvm_gsi_direct_mapping and kvm_msi_via_irqfd_allowed
+Bugzilla: 1231929
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Author: Eric Auger <eric.auger@linaro.org>
+
+After introduction of kvm_arch_msi_data_to_gsi, kvm_gsi_direct_mapping
+now can be set on ARM. Also kvm_msi_via_irqfd_allowed can be set,
+depending on kernel irqfd support, hence enabling VIRTIO-PCI with
+vhost back-end.
+
+Signed-off-by: Eric Auger <eric.auger@linaro.org>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 9718e4ae362d2f221ec028cdacefafc593ef1357)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/intc/arm_gicv2m.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/intc/arm_gicv2m.c b/hw/intc/arm_gicv2m.c
+index 9f84f72..43d1976 100644
+--- a/hw/intc/arm_gicv2m.c
++++ b/hw/intc/arm_gicv2m.c
+@@ -148,6 +148,8 @@ static void gicv2m_realize(DeviceState *dev, Error **errp)
+     }
+ 
+     msi_supported = true;
++    kvm_gsi_direct_mapping = true;
++    kvm_msi_via_irqfd_allowed = kvm_irqfds_enabled();
+ }
+ 
+ static void gicv2m_init(Object *obj)
+-- 
+1.8.3.1
+

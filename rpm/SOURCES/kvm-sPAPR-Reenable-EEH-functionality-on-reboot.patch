@@ -1,0 +1,69 @@
+From 6142ebe33af300297faea98c6c249a6d55eff624 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Mon, 6 Jul 2015 13:05:55 +0200
+Subject: [PATCH 29/31] sPAPR: Reenable EEH functionality on reboot
+
+Message-id: <1436187956-15948-3-git-send-email-lvivier@redhat.com>
+Patchwork-id: 66740
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 2/3] sPAPR: Reenable EEH functionality on reboot
+Bugzilla: 1213681
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Gavin Shan <gwshan@linux.vnet.ibm.com>
+
+When rebooting the guest, some PEs might be in frozen state. The
+contained PCI devices won't work properly if their frozen states
+aren't cleared in time. One case running into this situation would
+be maximal EEH error times encountered in the guest.
+
+The patch reenables the EEH functinality on PEs on PHB's reset
+callback, which will clear their frozen states if needed.
+
+Signed-off-by: Gavin Shan <gwshan@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit 57caa35584dba146f53279bfe032c836f086cb5a)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Upstream: aef87d1b879416909a4ac73e6fe2cea4a5630f40
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_pci_vfio.c | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/hw/ppc/spapr_pci_vfio.c b/hw/ppc/spapr_pci_vfio.c
+index 99a1be5..8104074 100644
+--- a/hw/ppc/spapr_pci_vfio.c
++++ b/hw/ppc/spapr_pci_vfio.c
+@@ -71,9 +71,26 @@ static void spapr_phb_vfio_finish_realize(sPAPRPHBState *sphb, Error **errp)
+                                 spapr_tce_get_iommu(tcet));
+ }
+ 
++static void spapr_phb_vfio_eeh_reenable(sPAPRPHBVFIOState *svphb)
++{
++    struct vfio_eeh_pe_op op = {
++        .argsz = sizeof(op),
++        .op    = VFIO_EEH_PE_ENABLE
++    };
++
++    vfio_container_ioctl(&svphb->phb.iommu_as,
++                         svphb->iommugroupid, VFIO_EEH_PE_OP, &op);
++}
++
+ static void spapr_phb_vfio_reset(DeviceState *qdev)
+ {
+-    /* Do nothing */
++    /*
++     * The PE might be in frozen state. To reenable the EEH
++     * functionality on it will clean the frozen state, which
++     * ensures that the contained PCI devices will work properly
++     * after reboot.
++     */
++    spapr_phb_vfio_eeh_reenable(SPAPR_PCI_VFIO_HOST_BRIDGE(qdev));
+ }
+ 
+ static int spapr_phb_vfio_eeh_set_option(sPAPRPHBState *sphb,
+-- 
+1.8.3.1
+

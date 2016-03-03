@@ -1,0 +1,57 @@
+From fe4e40be69170ff938c247ac49da2a1b8466ca19 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Tue, 11 Aug 2015 17:30:29 +0200
+Subject: [PATCH 28/28] i6300esb: fix timer overflow
+
+Message-id: <1439314229-23551-1-git-send-email-lvivier@redhat.com>
+Patchwork-id: 67498
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] i6300esb: fix timer overflow
+Bugzilla: 1247893
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+We use muldiv64() to compute the time to wait:
+
+    timeout = muldiv64(get_ticks_per_sec(), timeout, 33000000);
+
+but get_ticks_per_sec() is 10^9 (30 bit value) and timeout
+is a 35 bit value.
+
+Whereas muldiv64 is:
+
+    uint64_t muldiv64(uint64_t a, uint32_t b, uint32_t c)
+
+So we loose 3 bits of timeout.
+
+Swapping get_ticks_per_sec() and timeout fixes it.
+
+We can also replace it by a multiplication by 30 ns,
+but this changes PCI clock frequency from 33MHz to 33.333333MHz
+and we need to do this on all the QEMU PCI devices (later...)
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+
+Upstream: not committed yet, but accepted
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/watchdog/wdt_i6300esb.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/watchdog/wdt_i6300esb.c b/hw/watchdog/wdt_i6300esb.c
+index 4ebdbb8..8d2d59e 100644
+--- a/hw/watchdog/wdt_i6300esb.c
++++ b/hw/watchdog/wdt_i6300esb.c
+@@ -132,7 +132,7 @@ static void i6300esb_restart_timer(I6300State *d, int stage)
+      * multiply here can exceed 64-bits, before we divide by 33MHz, so
+      * we use a higher-precision intermediate result.
+      */
+-    timeout = muldiv64(get_ticks_per_sec(), timeout, 33000000);
++    timeout = muldiv64(timeout, get_ticks_per_sec(), 33000000);
+ 
+     i6300esb_debug("stage %d, timeout %" PRIi64 "\n", d->stage, timeout);
+ 
+-- 
+1.8.3.1
+

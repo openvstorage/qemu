@@ -1,0 +1,200 @@
+From 0c06bd8fdd1ce210e27b61e08810a7edeeb9e4ae Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:26 +0200
+Subject: [PATCH 22/44] hw/arm/virt-acpi-build: Generate MADT table
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-15-git-send-email-drjones@redhat.com>
+Patchwork-id: 66247
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 14/33] hw/arm/virt-acpi-build: Generate MADT table
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+MADT describes GIC enabled ARM platforms. The GICC and GICD
+subtables are used to define the GIC regions.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Message-id: 1432522520-8068-10-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 982d06c561a62cf7d2a8d31e8a8c107fb3477419)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/arm/virt-acpi-build.c         | 57 ++++++++++++++++++++++++++++++++++++++++
+ include/hw/acpi/acpi-defs.h      | 38 ++++++++++++++++++++++++++-
+ include/hw/arm/virt-acpi-build.h |  3 +++
+ 3 files changed, 97 insertions(+), 1 deletion(-)
+
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index 0791501..29ad535 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -42,6 +42,20 @@
+ 
+ #define ARM_SPI_BASE 32
+ 
++typedef struct VirtAcpiCpuInfo {
++    DECLARE_BITMAP(found_cpus, VIRT_ACPI_CPU_ID_LIMIT);
++} VirtAcpiCpuInfo;
++
++static void virt_acpi_get_cpu_info(VirtAcpiCpuInfo *cpuinfo)
++{
++    CPUState *cpu;
++
++    memset(cpuinfo->found_cpus, 0, sizeof cpuinfo->found_cpus);
++    CPU_FOREACH(cpu) {
++        set_bit(cpu->cpu_index, cpuinfo->found_cpus);
++    }
++}
++
+ static void acpi_dsdt_add_cpus(Aml *scope, int smp_cpus)
+ {
+     uint16_t i;
+@@ -137,6 +151,43 @@ static void acpi_dsdt_add_virtio(Aml *scope,
+     }
+ }
+ 
++/* MADT */
++static void
++build_madt(GArray *table_data, GArray *linker, VirtGuestInfo *guest_info,
++           VirtAcpiCpuInfo *cpuinfo)
++{
++    int madt_start = table_data->len;
++    const MemMapEntry *memmap = guest_info->memmap;
++    AcpiMultipleApicTable *madt;
++    AcpiMadtGenericDistributor *gicd;
++    int i;
++
++    madt = acpi_data_push(table_data, sizeof *madt);
++
++    for (i = 0; i < guest_info->smp_cpus; i++) {
++        AcpiMadtGenericInterrupt *gicc = acpi_data_push(table_data,
++                                                     sizeof *gicc);
++        gicc->type = ACPI_APIC_GENERIC_INTERRUPT;
++        gicc->length = sizeof(*gicc);
++        gicc->base_address = memmap[VIRT_GIC_CPU].base;
++        gicc->cpu_interface_number = i;
++        gicc->arm_mpidr = i;
++        gicc->uid = i;
++        if (test_bit(i, cpuinfo->found_cpus)) {
++            gicc->flags = cpu_to_le32(ACPI_GICC_ENABLED);
++        }
++    }
++
++    gicd = acpi_data_push(table_data, sizeof *gicd);
++    gicd->type = ACPI_APIC_GENERIC_DISTRIBUTOR;
++    gicd->length = sizeof(*gicd);
++    gicd->base_address = memmap[VIRT_GIC_DIST].base;
++
++    build_header(linker, table_data,
++                 (void *)(table_data->data + madt_start), "APIC",
++                 table_data->len - madt_start, 5);
++}
++
+ /* FADT */
+ static void
+ build_fadt(GArray *table_data, GArray *linker, unsigned dsdt)
+@@ -209,8 +260,11 @@ void virt_acpi_build(VirtGuestInfo *guest_info, AcpiBuildTables *tables)
+ {
+     GArray *table_offsets;
+     unsigned dsdt;
++    VirtAcpiCpuInfo cpuinfo;
+     GArray *tables_blob = tables->table_data;
+ 
++    virt_acpi_get_cpu_info(&cpuinfo);
++
+     table_offsets = g_array_new(false, true /* clear */,
+                                         sizeof(uint32_t));
+ 
+@@ -235,6 +289,9 @@ void virt_acpi_build(VirtGuestInfo *guest_info, AcpiBuildTables *tables)
+     acpi_add_table(table_offsets, tables_blob);
+     build_fadt(tables_blob, tables->linker, dsdt);
+ 
++    acpi_add_table(table_offsets, tables_blob);
++    build_madt(tables_blob, tables->linker, guest_info, &cpuinfo);
++
+     /* Cleanup memory that's no longer used. */
+     g_array_free(table_offsets, true);
+ }
+diff --git a/include/hw/acpi/acpi-defs.h b/include/hw/acpi/acpi-defs.h
+index fadcf84..1e9dbe7 100644
+--- a/include/hw/acpi/acpi-defs.h
++++ b/include/hw/acpi/acpi-defs.h
+@@ -256,7 +256,13 @@ typedef struct AcpiMultipleApicTable AcpiMultipleApicTable;
+ #define ACPI_APIC_IO_SAPIC           6
+ #define ACPI_APIC_LOCAL_SAPIC        7
+ #define ACPI_APIC_XRUPT_SOURCE       8
+-#define ACPI_APIC_RESERVED           9           /* 9 and greater are reserved */
++#define ACPI_APIC_LOCAL_X2APIC       9
++#define ACPI_APIC_LOCAL_X2APIC_NMI      10
++#define ACPI_APIC_GENERIC_INTERRUPT     11
++#define ACPI_APIC_GENERIC_DISTRIBUTOR   12
++#define ACPI_APIC_GENERIC_MSI_FRAME     13
++#define ACPI_APIC_GENERIC_REDISTRIBUTOR 14
++#define ACPI_APIC_RESERVED              15   /* 15 and greater are reserved */
+ 
+ /*
+  * MADT sub-structures (Follow MULTIPLE_APIC_DESCRIPTION_TABLE)
+@@ -304,6 +310,36 @@ struct AcpiMadtLocalNmi {
+ } QEMU_PACKED;
+ typedef struct AcpiMadtLocalNmi AcpiMadtLocalNmi;
+ 
++struct AcpiMadtGenericInterrupt {
++    ACPI_SUB_HEADER_DEF
++    uint16_t reserved;
++    uint32_t cpu_interface_number;
++    uint32_t uid;
++    uint32_t flags;
++    uint32_t parking_version;
++    uint32_t performance_interrupt;
++    uint64_t parked_address;
++    uint64_t base_address;
++    uint64_t gicv_base_address;
++    uint64_t gich_base_address;
++    uint32_t vgic_interrupt;
++    uint64_t gicr_base_address;
++    uint64_t arm_mpidr;
++} QEMU_PACKED;
++
++typedef struct AcpiMadtGenericInterrupt AcpiMadtGenericInterrupt;
++
++struct AcpiMadtGenericDistributor {
++    ACPI_SUB_HEADER_DEF
++    uint16_t reserved;
++    uint32_t gic_id;
++    uint64_t base_address;
++    uint32_t global_irq_base;
++    uint32_t reserved2;
++} QEMU_PACKED;
++
++typedef struct AcpiMadtGenericDistributor AcpiMadtGenericDistributor;
++
+ /*
+  * HPET Description Table
+  */
+diff --git a/include/hw/arm/virt-acpi-build.h b/include/hw/arm/virt-acpi-build.h
+index ff00121..04f174d 100644
+--- a/include/hw/arm/virt-acpi-build.h
++++ b/include/hw/arm/virt-acpi-build.h
+@@ -23,6 +23,9 @@
+ #include "qemu-common.h"
+ #include "hw/arm/virt.h"
+ 
++#define VIRT_ACPI_CPU_ID_LIMIT 8
++#define ACPI_GICC_ENABLED 1
++
+ typedef struct VirtGuestInfo {
+     int smp_cpus;
+     FWCfgState *fw_cfg;
+-- 
+1.8.3.1
+

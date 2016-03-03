@@ -1,0 +1,86 @@
+From fb0e03cbb8e67ce5a88cd18ba3f84d5be82bbd22 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:28 +0200
+Subject: [PATCH 054/100] virtio: endianness checks for virtio 1.0 devices
+
+Message-id: <1436260751-25015-26-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66800
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 25/68] virtio: endianness checks for virtio 1.0 devices
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+Add code that checks for the VERSION_1 feature bit in order to make
+decisions about the device's endianness. This allows us to support
+transitional devices.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 3c185597c86b8cd0a07c46e7a5bd5aac28bb7200)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio.c                | 6 +++++-
+ include/hw/virtio/virtio-access.h | 4 ++++
+ include/hw/virtio/virtio.h        | 8 ++++++--
+ 3 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 8ac6156..d37d27b 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -903,7 +903,11 @@ static bool virtio_device_endian_needed(void *opaque)
+     VirtIODevice *vdev = opaque;
+ 
+     assert(vdev->device_endian != VIRTIO_DEVICE_ENDIAN_UNKNOWN);
+-    return vdev->device_endian != virtio_default_endian();
++    if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
++        return vdev->device_endian != virtio_default_endian();
++    }
++    /* Devices conforming to VIRTIO 1.0 or later are always LE. */
++    return vdev->device_endian != VIRTIO_DEVICE_ENDIAN_LITTLE;
+ }
+ 
+ static bool virtio_64bit_features_needed(void *opaque)
+diff --git a/include/hw/virtio/virtio-access.h b/include/hw/virtio/virtio-access.h
+index caf0940..cee5dd7 100644
+--- a/include/hw/virtio/virtio-access.h
++++ b/include/hw/virtio/virtio-access.h
+@@ -19,6 +19,10 @@
+ 
+ static inline bool virtio_access_is_big_endian(VirtIODevice *vdev)
+ {
++    if (virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
++        /* Devices conforming to VIRTIO 1.0 or later are always LE. */
++        return false;
++    }
+ #if defined(TARGET_IS_BIENDIAN)
+     return virtio_is_big_endian(vdev);
+ #elif defined(TARGET_WORDS_BIGENDIAN)
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 8e8b72d..eed7f4f 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -252,7 +252,11 @@ static inline bool virtio_has_feature(VirtIODevice *vdev, unsigned int fbit)
+ 
+ static inline bool virtio_is_big_endian(VirtIODevice *vdev)
+ {
+-    assert(vdev->device_endian != VIRTIO_DEVICE_ENDIAN_UNKNOWN);
+-    return vdev->device_endian == VIRTIO_DEVICE_ENDIAN_BIG;
++    if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
++        assert(vdev->device_endian != VIRTIO_DEVICE_ENDIAN_UNKNOWN);
++        return vdev->device_endian == VIRTIO_DEVICE_ENDIAN_BIG;
++    }
++    /* Devices conforming to VIRTIO 1.0 or later are always LE. */
++    return false;
+ }
+ #endif
+-- 
+1.8.3.1
+

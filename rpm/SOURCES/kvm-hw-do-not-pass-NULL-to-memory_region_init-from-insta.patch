@@ -1,0 +1,177 @@
+From ac40cc587e03821bca9592899f4d0a8f68d8d084 Mon Sep 17 00:00:00 2001
+Message-Id: <ac40cc587e03821bca9592899f4d0a8f68d8d084.1444668695.git.jen@redhat.com>
+In-Reply-To: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+References: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+From: Markus Armbruster <armbru@redhat.com>
+Date: Fri, 9 Oct 2015 14:37:31 -0500
+Subject: [CHANGE 04/11] hw: do not pass NULL to memory_region_init from
+ instance_init
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Markus Armbruster <armbru@redhat.com>
+Message-id: <1444401458-7995-3-git-send-email-armbru@redhat.com>
+Patchwork-id: 68110
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 2/9] hw: do not pass NULL to memory_region_init from instance_init
+Bugzilla: 1264347
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+From: Paolo Bonzini <pbonzini@redhat.com>
+
+This causes the region to outlive the object, because it attaches the
+region to /machine.  This is not nice for the "realize" method, but
+much worse for "instance_init" because it can cause dangling pointers
+after a simple object_new/object_unref pair.
+
+Reported-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Tested-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Message-Id: <1443689999-12182-3-git-send-email-armbru@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 81e0ab48dda611e9571dc2e166840205a4208567)
+
+Conflicts:
+	hw/arm/pxa2xx.c
+
+Conflicting hunk dropped: the device isn't yet qomified in RHEL.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+---
+ hw/display/cg3.c               | 4 ++--
+ hw/display/tcx.c               | 2 +-
+ hw/misc/arm_integrator_debug.c | 2 +-
+ hw/misc/macio/cuda.c           | 2 +-
+ hw/misc/macio/macio.c          | 6 +++---
+ hw/pcmcia/pxa2xx.c             | 6 +++---
+ 6 files changed, 11 insertions(+), 11 deletions(-)
+
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ hw/display/cg3.c               | 4 ++--
+ hw/display/tcx.c               | 2 +-
+ hw/misc/arm_integrator_debug.c | 2 +-
+ hw/misc/macio/cuda.c           | 2 +-
+ hw/misc/macio/macio.c          | 6 +++---
+ hw/pcmcia/pxa2xx.c             | 6 +++---
+ 6 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/hw/display/cg3.c b/hw/display/cg3.c
+index 8965868..520368f 100644
+--- a/hw/display/cg3.c
++++ b/hw/display/cg3.c
+@@ -279,12 +279,12 @@ static void cg3_initfn(Object *obj)
+     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+     CG3State *s = CG3(obj);
+ 
+-    memory_region_init_ram(&s->rom, NULL, "cg3.prom", FCODE_MAX_ROM_SIZE,
++    memory_region_init_ram(&s->rom, obj, "cg3.prom", FCODE_MAX_ROM_SIZE,
+                            &error_fatal);
+     memory_region_set_readonly(&s->rom, true);
+     sysbus_init_mmio(sbd, &s->rom);
+ 
+-    memory_region_init_io(&s->reg, NULL, &cg3_reg_ops, s, "cg3.reg",
++    memory_region_init_io(&s->reg, obj, &cg3_reg_ops, s, "cg3.reg",
+                           CG3_REG_SIZE);
+     sysbus_init_mmio(sbd, &s->reg);
+ }
+diff --git a/hw/display/tcx.c b/hw/display/tcx.c
+index 68eda59..9516e0d 100644
+--- a/hw/display/tcx.c
++++ b/hw/display/tcx.c
+@@ -941,7 +941,7 @@ static void tcx_initfn(Object *obj)
+     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+     TCXState *s = TCX(obj);
+ 
+-    memory_region_init_ram(&s->rom, NULL, "tcx.prom", FCODE_MAX_ROM_SIZE,
++    memory_region_init_ram(&s->rom, OBJECT(s), "tcx.prom", FCODE_MAX_ROM_SIZE,
+                            &error_fatal);
+     memory_region_set_readonly(&s->rom, true);
+     sysbus_init_mmio(sbd, &s->rom);
+diff --git a/hw/misc/arm_integrator_debug.c b/hw/misc/arm_integrator_debug.c
+index 99b720f..6d9dd74 100644
+--- a/hw/misc/arm_integrator_debug.c
++++ b/hw/misc/arm_integrator_debug.c
+@@ -79,7 +79,7 @@ static void intdbg_control_init(Object *obj)
+     SysBusDevice *sd = SYS_BUS_DEVICE(obj);
+     IntegratorDebugState *s = INTEGRATOR_DEBUG(obj);
+ 
+-    memory_region_init_io(&s->iomem, NULL, &intdbg_control_ops,
++    memory_region_init_io(&s->iomem, obj, &intdbg_control_ops,
+                           NULL, "dbg-leds", 0x1000000);
+     sysbus_init_mmio(sd, &s->iomem);
+ }
+diff --git a/hw/misc/macio/cuda.c b/hw/misc/macio/cuda.c
+index f3984e3..5d7043e 100644
+--- a/hw/misc/macio/cuda.c
++++ b/hw/misc/macio/cuda.c
+@@ -713,7 +713,7 @@ static void cuda_initfn(Object *obj)
+     CUDAState *s = CUDA(obj);
+     int i;
+ 
+-    memory_region_init_io(&s->mem, NULL, &cuda_ops, s, "cuda", 0x2000);
++    memory_region_init_io(&s->mem, obj, &cuda_ops, s, "cuda", 0x2000);
+     sysbus_init_mmio(d, &s->mem);
+     sysbus_init_irq(d, &s->irq);
+ 
+diff --git a/hw/misc/macio/macio.c b/hw/misc/macio/macio.c
+index 063ad80..8632526 100644
+--- a/hw/misc/macio/macio.c
++++ b/hw/misc/macio/macio.c
+@@ -105,10 +105,10 @@ static void macio_escc_legacy_setup(MacIOState *macio_state)
+         0xF0, 0xE0,
+     };
+ 
+-    memory_region_init(escc_legacy, NULL, "escc-legacy", 256);
++    memory_region_init(escc_legacy, OBJECT(macio_state), "escc-legacy", 256);
+     for (i = 0; i < ARRAY_SIZE(maps); i += 2) {
+         MemoryRegion *port = g_new(MemoryRegion, 1);
+-        memory_region_init_alias(port, NULL, "escc-legacy-port",
++        memory_region_init_alias(port, OBJECT(macio_state), "escc-legacy-port",
+                                  macio_state->escc_mem, maps[i+1], 0x2);
+         memory_region_add_subregion(escc_legacy, maps[i], port);
+     }
+@@ -327,7 +327,7 @@ static void macio_instance_init(Object *obj)
+     MacIOState *s = MACIO(obj);
+     MemoryRegion *dbdma_mem;
+ 
+-    memory_region_init(&s->bar, NULL, "macio", 0x80000);
++    memory_region_init(&s->bar, obj, "macio", 0x80000);
+ 
+     object_initialize(&s->cuda, sizeof(s->cuda), TYPE_CUDA);
+     qdev_set_parent_bus(DEVICE(&s->cuda), sysbus_get_default());
+diff --git a/hw/pcmcia/pxa2xx.c b/hw/pcmcia/pxa2xx.c
+index a7e1877..812716e 100644
+--- a/hw/pcmcia/pxa2xx.c
++++ b/hw/pcmcia/pxa2xx.c
+@@ -163,7 +163,7 @@ static void pxa2xx_pcmcia_initfn(Object *obj)
+     sysbus_init_mmio(sbd, &s->container_mem);
+ 
+     /* Socket I/O Memory Space */
+-    memory_region_init_io(&s->iomem, NULL, &pxa2xx_pcmcia_io_ops, s,
++    memory_region_init_io(&s->iomem, obj, &pxa2xx_pcmcia_io_ops, s,
+                           "pxa2xx-pcmcia-io", 0x04000000);
+     memory_region_add_subregion(&s->container_mem, 0x00000000,
+                                 &s->iomem);
+@@ -171,13 +171,13 @@ static void pxa2xx_pcmcia_initfn(Object *obj)
+     /* Then next 64 MB is reserved */
+ 
+     /* Socket Attribute Memory Space */
+-    memory_region_init_io(&s->attr_iomem, NULL, &pxa2xx_pcmcia_attr_ops, s,
++    memory_region_init_io(&s->attr_iomem, obj, &pxa2xx_pcmcia_attr_ops, s,
+                           "pxa2xx-pcmcia-attribute", 0x04000000);
+     memory_region_add_subregion(&s->container_mem, 0x08000000,
+                                 &s->attr_iomem);
+ 
+     /* Socket Common Memory Space */
+-    memory_region_init_io(&s->common_iomem, NULL, &pxa2xx_pcmcia_common_ops, s,
++    memory_region_init_io(&s->common_iomem, obj, &pxa2xx_pcmcia_common_ops, s,
+                           "pxa2xx-pcmcia-common", 0x04000000);
+     memory_region_add_subregion(&s->container_mem, 0x0c000000,
+                                 &s->common_iomem);
+-- 
+2.4.3
+

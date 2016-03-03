@@ -1,0 +1,38 @@
+From 47925661fd2cded8fac3878259bb6592e1d4f953 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Wed, 17 Jun 2015 07:50:17 +0200
+Subject: [PATCH 02/11] Disable sdhci device
+
+Message-id: <a704081bf921201fe65cdf799c6bb786e904cda9.1434439667.git.mrezanin@redhat.com>
+Patchwork-id: 66276
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 2/3] Disable sdhci device
+Bugzilla: 1194151
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+
+From: Miroslav Rezanina <mrezanin@redhat.com>
+
+New sdhci device were introduced in qemu-2.3.0. We are not going to
+support it.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ default-configs/pci.mak | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/default-configs/pci.mak b/default-configs/pci.mak
+index 460e48a..d419528 100644
+--- a/default-configs/pci.mak
++++ b/default-configs/pci.mak
+@@ -17,7 +17,6 @@ CONFIG_SERIAL_PCI=y
+ CONFIG_WDT_IB6300ESB=y
+ CONFIG_PCI_TESTDEV=y
+ CONFIG_SD=y
+-CONFIG_SDHCI=y
+ CONFIG_VGA=y
+ CONFIG_VGA_PCI=y
+ CONFIG_IVSHMEM=$(CONFIG_KVM)
+-- 
+1.8.3.1
+

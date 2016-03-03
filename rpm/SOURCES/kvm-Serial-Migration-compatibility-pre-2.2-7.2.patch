@@ -1,0 +1,125 @@
+From 17f9a1880e63e32d9fff0cf821ba70ceed861da2 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Wed, 24 Jun 2015 13:39:56 +0200
+Subject: [PATCH 4/5] Serial: Migration compatibility pre 2.2/7.2
+
+Message-id: <1435153196-26350-3-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66380
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v3 2/2] Serial: Migration compatibility pre 2.2/7.2
+Bugzilla: 1215087
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+Disable subsections added in qemu 2.3
+
+Newer qemu fixed migration corner cases for serial by adding subsections,
+however if these are generated it will break backwards migration.
+Disabling these subsections on older machine types should leave it no
+worse than existing qemu, from which we're not aware of having any reports
+of problems, and still allow these improvements on new machine types.
+Even when a user isn't actively using a serial port a guest will
+probably initialise it and may send stuff (e.g. a copy of the console messages
+or the login: prompt).
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/char/serial.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/hw/char/serial.c b/hw/char/serial.c
+index 55011cf..248bf8b 100644
+--- a/hw/char/serial.c
++++ b/hw/char/serial.c
+@@ -28,6 +28,7 @@
+ #include "qemu/timer.h"
+ #include "exec/address-spaces.h"
+ #include "qemu/error-report.h"
++#include "migration/migration.h"
+ 
+ //#define DEBUG_SERIAL
+ 
+@@ -646,6 +647,10 @@ static bool serial_thr_ipending_needed(void *opaque)
+ {
+     SerialState *s = opaque;
+ 
++    if (migrate_pre_2_2) {
++        return false;
++    }
++
+     if (s->ier & UART_IER_THRI) {
+         bool expected_value = ((s->iir & UART_IIR_ID) == UART_IIR_THRI);
+         return s->thr_ipending != expected_value;
+@@ -671,6 +676,10 @@ static const VMStateDescription vmstate_serial_thr_ipending = {
+ static bool serial_tsr_needed(void *opaque)
+ {
+     SerialState *s = (SerialState *)opaque;
++    if (migrate_pre_2_2) {
++        return false;
++    }
++
+     return s->tsr_retry != 0;
+ }
+ 
+@@ -689,6 +698,10 @@ static const VMStateDescription vmstate_serial_tsr = {
+ static bool serial_recv_fifo_needed(void *opaque)
+ {
+     SerialState *s = (SerialState *)opaque;
++    if (migrate_pre_2_2) {
++        return false;
++    }
++
+     return !fifo8_is_empty(&s->recv_fifo);
+ 
+ }
+@@ -706,6 +719,10 @@ static const VMStateDescription vmstate_serial_recv_fifo = {
+ static bool serial_xmit_fifo_needed(void *opaque)
+ {
+     SerialState *s = (SerialState *)opaque;
++    if (migrate_pre_2_2) {
++        return false;
++    }
++
+     return !fifo8_is_empty(&s->xmit_fifo);
+ }
+ 
+@@ -722,6 +739,10 @@ static const VMStateDescription vmstate_serial_xmit_fifo = {
+ static bool serial_fifo_timeout_timer_needed(void *opaque)
+ {
+     SerialState *s = (SerialState *)opaque;
++    if (migrate_pre_2_2) {
++        return false;
++    }
++
+     return timer_pending(s->fifo_timeout_timer);
+ }
+ 
+@@ -738,6 +759,10 @@ static const VMStateDescription vmstate_serial_fifo_timeout_timer = {
+ static bool serial_timeout_ipending_needed(void *opaque)
+ {
+     SerialState *s = (SerialState *)opaque;
++    if (migrate_pre_2_2) {
++        return false;
++    }
++
+     return s->timeout_ipending != 0;
+ }
+ 
+@@ -754,6 +779,10 @@ static const VMStateDescription vmstate_serial_timeout_ipending = {
+ static bool serial_poll_needed(void *opaque)
+ {
+     SerialState *s = (SerialState *)opaque;
++    if (migrate_pre_2_2) {
++        return false;
++    }
++
+     return s->poll_msl >= 0;
+ }
+ 
+-- 
+1.8.3.1
+

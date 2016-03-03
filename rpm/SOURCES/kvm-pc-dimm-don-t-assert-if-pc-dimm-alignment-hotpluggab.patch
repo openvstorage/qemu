@@ -1,0 +1,51 @@
+From 1e1b356473b3fc74cbce0656a2cae973711dd079 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 12 Jun 2015 14:49:40 +0200
+Subject: [PATCH 4/9] pc-dimm: don't assert if pc-dimm alignment !=
+ hotpluggable mem range size
+
+Message-id: <1434120580-37949-1-git-send-email-imammedo@redhat.com>
+Patchwork-id: 66016
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH] pc-dimm: don't assert if pc-dimm alignment != hotpluggable mem range size
+Bugzilla: 1221425
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1221425
+Brew: https://brewweb.devel.redhat.com/taskinfo?taskID=9353627
+Upstream commit: b5d3b039
+     "pc-dimm: don't assert if pc-dimm alignment != hotpluggable mem range size"
+
+Drop superfluous pc-dimm alignment on hot-pluggable mem
+range size assert, since it causes QEMU crash during hotplug
+when hotplugging pc-dimm with alignment bigger than
+an alignment of hot-pluggable mem range size.
+
+Instead allow pc_dimm_get_free_addr() find free address
+and bail out gracefully later in that function during
+checking if pc-dimm will fit in hot-pluggable mem range.
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/mem/pc-dimm.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/hw/mem/pc-dimm.c b/hw/mem/pc-dimm.c
+index 39f0c97..e70633d 100644
+--- a/hw/mem/pc-dimm.c
++++ b/hw/mem/pc-dimm.c
+@@ -211,7 +211,6 @@ uint64_t pc_dimm_get_free_addr(uint64_t address_space_start,
+     uint64_t address_space_end = address_space_start + address_space_size;
+ 
+     g_assert(QEMU_ALIGN_UP(address_space_start, align) == address_space_start);
+-    g_assert(QEMU_ALIGN_UP(address_space_size, align) == address_space_size);
+ 
+     if (!address_space_size) {
+         error_setg(errp, "memory hotplug is not enabled, "
+-- 
+1.8.3.1
+

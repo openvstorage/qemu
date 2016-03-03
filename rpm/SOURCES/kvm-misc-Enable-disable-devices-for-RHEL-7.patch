@@ -1,0 +1,805 @@
+--- a/default-configs/aarch64-softmmu.mak
++++ b/default-configs/aarch64-softmmu.mak
+@@ -1,6 +1,11 @@
+ # Default configuration for aarch64-softmmu
+-
+-# We support all the 32 bit boards so need all their config
+-include arm-softmmu.mak
+-
+-# Currently no 64-bit specific config requirements
++CONFIG_PCI=y
++CONFIG_VIRTIO_PCI=y
++CONFIG_VIRTIO=y
++CONFIG_STELLARIS=y
++CONFIG_ARM_GIC=y
++CONFIG_ARM_GIC_KVM=$(CONFIG_KVM)
++CONFIG_PL011=y
++CONFIG_PL031=y
++CONFIG_PFLASH_CFI01=y
++CONFIG_PCI_GENERIC=y
+--- a/default-configs/arm-softmmu.mak
++++ b/default-configs/arm-softmmu.mak
+@@ -77,7 +77,6 @@ CONFIG_TUSB6010=y
+ CONFIG_IMX=y
+ CONFIG_MAINSTONE=y
+ CONFIG_NSERIES=y
+-CONFIG_REALVIEW=y
+ CONFIG_ZAURUS=y
+ CONFIG_ZYNQ=y
+ CONFIG_STM32F2XX_TIMER=y
+@@ -85,9 +84,6 @@ CONFIG_STM32F2XX_USART=y
+ CONFIG_STM32F2XX_SYSCFG=y
+ CONFIG_STM32F205_SOC=y
+ 
+-CONFIG_VERSATILE_PCI=y
+-CONFIG_VERSATILE_I2C=y
+-
+ CONFIG_PCI_GENERIC=y
+ 
+ CONFIG_SDHCI=y
+--- a/default-configs/i386-softmmu.mak
++++ b/default-configs/i386-softmmu.mak
+@@ -19,7 +19,6 @@ CONFIG_APM=y
+ CONFIG_I8257=y
+ CONFIG_IDE_ISA=y
+ CONFIG_IDE_PIIX=y
+-CONFIG_NE2000_ISA=y
+ CONFIG_PIIX_PCI=y
+ CONFIG_HPET=y
+ CONFIG_APPLESMC=y
+@@ -31,6 +30,7 @@ CONFIG_PAM=y
+ CONFIG_PCI_PIIX=y
+ CONFIG_WDT_IB700=y
+ CONFIG_XEN_I386=$(CONFIG_XEN)
++CONFIG_ISA_BUS=y
+ CONFIG_ISA_DEBUG=y
+ CONFIG_ISA_TESTDEV=y
+ CONFIG_VMPORT=y
+--- a/default-configs/mips-softmmu.mak
++++ b/default-configs/mips-softmmu.mak
+@@ -20,7 +20,6 @@ CONFIG_I8257=y
+ CONFIG_PIIX4=y
+ CONFIG_IDE_ISA=y
+ CONFIG_IDE_PIIX=y
+-CONFIG_NE2000_ISA=y
+ CONFIG_RC4030=y
+ CONFIG_DP8393X=y
+ CONFIG_DS1225Y=y
+--- a/default-configs/mips64-softmmu.mak
++++ b/default-configs/mips64-softmmu.mak
+@@ -20,7 +20,6 @@ CONFIG_I8257=y
+ CONFIG_PIIX4=y
+ CONFIG_IDE_ISA=y
+ CONFIG_IDE_PIIX=y
+-CONFIG_NE2000_ISA=y
+ CONFIG_RC4030=y
+ CONFIG_DP8393X=y
+ CONFIG_DS1225Y=y
+--- a/default-configs/mips64el-softmmu.mak
++++ b/default-configs/mips64el-softmmu.mak
+@@ -21,7 +21,6 @@ CONFIG_PIIX4=y
+ CONFIG_IDE_ISA=y
+ CONFIG_IDE_PIIX=y
+ CONFIG_IDE_VIA=y
+-CONFIG_NE2000_ISA=y
+ CONFIG_RC4030=y
+ CONFIG_DP8393X=y
+ CONFIG_DS1225Y=y
+--- a/default-configs/mipsel-softmmu.mak
++++ b/default-configs/mipsel-softmmu.mak
+@@ -20,7 +20,6 @@ CONFIG_I8257=y
+ CONFIG_PIIX4=y
+ CONFIG_IDE_ISA=y
+ CONFIG_IDE_PIIX=y
+-CONFIG_NE2000_ISA=y
+ CONFIG_RC4030=y
+ CONFIG_DP8393X=y
+ CONFIG_DS1225Y=y
+--- a/default-configs/pci.mak
++++ b/default-configs/pci.mak
+@@ -2,34 +2,20 @@ CONFIG_PCI=y
+ CONFIG_VIRTIO_PCI=y
+ CONFIG_VIRTIO=y
+ CONFIG_USB_UHCI=y
+-CONFIG_USB_OHCI=y
+ CONFIG_USB_EHCI=y
+ CONFIG_USB_XHCI=y
+-CONFIG_NE2000_PCI=y
+-CONFIG_EEPRO100_PCI=y
+-CONFIG_PCNET_PCI=y
+-CONFIG_PCNET_COMMON=y
+ CONFIG_AC97=y
+ CONFIG_HDA=y
+-CONFIG_ES1370=y
+-CONFIG_LSI_SCSI_PCI=y
+-CONFIG_VMW_PVSCSI_SCSI_PCI=y
+-CONFIG_MEGASAS_SCSI_PCI=y
+ CONFIG_RTL8139_PCI=y
+ CONFIG_E1000_PCI=y
+-CONFIG_VMXNET3_PCI=y
+ CONFIG_IDE_CORE=y
+ CONFIG_IDE_QDEV=y
+ CONFIG_IDE_PCI=y
+ CONFIG_AHCI=y
+-CONFIG_ESP=y
+-CONFIG_ESP_PCI=y
+ CONFIG_SERIAL=y
+ CONFIG_SERIAL_PCI=y
+-CONFIG_IPACK=y
+ CONFIG_WDT_IB6300ESB=y
+ CONFIG_PCI_TESTDEV=y
+-CONFIG_NVME_PCI=y
+ CONFIG_SD=y
+ CONFIG_SDHCI=y
+ CONFIG_EDU=y
+--- a/default-configs/ppc-softmmu.mak
++++ b/default-configs/ppc-softmmu.mak
+@@ -31,7 +31,6 @@ CONFIG_PPCE500_PCI=y
+ CONFIG_IDE_ISA=y
+ CONFIG_IDE_CMD646=y
+ CONFIG_IDE_MACIO=y
+-CONFIG_NE2000_ISA=y
+ CONFIG_PFLASH_CFI01=y
+ CONFIG_PFLASH_CFI02=y
+ CONFIG_PTIMER=y
+--- a/default-configs/ppc64-softmmu.mak
++++ b/default-configs/ppc64-softmmu.mak
+@@ -1,49 +1,28 @@
+ # Default configuration for ppc64-softmmu
+ 
+-include pci.mak
++# PCI configuration - cut down from the defaults in pci.mak
++CONFIG_PCI=y
++CONFIG_VIRTIO_PCI=y
++CONFIG_VIRTIO=y
++CONFIG_USB_EHCI=y
++CONFIG_USB_XHCI=y
++CONFIG_WDT_IB6300ESB=y
++CONFIG_PCI_TESTDEV=y
++
+ include sound.mak
+ include usb.mak
++CONFIG_ISA_BUS=y
+ CONFIG_ISA_MMIO=y
+-CONFIG_ESCC=y
+-CONFIG_M48T59=y
++CONFIG_VGA=y
++CONFIG_VGA_PCI=y
+ CONFIG_SERIAL=y
+-CONFIG_PARALLEL=y
+-CONFIG_I8254=y
+-CONFIG_PCKBD=y
+-CONFIG_FDC=y
+-CONFIG_I8257=y
+-CONFIG_I82374=y
+-CONFIG_OPENPIC=y
+-CONFIG_I82378=y
+-CONFIG_PC87312=y
+-CONFIG_MACIO=y
+-CONFIG_PCSPK=y
+-CONFIG_CUDA=y
+-CONFIG_ADB=y
+-CONFIG_MAC_NVRAM=y
+-CONFIG_MAC_DBDMA=y
+-CONFIG_HEATHROW_PIC=y
+-CONFIG_GRACKLE_PCI=y
+-CONFIG_UNIN_PCI=y
+-CONFIG_DEC_PCI=y
+-CONFIG_PPCE500_PCI=y
+-CONFIG_IDE_ISA=y
+-CONFIG_IDE_CMD646=y
+-CONFIG_IDE_MACIO=y
+-CONFIG_NE2000_ISA=y
+-CONFIG_PFLASH_CFI01=y
+-CONFIG_PFLASH_CFI02=y
+-CONFIG_PTIMER=y
+ CONFIG_I8259=y
+-CONFIG_OPENPIC=y
+ CONFIG_PSERIES=y
+-CONFIG_OPENPIC_KVM=$(and $(CONFIG_E500),$(CONFIG_KVM))
+ CONFIG_PLATFORM_BUS=y
+-CONFIG_ETSEC=y
+ CONFIG_LIBDECNUMBER=y
++CONFIG_USB_OHCI=y
+ # For pSeries
+ CONFIG_XICS=$(CONFIG_PSERIES)
+ CONFIG_XICS_KVM=$(and $(CONFIG_PSERIES),$(CONFIG_KVM))
+-# For PReP
+-CONFIG_MC146818RTC=y
++CONFIG_I8259=y
+ CONFIG_ISA_TESTDEV=y
+--- a/default-configs/ppcemb-softmmu.mak
++++ b/default-configs/ppcemb-softmmu.mak
+@@ -7,6 +7,19 @@ CONFIG_M48T59=y
+ CONFIG_SERIAL=y
+ CONFIG_I8257=y
+ CONFIG_OPENPIC=y
++CONFIG_MACIO=y
++CONFIG_CUDA=y
++CONFIG_ADB=y
++CONFIG_MAC_NVRAM=y
++CONFIG_MAC_DBDMA=y
++CONFIG_HEATHROW_PIC=y
++CONFIG_GRACKLE_PCI=y
++CONFIG_UNIN_PCI=y
++CONFIG_DEC_PCI=y
++CONFIG_PPCE500_PCI=y
++CONFIG_IDE_ISA=y
++CONFIG_IDE_CMD646=y
++CONFIG_IDE_MACIO=y
+ CONFIG_PFLASH_CFI01=y
+ CONFIG_PFLASH_CFI02=y
+ CONFIG_PTIMER=y
+--- a/default-configs/sound.mak
++++ b/default-configs/sound.mak
+@@ -1,4 +0,0 @@
+-CONFIG_SB16=y
+-CONFIG_ADLIB=y
+-CONFIG_GUS=y
+-CONFIG_CS4231A=y
+--- a/default-configs/usb.mak
++++ b/default-configs/usb.mak
+@@ -1,10 +1,3 @@
+ CONFIG_USB=y
+-CONFIG_USB_TABLET_WACOM=y
+ CONFIG_USB_STORAGE_BOT=y
+-CONFIG_USB_STORAGE_UAS=y
+-CONFIG_USB_STORAGE_MTP=y
+ CONFIG_USB_SMARTCARD=y
+-CONFIG_USB_AUDIO=y
+-CONFIG_USB_SERIAL=y
+-CONFIG_USB_NETWORK=y
+-CONFIG_USB_BLUETOOTH=y
+--- a/default-configs/x86_64-softmmu.mak
++++ b/default-configs/x86_64-softmmu.mak
+@@ -4,12 +4,10 @@ include pci.mak
+ include sound.mak
+ include usb.mak
+ CONFIG_QXL=$(CONFIG_SPICE)
+-CONFIG_VGA_ISA=y
++CONFIG_VGA_PCI=y
+ CONFIG_VGA_CIRRUS=y
+-CONFIG_VMWARE_VGA=y
+ CONFIG_VMMOUSE=y
+ CONFIG_SERIAL=y
+-CONFIG_PARALLEL=y
+ CONFIG_I8254=y
+ CONFIG_PCSPK=y
+ CONFIG_PCKBD=y
+@@ -17,12 +15,8 @@ CONFIG_FDC=y
+ CONFIG_ACPI=y
+ CONFIG_APM=y
+ CONFIG_I8257=y
+-CONFIG_IDE_ISA=y
+ CONFIG_IDE_PIIX=y
+-CONFIG_NE2000_ISA=y
+ CONFIG_PIIX_PCI=y
+-CONFIG_HPET=y
+-CONFIG_APPLESMC=y
+ CONFIG_I8259=y
+ CONFIG_PFLASH_CFI01=y
+ CONFIG_TPM_TIS=$(CONFIG_TPM)
+@@ -31,6 +25,7 @@ CONFIG_PAM=y
+ CONFIG_PCI_PIIX=y
+ CONFIG_WDT_IB700=y
+ CONFIG_XEN_I386=$(CONFIG_XEN)
++CONFIG_ISA_BUS=y
+ CONFIG_ISA_DEBUG=y
+ CONFIG_ISA_TESTDEV=y
+ CONFIG_VMPORT=y
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -99,7 +99,12 @@ typedef struct {
+     bool secure;
+ } VirtMachineState;
+ 
++#if 0
+ #define TYPE_VIRT_MACHINE   "virt"
++#endif /* disabled for RHELSA */
++
++#define TYPE_VIRT_MACHINE   "virt-rhelsa7.2"
++
+ #define VIRT_MACHINE(obj) \
+     OBJECT_CHECK(VirtMachineState, (obj), TYPE_VIRT_MACHINE)
+ #define VIRT_MACHINE_GET_CLASS(obj) \
+@@ -894,22 +899,43 @@ static void machvirt_machine_init(void)
+ machine_init(machvirt_machine_init);
+ #endif /* disabled for RHELSA */
+ 
+-static QEMUMachine aarch64_machine_rhelsa710 = {
+-    .family = "virt-rhelsa-Z",
+-    .name = "virt-rhelsa7.1",
+-    .alias = "virt",
+-    .desc = "RHELSA 7.1 ARM Virtual Machine",
+-    .init = machvirt_init,
+-    .is_default = 1,
+-    .max_cpus = 8,
+-    .compat_props = (GlobalProperty[]) {
+-        { /* end of list */ }
+-    },
++static void rhelsa720_virt_instance_init(Object *obj)
++{
++    VirtMachineState *vms = VIRT_MACHINE(obj);
++
++    /* EL3 is disabled by default on RHELSA virt */
++    vms->secure = false;
++}
++
++static void rhelsa720_virt_class_init(ObjectClass *oc, void *data)
++{
++    MachineClass *mc = MACHINE_CLASS(oc);
++    static GlobalProperty rhelsa720_compat_props[] = {
++      { /* end of list */ }
++    };
++
++    mc->family = "virt-rhelsa-Z";
++    mc->name = TYPE_VIRT_MACHINE;
++    mc->desc = "RHELSA 7.2 ARM Virtual Machine";
++    mc->alias = "virt";
++    mc->init = machvirt_init;
++    mc->max_cpus = 8;
++    mc->is_default = 1;
++    mc->compat_props = rhelsa720_compat_props;
++}
++
++static const TypeInfo rhelsa720_machvirt_info = {
++    .name = TYPE_VIRT_MACHINE,
++    .parent = TYPE_MACHINE,
++    .instance_size = sizeof(VirtMachineState),
++    .instance_init = rhelsa720_virt_instance_init,
++    .class_size = sizeof(VirtMachineClass),
++    .class_init = rhelsa720_virt_class_init,
+ };
+ 
+-static void rhelsa_machine_init(void)
++static void rhelsa720_machvirt_init(void)
+ {
+-    qemu_register_machine(&aarch64_machine_rhelsa710);
++    type_register_static(&rhelsa720_machvirt_info);
+ }
+ 
+-machine_init(rhelsa_machine_init);
++machine_init(rhelsa720_machvirt_init);
+--- a/hw/char/serial-pci.c
++++ b/hw/char/serial-pci.c
+@@ -223,6 +223,8 @@ static void multi_2x_serial_pci_class_initfn(ObjectClass *klass, void *data)
+     dc->vmsd = &vmstate_pci_multi_serial;
+     dc->props = multi_2x_serial_pci_properties;
+     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static void multi_4x_serial_pci_class_initfn(ObjectClass *klass, void *data)
+@@ -238,6 +240,8 @@ static void multi_4x_serial_pci_class_initfn(ObjectClass *klass, void *data)
+     dc->vmsd = &vmstate_pci_multi_serial;
+     dc->props = multi_4x_serial_pci_properties;
+     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static const TypeInfo serial_pci_info = {
+--- a/hw/display/cirrus_vga.c
++++ b/hw/display/cirrus_vga.c
+@@ -2991,6 +2991,8 @@ static void isa_cirrus_vga_class_init(ObjectClass *klass, void *data)
+     dc->realize = isa_cirrus_vga_realizefn;
+     dc->props = isa_cirrus_vga_properties;
+     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static const TypeInfo isa_cirrus_vga_info = {
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1465,8 +1465,9 @@ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+     }
+ 
+     serial_hds_isa_init(isa_bus, MAX_SERIAL_PORTS);
++#if 0 /* Disabled for Red Hat Enterprise Linux 7 */
+     parallel_hds_isa_init(isa_bus, MAX_PARALLEL_PORTS);
+-
++#endif
+     a20_line = qemu_allocate_irqs(handle_a20_line_change, first_cpu, 2);
+     i8042 = isa_create_simple(isa_bus, "i8042");
+     i8042_setup_a20_line(i8042, &a20_line[0]);
+--- a/hw/isa/Makefile.objs
++++ b/hw/isa/Makefile.objs
+@@ -1,4 +1,4 @@
+-common-obj-y += isa-bus.o
++common-obj-$(CONFIG_ISA_BUS) += isa-bus.o
+ common-obj-$(CONFIG_APM) += apm.o
+ common-obj-$(CONFIG_I82378) += i82378.o
+ common-obj-$(CONFIG_PC87312) += pc87312.o
+--- a/hw/misc/Makefile.objs
++++ b/hw/misc/Makefile.objs
+@@ -19,7 +19,8 @@ common-obj-$(CONFIG_PUV3) += puv3_pm.o
+ 
+ common-obj-$(CONFIG_MACIO) += macio/
+ 
+-obj-$(CONFIG_IVSHMEM) += ivshmem.o
++# Disabled for Red Hat Enterprise Linux:
++# obj-$(CONFIG_IVSHMEM) += ivshmem.o
+ 
+ obj-$(CONFIG_REALVIEW) += arm_sysctl.o
+ obj-$(CONFIG_NSERIES) += cbus.o
+--- a/hw/ppc/Makefile.objs
++++ b/hw/ppc/Makefile.objs
+@@ -9,7 +9,6 @@ obj-y += spapr_pci_vfio.o
+ endif
+ # PowerPC 4xx boards
+ obj-y += ppc4xx_devs.o ppc405_uc.o
+-obj-y += ppc4xx_pci.o
+ # PReP
+ obj-$(CONFIG_PREP) += prep.o
+ # OldWorld PowerMac
+--- a/hw/usb/ccid-card-emulated.c
++++ b/hw/usb/ccid-card-emulated.c
+@@ -586,6 +586,8 @@ static void emulated_class_initfn(ObjectClass *klass, void *data)
+     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
+     dc->desc = "emulated smartcard";
+     dc->props = emulated_card_properties;
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static const TypeInfo emulated_card_info = {
+--- a/qemu-options.hx
++++ b/qemu-options.hx
+@@ -1363,11 +1363,6 @@ ETEXI
+ 
+ DEF("no-hpet", 0, QEMU_OPTION_no_hpet,
+     "-no-hpet        disable HPET\n", QEMU_ARCH_I386)
+-STEXI
+-@item -no-hpet
+-@findex -no-hpet
+-Disable HPET support.
+-ETEXI
+ 
+ DEF("acpitable", HAS_ARG, QEMU_OPTION_acpitable,
+     "-acpitable [sig=str][,rev=n][,oem_id=str][,oem_table_id=str][,oem_rev=n][,asl_compiler_id=str][,asl_compiler_rev=n][,{data|file}=file1[:file2]...]\n"
+--- a/target-arm/cpu.c
++++ b/target-arm/cpu.c
+@@ -1264,7 +1264,8 @@ static void arm_cpu_register_types(void)
+     type_register_static(&arm_cpu_type_info);
+ 
+     while (info->name) {
+-        cpu_register(info);
++        if (!strcmp(info->name, "cortex-a15"))
++	    cpu_register(info);
+         info++;
+     }
+ }
+--- a/tests/Makefile
++++ b/tests/Makefile
+@@ -79,8 +79,6 @@ check-block-$(CONFIG_POSIX) += tests/qemu-iotests-quick.sh
+ # really in libqtest, not in the testcases themselves.
+ 
+ gcov-files-ipack-y += hw/ipack/ipack.c
+-check-qtest-ipack-y += tests/ipoctal232-test$(EXESUF)
+-gcov-files-ipack-y += hw/char/ipoctal232.c
+ 
+ check-qtest-virtioserial-y += tests/virtio-console-test$(EXESUF)
+ gcov-files-virtioserial-y += hw/char/virtio-console.c
+@@ -110,23 +108,10 @@ check-qtest-pci-y += tests/e1000-test$(EXESUF)
+ gcov-files-pci-y += hw/net/e1000.c
+ check-qtest-pci-y += tests/rtl8139-test$(EXESUF)
+ gcov-files-pci-y += hw/net/rtl8139.c
+-check-qtest-pci-y += tests/pcnet-test$(EXESUF)
+-gcov-files-pci-y += hw/net/pcnet.c
+-gcov-files-pci-y += hw/net/pcnet-pci.c
+-check-qtest-pci-y += tests/eepro100-test$(EXESUF)
+-gcov-files-pci-y += hw/net/eepro100.c
+-check-qtest-pci-y += tests/ne2000-test$(EXESUF)
+-gcov-files-pci-y += hw/net/ne2000.c
+-check-qtest-pci-y += tests/nvme-test$(EXESUF)
+-gcov-files-pci-y += hw/block/nvme.c
+ check-qtest-pci-y += tests/ac97-test$(EXESUF)
+ gcov-files-pci-y += hw/audio/ac97.c
+-check-qtest-pci-y += tests/es1370-test$(EXESUF)
+-gcov-files-pci-y += hw/audio/es1370.c
+ check-qtest-pci-y += $(check-qtest-virtio-y)
+ gcov-files-pci-y += $(gcov-files-virtio-y) hw/virtio/virtio-pci.c
+-check-qtest-pci-y += tests/tpci200-test$(EXESUF)
+-gcov-files-pci-y += hw/ipack/tpci200.c
+ check-qtest-pci-y += $(check-qtest-ipack-y)
+ gcov-files-pci-y += $(gcov-files-ipack-y)
+ check-qtest-pci-y += tests/display-vga-test$(EXESUF)
+@@ -153,8 +138,6 @@ check-qtest-i386-y += tests/wdt_ib700-test$(EXESUF)
+ gcov-files-i386-y += hw/watchdog/watchdog.c hw/watchdog/wdt_ib700.c
+ check-qtest-i386-y += $(check-qtest-pci-y)
+ gcov-files-i386-y += $(gcov-files-pci-y)
+-check-qtest-i386-y += tests/vmxnet3-test$(EXESUF)
+-gcov-files-i386-y += hw/net/vmxnet3.c
+ gcov-files-i386-y += hw/net/vmxnet_rx_pkt.c
+ gcov-files-i386-y += hw/net/vmxnet_tx_pkt.c
+ check-qtest-i386-y += tests/pvpanic-test$(EXESUF)
+@@ -163,8 +146,6 @@ check-qtest-i386-y += tests/i82801b11-test$(EXESUF)
+ gcov-files-i386-y += hw/pci-bridge/i82801b11.c
+ check-qtest-i386-y += tests/ioh3420-test$(EXESUF)
+ gcov-files-i386-y += hw/pci-bridge/ioh3420.c
+-check-qtest-i386-y += tests/usb-hcd-ohci-test$(EXESUF)
+-gcov-files-i386-y += hw/usb/hcd-ohci.c
+ check-qtest-i386-y += tests/usb-hcd-uhci-test$(EXESUF)
+ gcov-files-i386-y += hw/usb/hcd-uhci.c
+ check-qtest-i386-y += tests/usb-hcd-ehci-test$(EXESUF)
+@@ -334,10 +315,7 @@ tests/i440fx-test$(EXESUF): tests/i440fx-test.o $(libqos-pc-obj-y)
+ tests/fw_cfg-test$(EXESUF): tests/fw_cfg-test.o $(libqos-pc-obj-y)
+ tests/e1000-test$(EXESUF): tests/e1000-test.o
+ tests/rtl8139-test$(EXESUF): tests/rtl8139-test.o $(libqos-pc-obj-y)
+-tests/pcnet-test$(EXESUF): tests/pcnet-test.o
+ tests/eepro100-test$(EXESUF): tests/eepro100-test.o
+-tests/vmxnet3-test$(EXESUF): tests/vmxnet3-test.o
+-tests/ne2000-test$(EXESUF): tests/ne2000-test.o
+ tests/wdt_ib700-test$(EXESUF): tests/wdt_ib700-test.o
+ tests/virtio-balloon-test$(EXESUF): tests/virtio-balloon-test.o
+ tests/virtio-blk-test$(EXESUF): tests/virtio-blk-test.o $(libqos-virtio-obj-y)
+@@ -347,20 +325,16 @@ tests/virtio-scsi-test$(EXESUF): tests/virtio-scsi-test.o
+ tests/virtio-9p-test$(EXESUF): tests/virtio-9p-test.o
+ tests/virtio-serial-test$(EXESUF): tests/virtio-serial-test.o
+ tests/virtio-console-test$(EXESUF): tests/virtio-console-test.o
+-tests/tpci200-test$(EXESUF): tests/tpci200-test.o
+ tests/display-vga-test$(EXESUF): tests/display-vga-test.o
+ tests/ipoctal232-test$(EXESUF): tests/ipoctal232-test.o
+ tests/qom-test$(EXESUF): tests/qom-test.o
+ tests/drive_del-test$(EXESUF): tests/drive_del-test.o $(libqos-pc-obj-y)
+ tests/qdev-monitor-test$(EXESUF): tests/qdev-monitor-test.o $(libqos-pc-obj-y)
+-tests/nvme-test$(EXESUF): tests/nvme-test.o
+ tests/pvpanic-test$(EXESUF): tests/pvpanic-test.o
+ tests/i82801b11-test$(EXESUF): tests/i82801b11-test.o
+ tests/ac97-test$(EXESUF): tests/ac97-test.o
+-tests/es1370-test$(EXESUF): tests/es1370-test.o
+ tests/intel-hda-test$(EXESUF): tests/intel-hda-test.o
+ tests/ioh3420-test$(EXESUF): tests/ioh3420-test.o
+-tests/usb-hcd-ohci-test$(EXESUF): tests/usb-hcd-ohci-test.o $(libqos-usb-obj-y)
+ tests/usb-hcd-uhci-test$(EXESUF): tests/usb-hcd-uhci-test.o $(libqos-usb-obj-y)
+ tests/usb-hcd-ehci-test$(EXESUF): tests/usb-hcd-ehci-test.o $(libqos-usb-obj-y)
+ tests/usb-hcd-xhci-test$(EXESUF): tests/usb-hcd-xhci-test.o $(libqos-usb-obj-y)
+--- a/tests/boot-order-test.c
++++ b/tests/boot-order-test.c
+@@ -112,6 +112,7 @@ static void test_pc_boot_order(void)
+     test_boot_orders(NULL, read_boot_order_pc, test_cases_pc);
+ }
+ 
++#if 0 /* Disabled for RHEL, since CONFIG_MAC and CONFIG_PREP are not enabled */
+ static uint8_t read_m48t59(uint64_t addr, uint16_t reg)
+ {
+     writeb(addr, reg & 0xff);
+@@ -142,6 +143,7 @@ static uint64_t read_boot_order_pmac(void)
+ 
+     return qfw_cfg_get_u16(fw_cfg, FW_CFG_BOOT_DEVICE);
+ }
++#endif /* Disabled for RHEL, since CONFIG_MAC and CONFIG_PREP are not enabled */
+ 
+ static const boot_order_test test_cases_fw_cfg[] = {
+     { "", 'c', 'c' },
+@@ -151,6 +153,7 @@ static const boot_order_test test_cases_fw_cfg[] = {
+     {}
+ };
+ 
++#if 0 /* Disabled for RHEL, since CONFIG_MAC and CONFIG_PREP are not enabled */
+ static void test_pmac_oldworld_boot_order(void)
+ {
+     test_boot_orders("g3beige", read_boot_order_pmac, test_cases_fw_cfg);
+@@ -159,7 +162,9 @@ static void test_pmac_oldworld_boot_order(void)
+ static void test_pmac_newworld_boot_order(void)
+ {
+     test_boot_orders("mac99", read_boot_order_pmac, test_cases_fw_cfg);
++
+ }
++#endif /* Disabled for RHEL, since CONFIG_MAC and CONFIG_PREP are not enabled */
+ 
+ static uint64_t read_boot_order_sun4m(void)
+ {
+@@ -194,11 +199,13 @@ int main(int argc, char *argv[])
+     if (strcmp(arch, "i386") == 0 || strcmp(arch, "x86_64") == 0) {
+         qtest_add_func("boot-order/pc", test_pc_boot_order);
+     } else if (strcmp(arch, "ppc") == 0 || strcmp(arch, "ppc64") == 0) {
++#if 0 /* Disabled for RHEL, since CONFIG_MAC and CONFIG_PREP are not enabled */
+         qtest_add_func("boot-order/prep", test_prep_boot_order);
+         qtest_add_func("boot-order/pmac_oldworld",
+                        test_pmac_oldworld_boot_order);
+         qtest_add_func("boot-order/pmac_newworld",
+                        test_pmac_newworld_boot_order);
++#endif /* Disabled for RHEL, since CONFIG_MAC and CONFIG_PREP are not enabled */
+     } else if (strcmp(arch, "sparc") == 0) {
+         qtest_add_func("boot-order/sun4m", test_sun4m_boot_order);
+     } else if (strcmp(arch, "sparc64") == 0) {
+--- a/tests/endianness-test.c
++++ b/tests/endianness-test.c
+@@ -40,12 +40,14 @@ static const TestCase test_cases[] = {
+     { "mips64", "mips", 0x14000000, .bswap = true },
+     { "mips64", "malta", 0x10000000, .bswap = true },
+     { "mips64el", "fulong2e", 0x1fd00000 },
++#if 0 /* Disabled for RHEL, since ISA is not enabled */
+     { "ppc", "g3beige", 0xfe000000, .bswap = true, .superio = "i82378" },
+     { "ppc", "prep", 0x80000000, .bswap = true },
+     { "ppc", "bamboo", 0xe8000000, .bswap = true, .superio = "i82378" },
+     { "ppc64", "mac99", 0xf2000000, .bswap = true, .superio = "i82378" },
+     { "ppc64", "pseries", 0x10080000000ULL,
+       .bswap = true, .superio = "i82378" },
++#endif /* Disabled for RHEL, since ISA is not enabled */
+     { "sh4", "r2d", 0xfe240000, .superio = "i82378" },
+     { "sh4eb", "r2d", 0xfe240000, .bswap = true, .superio = "i82378" },
+     { "sparc64", "sun4u", 0x1fe02000000LL, .bswap = true },
+--- a/tests/qemu-iotests/051
++++ b/tests/qemu-iotests/051
+@@ -141,19 +141,19 @@ echo
+ 
+ run_qemu -drive if=floppy
+ run_qemu -drive if=ide,media=cdrom
+-run_qemu -drive if=scsi,media=cdrom
++#run_qemu -drive if=scsi,media=cdrom
+ 
+ run_qemu -drive if=ide
+ run_qemu -drive if=virtio
+-run_qemu -drive if=scsi
++#run_qemu -drive if=scsi
+ 
+ run_qemu -drive if=none,id=disk -device ide-cd,drive=disk
+-run_qemu -drive if=none,id=disk -device lsi53c895a -device scsi-cd,drive=disk
++#run_qemu -drive if=none,id=disk -device lsi53c895a -device scsi-cd,drive=disk
+ 
+ run_qemu -drive if=none,id=disk -device ide-drive,drive=disk
+ run_qemu -drive if=none,id=disk -device ide-hd,drive=disk
+-run_qemu -drive if=none,id=disk -device lsi53c895a -device scsi-disk,drive=disk
+-run_qemu -drive if=none,id=disk -device lsi53c895a -device scsi-hd,drive=disk
++#run_qemu -drive if=none,id=disk -device lsi53c895a -device scsi-disk,drive=disk
++#run_qemu -drive if=none,id=disk -device lsi53c895a -device scsi-hd,drive=disk
+ 
+ echo
+ echo === Read-only ===
+@@ -161,19 +161,19 @@ echo
+ 
+ run_qemu -drive file="$TEST_IMG",if=floppy,readonly=on
+ run_qemu -drive file="$TEST_IMG",if=ide,media=cdrom,readonly=on
+-run_qemu -drive file="$TEST_IMG",if=scsi,media=cdrom,readonly=on
++#run_qemu -drive file="$TEST_IMG",if=scsi,media=cdrom,readonly=on
+ 
+ run_qemu -drive file="$TEST_IMG",if=ide,readonly=on
+ run_qemu -drive file="$TEST_IMG",if=virtio,readonly=on
+-run_qemu -drive file="$TEST_IMG",if=scsi,readonly=on
++#run_qemu -drive file="$TEST_IMG",if=scsi,readonly=on
+ 
+ run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device ide-cd,drive=disk
+-run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device lsi53c895a -device scsi-cd,drive=disk
++#run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device lsi53c895a -device scsi-cd,drive=disk
+ 
+ run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device ide-drive,drive=disk
+ run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device ide-hd,drive=disk
+-run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device lsi53c895a -device scsi-disk,drive=disk
+-run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device lsi53c895a -device scsi-hd,drive=disk
++#run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device lsi53c895a -device scsi-disk,drive=disk
++#run_qemu -drive file="$TEST_IMG",if=none,id=disk,readonly=on -device lsi53c895a -device scsi-hd,drive=disk
+ 
+ echo
+ echo === Cache modes ===
+--- a/tests/qemu-iotests/051.out
++++ b/tests/qemu-iotests/051.out
+@@ -116,10 +116,6 @@ Testing: -drive if=ide,media=cdrom
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+ 
+-Testing: -drive if=scsi,media=cdrom
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+-
+ Testing: -drive if=ide
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) QEMU_PROG: Device needs media, but drive is empty
+@@ -138,10 +134,6 @@ Testing: -drive if=none,id=disk -device ide-cd,drive=disk
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+ 
+-Testing: -drive if=none,id=disk -device lsi53c895a -device scsi-cd,drive=disk
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+-
+ Testing: -drive if=none,id=disk -device ide-drive,drive=disk
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) QEMU_PROG: -device ide-drive,drive=disk: Device needs media, but drive is empty
+@@ -154,17 +146,6 @@ QEMU X.Y.Z monitor - type 'help' for more information
+ QEMU_PROG: -device ide-hd,drive=disk: Device initialization failed.
+ QEMU_PROG: -device ide-hd,drive=disk: Device 'ide-hd' could not be initialized
+ 
+-Testing: -drive if=none,id=disk -device lsi53c895a -device scsi-disk,drive=disk
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) QEMU_PROG: -device scsi-disk,drive=disk: Device needs media, but drive is empty
+-QEMU_PROG: -device scsi-disk,drive=disk: Device 'scsi-disk' could not be initialized
+-
+-Testing: -drive if=none,id=disk -device lsi53c895a -device scsi-hd,drive=disk
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) QEMU_PROG: -device scsi-hd,drive=disk: Device needs media, but drive is empty
+-QEMU_PROG: -device scsi-hd,drive=disk: Device 'scsi-hd' could not be initialized
+-
+-
+ === Read-only ===
+ 
+ Testing: -drive file=TEST_DIR/t.qcow2,if=floppy,readonly=on
+@@ -175,10 +156,6 @@ Testing: -drive file=TEST_DIR/t.qcow2,if=ide,media=cdrom,readonly=on
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+ 
+-Testing: -drive file=TEST_DIR/t.qcow2,if=scsi,media=cdrom,readonly=on
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+-
+ Testing: -drive file=TEST_DIR/t.qcow2,if=ide,readonly=on
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) QEMU_PROG: Can't use a read-only drive
+@@ -188,18 +165,10 @@ Testing: -drive file=TEST_DIR/t.qcow2,if=virtio,readonly=on
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+ 
+-Testing: -drive file=TEST_DIR/t.qcow2,if=scsi,readonly=on
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+-
+ Testing: -drive file=TEST_DIR/t.qcow2,if=none,id=disk,readonly=on -device ide-cd,drive=disk
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+ 
+-Testing: -drive file=TEST_DIR/t.qcow2,if=none,id=disk,readonly=on -device lsi53c895a -device scsi-cd,drive=disk
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+-
+ Testing: -drive file=TEST_DIR/t.qcow2,if=none,id=disk,readonly=on -device ide-drive,drive=disk
+ QEMU X.Y.Z monitor - type 'help' for more information
+ (qemu) QEMU_PROG: -device ide-drive,drive=disk: Can't use a read-only drive
+@@ -212,15 +181,6 @@ QEMU X.Y.Z monitor - type 'help' for more information
+ QEMU_PROG: -device ide-hd,drive=disk: Device initialization failed.
+ QEMU_PROG: -device ide-hd,drive=disk: Device 'ide-hd' could not be initialized
+ 
+-Testing: -drive file=TEST_DIR/t.qcow2,if=none,id=disk,readonly=on -device lsi53c895a -device scsi-disk,drive=disk
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+-
+-Testing: -drive file=TEST_DIR/t.qcow2,if=none,id=disk,readonly=on -device lsi53c895a -device scsi-hd,drive=disk
+-QEMU X.Y.Z monitor - type 'help' for more information
+-(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
+-
+-
+ === Cache modes ===
+ 
+ Testing: -drive media=cdrom,cache=none
+--- a/tests/usb-hcd-xhci-test.c
++++ b/tests/usb-hcd-xhci-test.c
+@@ -23,6 +23,7 @@ static void test_xhci_hotplug(void)
+     usb_test_hotplug("xhci", 1, NULL);
+ }
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux 7 */
+ static void test_usb_uas_hotplug(void)
+ {
+     QDict *response;
+@@ -79,6 +80,7 @@ static void test_usb_uas_hotplug(void)
+     g_assert(!strcmp(qdict_get_str(response, "event"), "DEVICE_DELETED"));
+     QDECREF(response);
+ }
++#endif
+ 
+ int main(int argc, char **argv)
+ {
+@@ -88,8 +90,9 @@ int main(int argc, char **argv)
+ 
+     qtest_add_func("/xhci/pci/init", test_xhci_init);
+     qtest_add_func("/xhci/pci/hotplug", test_xhci_hotplug);
++#if 0 /* Disabled for Red Hat Enterprise Linux 7 */
+     qtest_add_func("/xhci/pci/hotplug/usb-uas", test_usb_uas_hotplug);
+-
++#endif
+     qtest_start("-device nec-usb-xhci,id=xhci"
+                 " -drive id=drive0,if=none,file=/dev/null,format=raw");
+     ret = g_test_run();
+--- a/vl.c
++++ b/vl.c
+@@ -161,7 +161,7 @@ int max_cpus = 0;
+ int smp_cores = 1;
+ int smp_threads = 1;
+ int acpi_enabled = 1;
+-int no_hpet = 0;
++int no_hpet = 1; /* Always disabled for Red Hat Enterprise Linux */
+ int fd_bootchk = 1;
+ static int no_reboot;
+ int no_shutdown = 0;

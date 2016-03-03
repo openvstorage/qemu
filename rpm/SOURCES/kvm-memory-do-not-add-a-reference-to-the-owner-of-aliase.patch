@@ -1,0 +1,67 @@
+From 303b8833d00c2b816af6d0d2d61fb2c6953436e7 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Mon, 10 Aug 2015 05:09:33 +0200
+Subject: [PATCH 12/16] memory: do not add a reference to the owner of aliased
+ regions
+
+Message-id: <1439183375-4841-13-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67439
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 12/14] memory: do not add a reference to the owner of aliased regions
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Paolo Bonzini <pbonzini@redhat.com>
+
+Very often the owner of the aliased region is the same as the owner of the alias
+region itself.  When this happens, the reference count can never go back to 0 and
+the owner is leaked.  This is for example breaking hot-unplug of virtio-pci
+devices (the device cannot be plugged back again with the same id).
+
+Another common use for alias is to transform the system I/O address space
+into an MMIO regions; in this case the aliased region never dies, so there
+is no problem.  Otherwise the owner is always the same for aliasing
+and aliased region.
+
+I checked all calls to memory_region_init_alias introduced after commit
+dfde4e6 (memory: add ref/unref calls, 2013-05-06) and they do not need the
+reference in order to keep the owner of the aliased region alive.
+
+Reported-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 52c91dac6bd891656f297dab76da51fc8bc61309)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ memory.c | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/memory.c b/memory.c
+index 0f6cb81..0aeb445 100644
+--- a/memory.c
++++ b/memory.c
+@@ -864,11 +864,6 @@ static void memory_region_destructor_ram(MemoryRegion *mr)
+     qemu_ram_free(mr->ram_addr);
+ }
+ 
+-static void memory_region_destructor_alias(MemoryRegion *mr)
+-{
+-    memory_region_unref(mr->alias);
+-}
+-
+ static void memory_region_destructor_ram_from_ptr(MemoryRegion *mr)
+ {
+     qemu_ram_free_from_ptr(mr->ram_addr);
+@@ -1272,8 +1267,6 @@ void memory_region_init_alias(MemoryRegion *mr,
+                               uint64_t size)
+ {
+     memory_region_init(mr, owner, name, size);
+-    memory_region_ref(orig);
+-    mr->destructor = memory_region_destructor_alias;
+     mr->alias = orig;
+     mr->alias_offset = offset;
+ }
+-- 
+1.8.3.1
+

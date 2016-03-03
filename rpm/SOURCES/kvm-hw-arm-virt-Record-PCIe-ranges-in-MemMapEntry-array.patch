@@ -1,0 +1,125 @@
+From 94dc5f17b465f6a75715e4180827894bccd6986b Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:20 +0200
+Subject: [PATCH 16/44] hw/arm/virt: Record PCIe ranges in MemMapEntry array
+
+Message-id: <1434455325-23399-9-git-send-email-drjones@redhat.com>
+Patchwork-id: 66240
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 08/33] hw/arm/virt: Record PCIe ranges in MemMapEntry array
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+To generate ACPI table for PCIe controller, we need the base and size of
+the PCIe ranges. Record these ranges in MemMapEntry array, then we could
+share and use them for generating ACPI table.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Message-id: 1432522520-8068-4-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 6a1f001be3ea7478cac803d03149cfcfc1fa2094)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/arm/virt.c         | 37 +++++++++++++------------------------
+ include/hw/arm/virt.h |  3 +++
+ 2 files changed, 16 insertions(+), 24 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 7f4ae74..59635a1 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -117,14 +117,9 @@ static const MemMapEntry a15memmap[] = {
+     [VIRT_FW_CFG] =     { 0x09020000, 0x0000000a },
+     [VIRT_MMIO] =       { 0x0a000000, 0x00000200 },
+     /* ...repeating for a total of NUM_VIRTIO_TRANSPORTS, each of that size */
+-    /*
+-     * PCIE verbose map:
+-     *
+-     * MMIO window      { 0x10000000, 0x2eff0000 },
+-     * PIO window       { 0x3eff0000, 0x00010000 },
+-     * ECAM             { 0x3f000000, 0x01000000 },
+-     */
+-    [VIRT_PCIE] =       { 0x10000000, 0x30000000 },
++    [VIRT_PCIE_MMIO] =  { 0x10000000, 0x2eff0000 },
++    [VIRT_PCIE_PIO] =   { 0x3eff0000, 0x00010000 },
++    [VIRT_PCIE_ECAM] =  { 0x3f000000, 0x01000000 },
+     [VIRT_MEM] =        { 0x40000000, 30ULL * 1024 * 1024 * 1024 },
+ };
+ 
+@@ -628,16 +623,14 @@ static void create_pcie_irq_map(const VirtBoardInfo *vbi, uint32_t gic_phandle,
+ static void create_pcie(const VirtBoardInfo *vbi, qemu_irq *pic,
+                         uint32_t gic_phandle)
+ {
+-    hwaddr base = vbi->memmap[VIRT_PCIE].base;
+-    hwaddr size = vbi->memmap[VIRT_PCIE].size;
+-    hwaddr end = base + size;
+-    hwaddr size_mmio;
+-    hwaddr size_ioport = 64 * 1024;
+-    int nr_pcie_buses = 16;
+-    hwaddr size_ecam = PCIE_MMCFG_SIZE_MIN * nr_pcie_buses;
+-    hwaddr base_mmio = base;
+-    hwaddr base_ioport;
+-    hwaddr base_ecam;
++    hwaddr base_mmio = vbi->memmap[VIRT_PCIE_MMIO].base;
++    hwaddr size_mmio = vbi->memmap[VIRT_PCIE_MMIO].size;
++    hwaddr base_pio = vbi->memmap[VIRT_PCIE_PIO].base;
++    hwaddr size_pio = vbi->memmap[VIRT_PCIE_PIO].size;
++    hwaddr base_ecam = vbi->memmap[VIRT_PCIE_ECAM].base;
++    hwaddr size_ecam = vbi->memmap[VIRT_PCIE_ECAM].size;
++    hwaddr base = base_mmio;
++    int nr_pcie_buses = size_ecam / PCIE_MMCFG_SIZE_MIN;
+     int irq = vbi->irqmap[VIRT_PCIE];
+     MemoryRegion *mmio_alias;
+     MemoryRegion *mmio_reg;
+@@ -647,10 +640,6 @@ static void create_pcie(const VirtBoardInfo *vbi, qemu_irq *pic,
+     char *nodename;
+     int i;
+ 
+-    base_ecam = QEMU_ALIGN_DOWN(end - size_ecam, size_ecam);
+-    base_ioport = QEMU_ALIGN_DOWN(base_ecam - size_ioport, size_ioport);
+-    size_mmio = base_ioport - base;
+-
+     dev = qdev_create(NULL, TYPE_GPEX_HOST);
+     qdev_init_nofail(dev);
+ 
+@@ -673,7 +662,7 @@ static void create_pcie(const VirtBoardInfo *vbi, qemu_irq *pic,
+     memory_region_add_subregion(get_system_memory(), base_mmio, mmio_alias);
+ 
+     /* Map IO port space */
+-    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 2, base_ioport);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 2, base_pio);
+ 
+     for (i = 0; i < GPEX_NUM_IRQS; i++) {
+         sysbus_connect_irq(SYS_BUS_DEVICE(dev), i, pic[irq + i]);
+@@ -693,7 +682,7 @@ static void create_pcie(const VirtBoardInfo *vbi, qemu_irq *pic,
+                                  2, base_ecam, 2, size_ecam);
+     qemu_fdt_setprop_sized_cells(vbi->fdt, nodename, "ranges",
+                                  1, FDT_PCI_RANGE_IOPORT, 2, 0,
+-                                 2, base_ioport, 2, size_ioport,
++                                 2, base_pio, 2, size_pio,
+                                  1, FDT_PCI_RANGE_MMIO, 2, base_mmio,
+                                  2, base_mmio, 2, size_mmio);
+ 
+diff --git a/include/hw/arm/virt.h b/include/hw/arm/virt.h
+index 2fe0d2e..49a85cc 100644
+--- a/include/hw/arm/virt.h
++++ b/include/hw/arm/virt.h
+@@ -45,6 +45,9 @@ enum {
+     VIRT_RTC,
+     VIRT_FW_CFG,
+     VIRT_PCIE,
++    VIRT_PCIE_MMIO,
++    VIRT_PCIE_PIO,
++    VIRT_PCIE_ECAM,
+ };
+ 
+ typedef struct MemMapEntry {
+-- 
+1.8.3.1
+

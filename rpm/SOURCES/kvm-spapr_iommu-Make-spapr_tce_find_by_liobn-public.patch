@@ -1,0 +1,70 @@
+From f6415c436e262817110c34e7ba820e29bc3324e2 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Wed, 16 Sep 2015 16:03:49 +0200
+Subject: [PATCH 07/22] spapr_iommu: Make spapr_tce_find_by_liobn() public
+
+Message-id: <1442419432-8537-3-git-send-email-lvivier@redhat.com>
+Patchwork-id: 67786
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 2/5] spapr_iommu: Make spapr_tce_find_by_liobn() public
+Bugzilla: 1263795
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Alexey Kardashevskiy <aik@ozlabs.ru>
+
+At the moment spapr_tce_find_by_liobn() is used by H_PUT_TCE/...
+handlers to find an IOMMU by LIOBN.
+
+We are going to implement Dynamic DMA windows (DDW), new code
+will go to a new file and we will use spapr_tce_find_by_liobn()
+there too so let's make it public.
+
+Signed-off-by: Alexey Kardashevskiy <aik@ozlabs.ru>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit fae807a2b182a613798fe619f9069bd0bbe3dc6a)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	include/hw/ppc/spapr.h
+Conflicts with out of order commit:
+28e0204 spapr: Merge sPAPREnvironment into sPAPRMachineState
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1250326
+---
+ hw/ppc/spapr_iommu.c   | 2 +-
+ include/hw/ppc/spapr.h | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/ppc/spapr_iommu.c b/hw/ppc/spapr_iommu.c
+index bcca430..f5ee95f 100644
+--- a/hw/ppc/spapr_iommu.c
++++ b/hw/ppc/spapr_iommu.c
+@@ -41,7 +41,7 @@ enum sPAPRTCEAccess {
+ 
+ static QLIST_HEAD(spapr_tce_tables, sPAPRTCETable) spapr_tce_tables;
+ 
+-static sPAPRTCETable *spapr_tce_find_by_liobn(uint32_t liobn)
++sPAPRTCETable *spapr_tce_find_by_liobn(uint32_t liobn)
+ {
+     sPAPRTCETable *tcet;
+ 
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index 4c788c5..a23ef6a 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -573,6 +573,7 @@ struct sPAPREventLogEntry {
+     QTAILQ_ENTRY(sPAPREventLogEntry) next;
+ };
+ 
++sPAPRTCETable *spapr_tce_find_by_liobn(uint32_t liobn);
+ void spapr_events_init(sPAPRMachineState *sm);
+ void spapr_events_fdt_skel(void *fdt, uint32_t epow_irq);
+ int spapr_h_cas_compose_response(sPAPRMachineState *sm,
+-- 
+1.8.3.1
+

@@ -1,0 +1,184 @@
+From 017ff3d303d6160727d7f5652712b1730d38ded7 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:58 +0200
+Subject: [PATCH 084/100] virtio-input: emulated devices [pci]
+
+Message-id: <1436260751-25015-56-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66830
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 55/68] virtio-input: emulated devices [pci]
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+This patch adds virtio-pci support for the emulated virtio-input
+devices.  Using them is as simple as adding "-device virtio-tablet-pci"
+to your command line.  If you want add multiple devices but don't want
+waste a pci slot for each you can compose a multifunction device this way:
+
+qemu -device virtio-keyboard-pci,addr=0d.0,multifunction=on \
+     -device virtio-tablet-pci,addr=0d.1,multifunction=on
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 710e2d90da1a16807f7885d37b203ce739fdc53a)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 84 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ hw/virtio/virtio-pci.h | 13 ++++++++
+ 2 files changed, 97 insertions(+)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 24ba519..1aba4e2 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1928,6 +1928,12 @@ static const TypeInfo virtio_rng_pci_info = {
+ 
+ /* virtio-input-pci */
+ 
++static Property virtio_input_hid_pci_properties[] = {
++    DEFINE_VIRTIO_INPUT_PROPERTIES(VirtIOInputPCI, vdev.input),
++    DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 2),
++    DEFINE_PROP_END_OF_LIST(),
++};
++
+ static void virtio_input_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
+ {
+     VirtIOInputPCI *vinput = VIRTIO_INPUT_PCI(vpci_dev);
+@@ -1952,6 +1958,49 @@ static void virtio_input_pci_class_init(ObjectClass *klass, void *data)
+     pcidev_k->class_id = PCI_CLASS_INPUT_OTHER;
+ }
+ 
++static void virtio_input_hid_pci_class_init(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->props = virtio_input_hid_pci_properties;
++}
++
++static void virtio_input_hid_kbd_pci_class_init(ObjectClass *klass, void *data)
++{
++    PCIDeviceClass *pcidev_k = PCI_DEVICE_CLASS(klass);
++
++    pcidev_k->class_id = PCI_CLASS_INPUT_KEYBOARD;
++}
++
++static void virtio_input_hid_mouse_pci_class_init(ObjectClass *klass,
++                                                  void *data)
++{
++    PCIDeviceClass *pcidev_k = PCI_DEVICE_CLASS(klass);
++
++    pcidev_k->class_id = PCI_CLASS_INPUT_MOUSE;
++}
++
++static void virtio_keyboard_initfn(Object *obj)
++{
++    VirtIOInputHIDPCI *dev = VIRTIO_INPUT_HID_PCI(obj);
++    object_initialize(&dev->vdev, sizeof(dev->vdev), TYPE_VIRTIO_KEYBOARD);
++    object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
++}
++
++static void virtio_mouse_initfn(Object *obj)
++{
++    VirtIOInputHIDPCI *dev = VIRTIO_INPUT_HID_PCI(obj);
++    object_initialize(&dev->vdev, sizeof(dev->vdev), TYPE_VIRTIO_MOUSE);
++    object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
++}
++
++static void virtio_tablet_initfn(Object *obj)
++{
++    VirtIOInputHIDPCI *dev = VIRTIO_INPUT_HID_PCI(obj);
++    object_initialize(&dev->vdev, sizeof(dev->vdev), TYPE_VIRTIO_TABLET);
++    object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
++}
++
+ static const TypeInfo virtio_input_pci_info = {
+     .name          = TYPE_VIRTIO_INPUT_PCI,
+     .parent        = TYPE_VIRTIO_PCI,
+@@ -1960,6 +2009,37 @@ static const TypeInfo virtio_input_pci_info = {
+     .abstract      = true,
+ };
+ 
++static const TypeInfo virtio_input_hid_pci_info = {
++    .name          = TYPE_VIRTIO_INPUT_HID_PCI,
++    .parent        = TYPE_VIRTIO_INPUT_PCI,
++    .instance_size = sizeof(VirtIOInputHIDPCI),
++    .class_init    = virtio_input_hid_pci_class_init,
++    .abstract      = true,
++};
++
++static const TypeInfo virtio_keyboard_pci_info = {
++    .name          = TYPE_VIRTIO_KEYBOARD_PCI,
++    .parent        = TYPE_VIRTIO_INPUT_HID_PCI,
++    .class_init    = virtio_input_hid_kbd_pci_class_init,
++    .instance_size = sizeof(VirtIOInputHIDPCI),
++    .instance_init = virtio_keyboard_initfn,
++};
++
++static const TypeInfo virtio_mouse_pci_info = {
++    .name          = TYPE_VIRTIO_MOUSE_PCI,
++    .parent        = TYPE_VIRTIO_INPUT_HID_PCI,
++    .class_init    = virtio_input_hid_mouse_pci_class_init,
++    .instance_size = sizeof(VirtIOInputHIDPCI),
++    .instance_init = virtio_mouse_initfn,
++};
++
++static const TypeInfo virtio_tablet_pci_info = {
++    .name          = TYPE_VIRTIO_TABLET_PCI,
++    .parent        = TYPE_VIRTIO_INPUT_HID_PCI,
++    .instance_size = sizeof(VirtIOInputHIDPCI),
++    .instance_init = virtio_tablet_initfn,
++};
++
+ /* virtio-pci-bus */
+ 
+ static void virtio_pci_bus_new(VirtioBusState *bus, size_t bus_size,
+@@ -2002,6 +2082,10 @@ static void virtio_pci_register_types(void)
+ {
+     type_register_static(&virtio_rng_pci_info);
+     type_register_static(&virtio_input_pci_info);
++    type_register_static(&virtio_input_hid_pci_info);
++    type_register_static(&virtio_keyboard_pci_info);
++    type_register_static(&virtio_mouse_pci_info);
++    type_register_static(&virtio_tablet_pci_info);
+     type_register_static(&virtio_pci_bus_info);
+     type_register_static(&virtio_pci_info);
+ #ifdef CONFIG_VIRTFS
+diff --git a/hw/virtio/virtio-pci.h b/hw/virtio/virtio-pci.h
+index 754971f..d962125 100644
+--- a/hw/virtio/virtio-pci.h
++++ b/hw/virtio/virtio-pci.h
+@@ -41,6 +41,7 @@ typedef struct VirtIONetPCI VirtIONetPCI;
+ typedef struct VHostSCSIPCI VHostSCSIPCI;
+ typedef struct VirtIORngPCI VirtIORngPCI;
+ typedef struct VirtIOInputPCI VirtIOInputPCI;
++typedef struct VirtIOInputHIDPCI VirtIOInputHIDPCI;
+ 
+ /* virtio-pci-bus */
+ 
+@@ -248,6 +249,18 @@ struct VirtIOInputPCI {
+     VirtIOInput vdev;
+ };
+ 
++#define TYPE_VIRTIO_INPUT_HID_PCI "virtio-input-hid-pci"
++#define TYPE_VIRTIO_KEYBOARD_PCI  "virtio-keyboard-pci"
++#define TYPE_VIRTIO_MOUSE_PCI     "virtio-mouse-pci"
++#define TYPE_VIRTIO_TABLET_PCI    "virtio-tablet-pci"
++#define VIRTIO_INPUT_HID_PCI(obj) \
++        OBJECT_CHECK(VirtIOInputHIDPCI, (obj), TYPE_VIRTIO_INPUT_HID_PCI)
++
++struct VirtIOInputHIDPCI {
++    VirtIOPCIProxy parent_obj;
++    VirtIOInputHID vdev;
++};
++
+ /* Virtio ABI version, if we increment this, we break the guest driver. */
+ #define VIRTIO_PCI_ABI_VERSION          0
+ 
+-- 
+1.8.3.1
+

@@ -1,0 +1,134 @@
+From 42128fee8304189853ed3b528226a60fcffead18 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:21 +0200
+Subject: [PATCH 12/31] hw/pci: made pci_bus_is_root a PCIBusClass method
+
+Message-id: <1435154016-26233-29-git-send-email-marcel@redhat.com>
+Patchwork-id: 66455
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 28/43] hw/pci: made pci_bus_is_root a PCIBusClass method
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+From: Marcel Apfelbaum <marcel.a@redhat.com>
+
+Refactoring it as a method of PCIBusClass will allow
+different implementations for subclasses.
+
+Removed the assumption that the root bus does not
+have a parent device because is specific only
+to the default class implementation.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit ce6a28ee057da3e4a587dada369e33a8486b0066)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci/pci.c             | 17 ++++++++++++++---
+ include/hw/pci/pci.h     |  2 ++
+ include/hw/pci/pci_bus.h |  8 ++++++++
+ 3 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index b51f229..a77871b 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -88,9 +88,15 @@ static void pci_bus_unrealize(BusState *qbus, Error **errp)
+     vmstate_unregister(NULL, &vmstate_pcibus, bus);
+ }
+ 
++static bool pcibus_is_root(PCIBus *bus)
++{
++    return !bus->parent_dev;
++}
++
+ static void pci_bus_class_init(ObjectClass *klass, void *data)
+ {
+     BusClass *k = BUS_CLASS(klass);
++    PCIBusClass *pbc = PCI_BUS_CLASS(klass);
+ 
+     k->print_dev = pcibus_dev_print;
+     k->get_dev_path = pcibus_get_dev_path;
+@@ -98,12 +104,15 @@ static void pci_bus_class_init(ObjectClass *klass, void *data)
+     k->realize = pci_bus_realize;
+     k->unrealize = pci_bus_unrealize;
+     k->reset = pcibus_reset;
++
++    pbc->is_root = pcibus_is_root;
+ }
+ 
+ static const TypeInfo pci_bus_info = {
+     .name = TYPE_PCI_BUS,
+     .parent = TYPE_BUS,
+     .instance_size = sizeof(PCIBus),
++    .class_size = sizeof(PCIBusClass),
+     .class_init = pci_bus_class_init,
+ };
+ 
+@@ -278,7 +287,10 @@ PCIBus *pci_device_root_bus(const PCIDevice *d)
+ {
+     PCIBus *bus = d->bus;
+ 
+-    while ((d = bus->parent_dev) != NULL) {
++    while (!pci_bus_is_root(bus)) {
++        d = bus->parent_dev;
++        assert(d != NULL);
++
+         bus = d->bus;
+     }
+ 
+@@ -291,7 +303,6 @@ const char *pci_root_bus_path(PCIDevice *dev)
+     PCIHostState *host_bridge = PCI_HOST_BRIDGE(rootbus->qbus.parent);
+     PCIHostBridgeClass *hc = PCI_HOST_BRIDGE_GET_CLASS(host_bridge);
+ 
+-    assert(!rootbus->parent_dev);
+     assert(host_bridge->bus == rootbus);
+ 
+     if (hc->root_bus_path) {
+@@ -325,7 +336,7 @@ bool pci_bus_is_express(PCIBus *bus)
+ 
+ bool pci_bus_is_root(PCIBus *bus)
+ {
+-    return !bus->parent_dev;
++    return PCI_BUS_GET_CLASS(bus)->is_root(bus);
+ }
+ 
+ void pci_bus_new_inplace(PCIBus *bus, size_t bus_size, DeviceState *parent,
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index 8558d6e..9586b73 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -345,6 +345,8 @@ typedef PCIINTxRoute (*pci_route_irq_fn)(void *opaque, int pin);
+ 
+ #define TYPE_PCI_BUS "PCI"
+ #define PCI_BUS(obj) OBJECT_CHECK(PCIBus, (obj), TYPE_PCI_BUS)
++#define PCI_BUS_CLASS(klass) OBJECT_CLASS_CHECK(PCIBusClass, (klass), TYPE_PCI_BUS)
++#define PCI_BUS_GET_CLASS(obj) OBJECT_GET_CLASS(PCIBusClass, (obj), TYPE_PCI_BUS)
+ #define TYPE_PCIE_BUS "PCIE"
+ 
+ bool pci_bus_is_express(PCIBus *bus);
+diff --git a/include/hw/pci/pci_bus.h b/include/hw/pci/pci_bus.h
+index fabaeee..b5ba9c4 100644
+--- a/include/hw/pci/pci_bus.h
++++ b/include/hw/pci/pci_bus.h
+@@ -8,6 +8,14 @@
+  * use accessor functions in pci.h, pci_bridge.h
+  */
+ 
++typedef struct PCIBusClass {
++    /*< private >*/
++    BusClass parent_class;
++    /*< public >*/
++
++    bool (*is_root)(PCIBus *bus);
++} PCIBusClass;
++
+ struct PCIBus {
+     BusState qbus;
+     PCIIOMMUFunc iommu_fn;
+-- 
+1.8.3.1
+

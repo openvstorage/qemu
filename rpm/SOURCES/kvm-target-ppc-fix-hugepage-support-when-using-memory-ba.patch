@@ -1,0 +1,140 @@
+From c137583fc3e2be391cfe9b3ccd0766989ca9bc49 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Tue, 29 Sep 2015 03:19:03 +0200
+Subject: [PATCH 01/44] target-ppc: fix hugepage support when using
+ memory-backend-file
+
+Message-id: <1443496743-29679-1-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67966
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] target-ppc: fix hugepage support when using memory-backend-file
+Bugzilla: 1279387
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: David Gibson <david@gibson.dropbear.id.au>
+
+Current PPC code relies on -mem-path being used in order for
+hugepage support to be detected. With the introduction of
+MemoryBackendFile we can now handle this via:
+  -object memory-file-backend,mem-path=...,id=hugemem0 \
+  -numa node,id=mem0,memdev=hugemem0
+
+Management tools like libvirt treat the 2 approaches as
+interchangeable in some cases, which can lead to user-visible
+regressions even for previously supported guest configurations.
+
+Fix these by also iterating through any configured memory
+backends that may be backed by hugepages.
+
+Since the old code assumed hugepages always backed the entirety
+of guest memory, play it safe an pick the minimum across the
+max pages sizes for all backends, even ones that aren't backed
+by hugepages.
+
+Signed-off-by: Michael Roth <mdroth@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 2d103aae876518a91636ad6f4a4d866269c0d953)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	target-ppc/kvm.c
+
+Contextual conflict in the #includes because downstream doesn't have
+4c66375.
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+---
+ target-ppc/kvm.c | 57 ++++++++++++++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 51 insertions(+), 6 deletions(-)
+
+diff --git a/target-ppc/kvm.c b/target-ppc/kvm.c
+index 9a7f244..5dcde8c 100644
+--- a/target-ppc/kvm.c
++++ b/target-ppc/kvm.c
+@@ -39,6 +39,7 @@
+ #include "sysemu/watchdog.h"
+ #include "trace.h"
+ #include "exec/gdbstub.h"
++#include "sysemu/hostmem.h"
+ 
+ //#define DEBUG_KVM
+ 
+@@ -302,16 +303,11 @@ static void kvm_get_smmu_info(PowerPCCPU *cpu, struct kvm_ppc_smmu_info *info)
+     kvm_get_fallback_smmu_info(cpu, info);
+ }
+ 
+-static long getrampagesize(void)
++static long gethugepagesize(const char *mem_path)
+ {
+     struct statfs fs;
+     int ret;
+ 
+-    if (!mem_path) {
+-        /* guest RAM is backed by normal anonymous pages */
+-        return getpagesize();
+-    }
+-
+     do {
+         ret = statfs(mem_path, &fs);
+     } while (ret != 0 && errno == EINTR);
+@@ -333,6 +329,55 @@ static long getrampagesize(void)
+     return fs.f_bsize;
+ }
+ 
++static int find_max_supported_pagesize(Object *obj, void *opaque)
++{
++    char *mem_path;
++    long *hpsize_min = opaque;
++
++    if (object_dynamic_cast(obj, TYPE_MEMORY_BACKEND)) {
++        mem_path = object_property_get_str(obj, "mem-path", NULL);
++        if (mem_path) {
++            long hpsize = gethugepagesize(mem_path);
++            if (hpsize < *hpsize_min) {
++                *hpsize_min = hpsize;
++            }
++        } else {
++            *hpsize_min = getpagesize();
++        }
++    }
++
++    return 0;
++}
++
++static long getrampagesize(void)
++{
++    long hpsize = LONG_MAX;
++    Object *memdev_root;
++
++    if (mem_path) {
++        return gethugepagesize(mem_path);
++    }
++
++    /* it's possible we have memory-backend objects with
++     * hugepage-backed RAM. these may get mapped into system
++     * address space via -numa parameters or memory hotplug
++     * hooks. we want to take these into account, but we
++     * also want to make sure these supported hugepage
++     * sizes are applicable across the entire range of memory
++     * we may boot from, so we take the min across all
++     * backends, and assume normal pages in cases where a
++     * backend isn't backed by hugepages.
++     */
++    memdev_root = object_resolve_path("/objects", NULL);
++    if (!memdev_root) {
++        return getpagesize();
++    }
++
++    object_child_foreach(memdev_root, find_max_supported_pagesize, &hpsize);
++
++    return (hpsize == LONG_MAX) ? getpagesize() : hpsize;
++}
++
+ static bool kvm_valid_page_size(uint32_t flags, long rampgsize, uint32_t shift)
+ {
+     if (!(flags & KVM_PPC_PAGE_SIZES_REAL)) {
+-- 
+1.8.3.1
+

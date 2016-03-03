@@ -1,0 +1,114 @@
+From 6fc01a12e5cc7c3801f2d9f11237c285146d8ce6 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Wed, 30 Sep 2015 08:08:35 +0200
+Subject: [PATCH 4/5] virtio-net: unbreak self announcement and guest offloads
+ after migration
+
+Message-id: <1443600515-8452-1-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67995
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] virtio-net: unbreak self announcement and guest offloads after migration
+Bugzilla: 1262232
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Bugzilla: 1262232
+Brew Build: http://brewweb.devel.redhat.com/brew/taskinfo?taskID=9901960
+Test status: Tested by myself
+
+After commit 019a3edbb25f1571e876f8af1ce4c55412939e5d ("virtio: make
+features 64bit wide"). Device's guest_features was actually set after
+vdc->load(). This breaks the assumption that device specific load()
+function can check guest_features. For virtio-net, self announcement
+and guest offloads won't work after migration.
+
+Fixing this by defer them to virtio_net_load() where guest_features
+were guaranteed to be set. Other virtio devices looks fine.
+
+Fixes: 019a3edbb25f1571e876f8af1ce4c55412939e5d
+       ("virtio: make features 64bit wide")
+Cc: qemu-stable@nongnu.org
+Cc: Gerd Hoffmann <kraxel@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+(cherry picked from commit 1f8828ef573c83365b4a87a776daf8bcef1caa21)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/virtio-net.c | 40 +++++++++++++++++++++++-----------------
+ 1 file changed, 23 insertions(+), 17 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 8fc8d54..a13b79e 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -1468,11 +1468,33 @@ static int virtio_net_load(QEMUFile *f, void *opaque, int version_id)
+ {
+     VirtIONet *n = opaque;
+     VirtIODevice *vdev = VIRTIO_DEVICE(n);
++    int ret;
+ 
+     if (version_id < 2 || version_id > VIRTIO_NET_VM_VERSION)
+         return -EINVAL;
+ 
+-    return virtio_load(vdev, f, version_id);
++    ret = virtio_load(vdev, f, version_id);
++    if (ret) {
++        return ret;
++    }
++
++    if (virtio_vdev_has_feature(vdev, VIRTIO_NET_F_CTRL_GUEST_OFFLOADS)) {
++        n->curr_guest_offloads = qemu_get_be64(f);
++    } else {
++        n->curr_guest_offloads = virtio_net_supported_guest_offloads(n);
++    }
++
++    if (peer_has_vnet_hdr(n)) {
++        virtio_net_apply_guest_offloads(n);
++    }
++
++    if (virtio_vdev_has_feature(vdev, VIRTIO_NET_F_GUEST_ANNOUNCE) &&
++        virtio_vdev_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ)) {
++        n->announce_counter = SELF_ANNOUNCE_ROUNDS;
++        timer_mod(n->announce_timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL));
++    }
++
++    return 0;
+ }
+ 
+ static int virtio_net_load_device(VirtIODevice *vdev, QEMUFile *f,
+@@ -1569,16 +1591,6 @@ static int virtio_net_load_device(VirtIODevice *vdev, QEMUFile *f,
+         }
+     }
+ 
+-    if (virtio_vdev_has_feature(vdev, VIRTIO_NET_F_CTRL_GUEST_OFFLOADS)) {
+-        n->curr_guest_offloads = qemu_get_be64(f);
+-    } else {
+-        n->curr_guest_offloads = virtio_net_supported_guest_offloads(n);
+-    }
+-
+-    if (peer_has_vnet_hdr(n)) {
+-        virtio_net_apply_guest_offloads(n);
+-    }
+-
+     virtio_net_set_queues(n);
+ 
+     /* Find the first multicast entry in the saved MAC filter */
+@@ -1596,12 +1608,6 @@ static int virtio_net_load_device(VirtIODevice *vdev, QEMUFile *f,
+         qemu_get_subqueue(n->nic, i)->link_down = link_down;
+     }
+ 
+-    if (virtio_vdev_has_feature(vdev, VIRTIO_NET_F_GUEST_ANNOUNCE) &&
+-        virtio_vdev_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ)) {
+-        n->announce_counter = SELF_ANNOUNCE_ROUNDS;
+-        timer_mod(n->announce_timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL));
+-    }
+-
+     return 0;
+ }
+ 
+-- 
+1.8.3.1
+

@@ -1,0 +1,55 @@
+From 28bf8a9f3cf68ad57042fc5d2585c32afcc83ad2 Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 3 Jul 2015 19:13:34 +0200
+Subject: [PATCH 024/100] virtio: introduce virtio_legacy_is_cross_endian()
+
+Message-id: <1435950819-10991-3-git-send-email-thuth@redhat.com>
+Patchwork-id: 66695
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 2/7] virtio: introduce virtio_legacy_is_cross_endian()
+Bugzilla: 1225715
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Greg Kurz <gkurz@linux.vnet.ibm.com>
+
+This helper will be used by vhost and tap to detect cross-endianness in
+the legacy virtio case.
+
+Signed-off-by: Greg Kurz <gkurz@linux.vnet.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 41d283bdab08868a244b9c19dce507fdf15a8990)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/virtio/virtio-access.h | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/include/hw/virtio/virtio-access.h b/include/hw/virtio/virtio-access.h
+index 46456fd..caf0940 100644
+--- a/include/hw/virtio/virtio-access.h
++++ b/include/hw/virtio/virtio-access.h
+@@ -28,6 +28,19 @@ static inline bool virtio_access_is_big_endian(VirtIODevice *vdev)
+ #endif
+ }
+ 
++static inline bool virtio_legacy_is_cross_endian(VirtIODevice *vdev)
++{
++#ifdef TARGET_IS_BIENDIAN
++#ifdef HOST_WORDS_BIGENDIAN
++    return !virtio_is_big_endian(vdev);
++#else
++    return virtio_is_big_endian(vdev);
++#endif
++#else
++    return false;
++#endif
++}
++
+ static inline uint16_t virtio_lduw_phys(VirtIODevice *vdev, hwaddr pa)
+ {
+     if (virtio_access_is_big_endian(vdev)) {
+-- 
+1.8.3.1
+

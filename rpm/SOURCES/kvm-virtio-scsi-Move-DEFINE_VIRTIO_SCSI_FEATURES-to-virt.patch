@@ -1,0 +1,120 @@
+From cf2cecbcc73e7d4bb379889b4eefc6c0b23c10ee Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:09 +0200
+Subject: [PATCH 035/100] virtio-scsi: Move DEFINE_VIRTIO_SCSI_FEATURES to
+ virtio-scsi
+
+Message-id: <1436260751-25015-7-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66781
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 06/68] virtio-scsi: Move DEFINE_VIRTIO_SCSI_FEATURES to virtio-scsi
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Shannon Zhao <shannon.zhao@linaro.org>
+
+So far virtio-scsi-device can't expose host features to guest while
+using virtio-mmio because it doesn't set DEFINE_VIRTIO_SCSI_FEATURES on
+backend or transport.
+
+The host features belong to the backends while virtio-scsi-pci,
+virtio-scsi-s390 and virtio-scsi-ccw set the DEFINE_VIRTIO_SCSI_FEATURES
+on transports. But they already have the ability to forward property
+accesses to the backend child. So if we move the host features to
+backends, it doesn't break the backwards compatibility for them and
+make host features work while using virtio-mmio.
+
+Move DEFINE_VIRTIO_SCSI_FEATURES to the backend virtio-scsi. The
+transports just sync the host features from backends.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit da2f84d1270d203027d82f778d5bcc1f7a49bab0)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/s390x/s390-virtio-bus.c      | 1 -
+ hw/s390x/virtio-ccw.c           | 1 -
+ hw/scsi/virtio-scsi.c           | 5 +++++
+ hw/virtio/virtio-pci.c          | 1 -
+ include/hw/virtio/virtio-scsi.h | 1 +
+ 5 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/hw/s390x/s390-virtio-bus.c b/hw/s390x/s390-virtio-bus.c
+index 118ad21..04ed89f 100644
+--- a/hw/s390x/s390-virtio-bus.c
++++ b/hw/s390x/s390-virtio-bus.c
+@@ -637,7 +637,6 @@ static const TypeInfo virtio_s390_device_info = {
+ 
+ static Property s390_virtio_scsi_properties[] = {
+     DEFINE_VIRTIO_COMMON_FEATURES(VirtIOS390Device, host_features),
+-    DEFINE_VIRTIO_SCSI_FEATURES(VirtIOS390Device, host_features),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index 083da1a..e15e2b3 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -1522,7 +1522,6 @@ static const TypeInfo virtio_ccw_balloon = {
+ 
+ static Property virtio_ccw_scsi_properties[] = {
+     DEFINE_PROP_STRING("devno", VirtioCcwDevice, bus_id),
+-    DEFINE_VIRTIO_SCSI_FEATURES(VirtioCcwDevice, host_features[0]),
+     DEFINE_PROP_BIT("ioeventfd", VirtioCcwDevice, flags,
+                     VIRTIO_CCW_FLAG_USE_IOEVENTFD_BIT, true),
+     DEFINE_PROP_END_OF_LIST(),
+diff --git a/hw/scsi/virtio-scsi.c b/hw/scsi/virtio-scsi.c
+index 13a272a..5818159 100644
+--- a/hw/scsi/virtio-scsi.c
++++ b/hw/scsi/virtio-scsi.c
+@@ -631,6 +631,10 @@ static void virtio_scsi_set_config(VirtIODevice *vdev,
+ static uint32_t virtio_scsi_get_features(VirtIODevice *vdev,
+                                          uint32_t requested_features)
+ {
++    VirtIOSCSI *s = VIRTIO_SCSI(vdev);
++
++    /* Firstly sync all virtio-scsi possible supported features */
++    requested_features |= s->host_features;
+     return requested_features;
+ }
+ 
+@@ -945,6 +949,7 @@ static void virtio_scsi_device_unrealize(DeviceState *dev, Error **errp)
+ 
+ static Property virtio_scsi_properties[] = {
+     DEFINE_VIRTIO_SCSI_PROPERTIES(VirtIOSCSI, parent_obj.conf),
++    DEFINE_VIRTIO_SCSI_FEATURES(VirtIOSCSI, host_features),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 05e9afd..2f1e03f 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1094,7 +1094,6 @@ static Property virtio_scsi_pci_properties[] = {
+                     VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT, true),
+     DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors,
+                        DEV_NVECTORS_UNSPECIFIED),
+-    DEFINE_VIRTIO_SCSI_FEATURES(VirtIOPCIProxy, host_features),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/include/hw/virtio/virtio-scsi.h b/include/hw/virtio/virtio-scsi.h
+index f93b57d..b42e7f1 100644
+--- a/include/hw/virtio/virtio-scsi.h
++++ b/include/hw/virtio/virtio-scsi.h
+@@ -98,6 +98,7 @@ typedef struct VirtIOSCSI {
+     bool dataplane_fenced;
+     Error *blocker;
+     Notifier migration_state_notifier;
++    uint32_t host_features;
+ } VirtIOSCSI;
+ 
+ typedef struct VirtIOSCSIReq {
+-- 
+1.8.3.1
+

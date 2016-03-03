@@ -1,0 +1,58 @@
+From 74a495e6f410a9a8f52d041d1b59f2a850a7c6c1 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:06 +0200
+Subject: [PATCH 21/28] migration: Add migration events on target side
+
+Message-id: <1438098431-30847-22-git-send-email-quintela@redhat.com>
+Patchwork-id: 67181
+O-Subject: [RHEL-7 qemu-kvm PATCH 21/26] migration: Add migration events on target side
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+We reuse the migration events from the source side, sending them on the
+appropiate place.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 7cf1fe6d68eb2ad3b77e2a89f097354db5d627e2)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/migration.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 0e7a433..907fdef 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -191,6 +191,7 @@ void qemu_start_incoming_migration(const char *uri, Error **errp)
+ {
+     const char *p;
+ 
++    qapi_event_send_migration(MIGRATION_STATUS_SETUP, &error_abort);
+     if (!strcmp(uri, "defer")) {
+         deferred_incoming_migration(errp);
+     } else if (strstart(uri, "tcp:", &p)) {
+@@ -218,13 +219,16 @@ static void process_incoming_migration_co(void *opaque)
+     Error *local_err = NULL;
+     int ret;
+ 
++    migrate_generate_event(MIGRATION_STATUS_ACTIVE);
+     ret = qemu_loadvm_state(f);
+     qemu_fclose(f);
+     free_xbzrle_decoded_buf();
+     if (ret < 0) {
++        migrate_generate_event(MIGRATION_STATUS_FAILED);
+         error_report("load of migration failed: %s", strerror(-ret));
+         exit(EXIT_FAILURE);
+     }
++    migrate_generate_event(MIGRATION_STATUS_COMPLETED);
+     qemu_announce_self();
+ 
+     /* Make sure all file formats flush their mutable metadata */
+-- 
+1.8.3.1
+

@@ -1,0 +1,71 @@
+From 70ef452a2f7b9dbdcf367b18a3f4a4fb1ec12fc6 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:41 +0200
+Subject: [PATCH 067/100] virtio-pci: switch to modern accessors for 1.0
+
+Message-id: <1436260751-25015-39-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66813
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 38/68] virtio-pci: switch to modern accessors for 1.0
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+virtio 1.0 config space is in LE format for all
+devices, use modern wrappers when accessed through
+the 1.0 BAR.
+
+Reported-by: Rusty Russell <rusty@rustcorp.com.au>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 54c720d49d3f9741b52ac95c65a5cc990254a5d8)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index a41ceee..455b90f 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1162,13 +1162,13 @@ static uint64_t virtio_pci_device_read(void *opaque, hwaddr addr,
+ 
+     switch (size) {
+     case 1:
+-        val = virtio_config_readb(vdev, addr);
++        val = virtio_config_modern_readb(vdev, addr);
+         break;
+     case 2:
+-        val = virtio_config_readw(vdev, addr);
++        val = virtio_config_modern_readw(vdev, addr);
+         break;
+     case 4:
+-        val = virtio_config_readl(vdev, addr);
++        val = virtio_config_modern_readl(vdev, addr);
+         break;
+     }
+     return val;
+@@ -1180,13 +1180,13 @@ static void virtio_pci_device_write(void *opaque, hwaddr addr,
+     VirtIODevice *vdev = opaque;
+     switch (size) {
+     case 1:
+-        virtio_config_writeb(vdev, addr, val);
++        virtio_config_modern_writeb(vdev, addr, val);
+         break;
+     case 2:
+-        virtio_config_writew(vdev, addr, val);
++        virtio_config_modern_writew(vdev, addr, val);
+         break;
+     case 4:
+-        virtio_config_writel(vdev, addr, val);
++        virtio_config_modern_writel(vdev, addr, val);
+         break;
+     }
+ }
+-- 
+1.8.3.1
+

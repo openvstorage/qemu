@@ -1,0 +1,154 @@
+From c9b7c975fe8da18ebbbecdccfb20ca7308908352 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:22 +0100
+Subject: [PATCH 17/44] vhost: add vhost_set_log_base op
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-11-git-send-email-mst@redhat.com>
+Patchwork-id: 68371
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 10/36] vhost: add vhost_set_log_base op
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Split VHOST_SET_LOG_BASE call in a seperate function callback, so that
+type safety works and more arguments can be added in the next patches.
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit c2bea314f6a2870b847c79e2e11263c5f9334db7)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost-backend.c         |  8 +++++++-
+ hw/virtio/vhost-user.c            | 16 +++++++++++++++-
+ hw/virtio/vhost.c                 |  6 +++---
+ include/hw/virtio/vhost-backend.h |  3 +++
+ 4 files changed, 28 insertions(+), 5 deletions(-)
+
+diff --git a/hw/virtio/vhost-backend.c b/hw/virtio/vhost-backend.c
+index 72d1392..f59c09f 100644
+--- a/hw/virtio/vhost-backend.c
++++ b/hw/virtio/vhost-backend.c
+@@ -11,7 +11,7 @@
+ #include "hw/virtio/vhost.h"
+ #include "hw/virtio/vhost-backend.h"
+ #include "qemu/error-report.h"
+-
++#include <linux/vhost.h>
+ #include <sys/ioctl.h>
+ 
+ static int vhost_kernel_call(struct vhost_dev *dev, unsigned long int request,
+@@ -49,12 +49,18 @@ static int vhost_kernel_get_vq_index(struct vhost_dev *dev, int idx)
+     return idx - dev->vq_index;
+ }
+ 
++static int vhost_set_log_base(struct vhost_dev *dev, uint64_t base)
++{
++    return vhost_kernel_call(dev, VHOST_SET_LOG_BASE, &base);
++}
++
+ static const VhostOps kernel_ops = {
+         .backend_type = VHOST_BACKEND_TYPE_KERNEL,
+         .vhost_call = vhost_kernel_call,
+         .vhost_backend_init = vhost_kernel_init,
+         .vhost_backend_cleanup = vhost_kernel_cleanup,
+         .vhost_backend_get_vq_index = vhost_kernel_get_vq_index,
++        .vhost_set_log_base = vhost_set_log_base,
+ };
+ 
+ int vhost_set_backend_type(struct vhost_dev *dev, VhostBackendType backend_type)
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 4278d54..137de21 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -242,7 +242,6 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+         break;
+ 
+     case VHOST_USER_SET_FEATURES:
+-    case VHOST_USER_SET_LOG_BASE:
+     case VHOST_USER_SET_PROTOCOL_FEATURES:
+         msg.u64 = *((__u64 *) arg);
+         msg.size = sizeof(m.u64);
+@@ -367,6 +366,20 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+     return 0;
+ }
+ 
++static int vhost_set_log_base(struct vhost_dev *dev, uint64_t base)
++{
++    VhostUserMsg msg = {
++        .request = VHOST_USER_SET_LOG_BASE,
++        .flags = VHOST_USER_VERSION,
++        .u64 = base,
++        .size = sizeof(m.u64),
++    };
++
++    vhost_user_write(dev, &msg, NULL, 0);
++
++    return 0;
++}
++
+ static int vhost_user_init(struct vhost_dev *dev, void *opaque)
+ {
+     unsigned long long features;
+@@ -447,4 +460,5 @@ const VhostOps user_ops = {
+         .vhost_backend_cleanup = vhost_user_cleanup,
+         .vhost_backend_get_vq_index = vhost_user_get_vq_index,
+         .vhost_backend_set_vring_enable = vhost_user_set_vring_enable,
++        .vhost_set_log_base = vhost_set_log_base,
+ };
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index c7e033f..ea85da9 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -336,7 +336,7 @@ static inline void vhost_dev_log_resize(struct vhost_dev* dev, uint64_t size)
+ 
+     /* inform backend of log switching, this must be done before
+        releasing the current log, to ensure no logging is lost */
+-    r = dev->vhost_ops->vhost_call(dev, VHOST_SET_LOG_BASE, &log_base);
++    r = dev->vhost_ops->vhost_set_log_base(dev, log_base);
+     assert(r >= 0);
+     vhost_log_put(dev, true);
+     dev->log = log;
+@@ -1137,8 +1137,8 @@ int vhost_dev_start(struct vhost_dev *hdev, VirtIODevice *vdev)
+         hdev->log_size = vhost_get_log_size(hdev);
+         hdev->log = vhost_log_get(hdev->log_size);
+         log_base = (uintptr_t)hdev->log->log;
+-        r = hdev->vhost_ops->vhost_call(hdev, VHOST_SET_LOG_BASE,
+-                                        hdev->log_size ? &log_base : NULL);
++        r = hdev->vhost_ops->vhost_set_log_base(hdev,
++                                                hdev->log_size ? log_base : 0);
+         if (r < 0) {
+             r = -errno;
+             goto fail_log;
+diff --git a/include/hw/virtio/vhost-backend.h b/include/hw/virtio/vhost-backend.h
+index 3a0f6e2..3e5182b 100644
+--- a/include/hw/virtio/vhost-backend.h
++++ b/include/hw/virtio/vhost-backend.h
+@@ -27,6 +27,8 @@ typedef int (*vhost_backend_cleanup)(struct vhost_dev *dev);
+ typedef int (*vhost_backend_get_vq_index)(struct vhost_dev *dev, int idx);
+ typedef int (*vhost_backend_set_vring_enable)(struct vhost_dev *dev, int enable);
+ 
++typedef int (*vhost_set_log_base_op)(struct vhost_dev *dev, uint64_t base);
++
+ typedef struct VhostOps {
+     VhostBackendType backend_type;
+     vhost_call vhost_call;
+@@ -34,6 +36,7 @@ typedef struct VhostOps {
+     vhost_backend_cleanup vhost_backend_cleanup;
+     vhost_backend_get_vq_index vhost_backend_get_vq_index;
+     vhost_backend_set_vring_enable vhost_backend_set_vring_enable;
++    vhost_set_log_base_op vhost_set_log_base;
+ } VhostOps;
+ 
+ extern const VhostOps user_ops;
+-- 
+1.8.3.1
+

@@ -1,0 +1,42 @@
+From f1b5c336b67bef1b5c1fc3d6ec1c3c7c3d6f6131 Mon Sep 17 00:00:00 2001
+From: Alex Williamson <alex.williamson@redhat.com>
+Date: Fri, 24 Jul 2015 21:00:52 +0200
+Subject: [PATCH 2/5] vfio/pci: Fix bootindex
+
+Message-id: <20150724210008.22705.14488.stgit@gimli.home>
+Patchwork-id: 67146
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] vfio/pci: Fix bootindex
+Bugzilla: 1245127
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+Bugzilla: 1245127
+Brew: http://brewweb.devel.redhat.com/brew/taskinfo?taskID=9584257
+Upstream: 759b484c5d7f92bd01f98797c07e8543ee187888
+
+bootindex was incorrectly changed to a device Property during the
+platform code split, resulting in it no longer working.  Remove it.
+
+Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+Cc: qemu-stable@nongnu.org # v2.3+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/vfio/pci.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 8bed873..7b971fb 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3601,7 +3601,6 @@ static Property vfio_pci_dev_properties[] = {
+                     VFIO_FEATURE_ENABLE_VGA_BIT, false),
+     DEFINE_PROP_BIT("x-req", VFIOPCIDevice, features,
+                     VFIO_FEATURE_ENABLE_REQ_BIT, true),
+-    DEFINE_PROP_INT32("bootindex", VFIOPCIDevice, bootindex, -1),
+     DEFINE_PROP_BOOL("x-mmap", VFIOPCIDevice, vbasedev.allow_mmap, true),
+     /*
+      * TODO - support passed fds... is this necessary?
+-- 
+1.8.3.1
+

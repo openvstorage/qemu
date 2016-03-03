@@ -1,0 +1,62 @@
+From e0263c0a9c86b23c95523fac6fb271fa71dd2a0c Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Tue, 13 Oct 2015 13:20:13 +0200
+Subject: [PATCH] Migration: Generate the completed event only when we complete
+
+Message-id: <1444742413-26080-2-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 68142
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 1/1] Migration: Generate the completed event only when we complete
+Bugzilla: 1271145
+RH-Acked-by: Jiri Denemark <jdenemar@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+The current migration-completed event is generated a bit too early,
+which means that an eager libvirt that's ready to go as soon
+as it sees the event ends up racing with the actual end of migration.
+
+This corresponds to RH bug:
+https://bugzilla.redhat.com/show_bug.cgi?id=1271145
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/migration.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index dc80e50..6a08c89 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -234,12 +234,12 @@ static void process_incoming_migration_co(void *opaque)
+         error_report("load of migration failed: %s", strerror(-ret));
+         exit(EXIT_FAILURE);
+     }
+-    migrate_generate_event(MIGRATION_STATUS_COMPLETED);
+     qemu_announce_self();
+ 
+     /* Make sure all file formats flush their mutable metadata */
+     bdrv_invalidate_cache_all(&local_err);
+     if (local_err) {
++        migrate_generate_event(MIGRATION_STATUS_FAILED);
+         error_report_err(local_err);
+         exit(EXIT_FAILURE);
+     }
+@@ -258,6 +258,12 @@ static void process_incoming_migration_co(void *opaque)
+     } else {
+         runstate_set(global_state_get_runstate());
+     }
++    /*
++     * This must happen after any state changes since as soon as an external
++     * observer sees this event they might start to prod at the VM assuming
++     * it's ready to use.
++     */
++    migrate_generate_event(MIGRATION_STATUS_COMPLETED);
+ }
+ 
+ void process_incoming_migration(QEMUFile *f)
+-- 
+1.8.3.1
+

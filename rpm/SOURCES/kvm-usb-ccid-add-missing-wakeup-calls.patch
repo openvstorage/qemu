@@ -1,0 +1,74 @@
+From 747a709621db98f3099be4a8c057616169552202 Mon Sep 17 00:00:00 2001
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Fri, 17 Jul 2015 11:52:52 +0200
+Subject: [PATCH 1/5] usb-ccid: add missing wakeup calls
+
+Message-id: <1437133972-27703-2-git-send-email-kraxel@redhat.com>
+Patchwork-id: 67054
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 1/1] usb-ccid: add missing wakeup calls
+Bugzilla: 1211970
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Properly notify the host adapter that we have
+data pending, so it doesn't has to poll us.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit 86d7e214c224f939c897cfa3b6d597f7af4b5bba)
+---
+ hw/usb/dev-smartcard-reader.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/usb/dev-smartcard-reader.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hw/usb/dev-smartcard-reader.c b/hw/usb/dev-smartcard-reader.c
+index 78ce681..b72404a 100644
+--- a/hw/usb/dev-smartcard-reader.c
++++ b/hw/usb/dev-smartcard-reader.c
+@@ -284,6 +284,7 @@ typedef struct CCIDBus {
+ typedef struct USBCCIDState {
+     USBDevice dev;
+     USBEndpoint *intr;
++    USBEndpoint *bulk;
+     CCIDBus bus;
+     CCIDCardState *card;
+     BulkIn bulk_in_pending[BULK_IN_PENDING_NUM]; /* circular */
+@@ -770,6 +771,7 @@ static void ccid_write_slot_status(USBCCIDState *s, CCID_Header *recv)
+     h->b.bError = s->bError;
+     h->bClockStatus = CLOCK_STATUS_RUNNING;
+     ccid_reset_error_status(s);
++    usb_wakeup(s->bulk, 0);
+ }
+ 
+ static void ccid_write_parameters(USBCCIDState *s, CCID_Header *recv)
+@@ -790,6 +792,7 @@ static void ccid_write_parameters(USBCCIDState *s, CCID_Header *recv)
+     h->bProtocolNum = s->bProtocolNum;
+     h->abProtocolDataStructure = s->abProtocolDataStructure;
+     ccid_reset_error_status(s);
++    usb_wakeup(s->bulk, 0);
+ }
+ 
+ static void ccid_write_data_block(USBCCIDState *s, uint8_t slot, uint8_t seq,
+@@ -811,6 +814,7 @@ static void ccid_write_data_block(USBCCIDState *s, uint8_t slot, uint8_t seq,
+     }
+     memcpy(p->abData, data, len);
+     ccid_reset_error_status(s);
++    usb_wakeup(s->bulk, 0);
+ }
+ 
+ static void ccid_report_error_failed(USBCCIDState *s, uint8_t error)
+@@ -1314,6 +1318,7 @@ static void ccid_realize(USBDevice *dev, Error **errp)
+                         NULL);
+     qbus_set_hotplug_handler(BUS(&s->bus), DEVICE(dev), &error_abort);
+     s->intr = usb_ep_get(dev, USB_TOKEN_IN, CCID_INT_IN_EP);
++    s->bulk = usb_ep_get(dev, USB_TOKEN_IN, CCID_BULK_IN_EP);
+     s->card = NULL;
+     s->migration_state = MIGRATION_NONE;
+     s->migration_target_ip = 0;
+-- 
+1.8.3.1
+

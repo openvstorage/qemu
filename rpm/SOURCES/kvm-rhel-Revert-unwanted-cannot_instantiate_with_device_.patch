@@ -1,0 +1,105 @@
+From a17a8fb4cd6a2d5d5281e5afb90786ce6c63339f Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Tue, 29 Sep 2015 13:59:57 +0200
+Subject: [PATCH 1/5] rhel: Revert unwanted
+ cannot_instantiate_with_device_add_yet changes
+
+Message-id: <1443535197-19154-1-git-send-email-mrezanin@redhat.com>
+Patchwork-id: 67971
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCHv3] rhel: Revert unwanted cannot_instantiate_with_device_add_yet changes
+Bugzilla: 1224542
+RH-Acked-by: Jeff Nelson <jenelson@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Kevin Wolf <kwolf@redhat.com>
+
+From: Markus Armbruster <armbru@redhat.com>
+
+The no-user series just backported from upstream makes the following
+onboard devices also available with -device / device_add:
+
+* PCI [PATCH 07-08]: piix3-ide, piix3-ide-xen, piix4-ide, via-ide
+* ISA [PATCH 09]: i8042, isa-fdc
+
+Not wanted for RHEL, so revert that part.
+
+Note: via-ide just for consistency; we don't actually compile it.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+(cherry picked from commit 782eba126f0af8ccbb3625fe1ac1d92bf923a10d)
+
+Device isa-fdc *not* made unavailable, because we want to use
+-device isa-fdc with Q35.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ide/piix.c    | 7 ++++++-
+ hw/ide/via.c     | 2 ++
+ hw/input/pckbd.c | 2 ++
+ 3 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/hw/ide/piix.c b/hw/ide/piix.c
+index adb6649..bfa375c 100644
+--- a/hw/ide/piix.c
++++ b/hw/ide/piix.c
+@@ -241,7 +241,8 @@ static void piix3_ide_class_init(ObjectClass *klass, void *data)
+     k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
+     k->class_id = PCI_CLASS_STORAGE_IDE;
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+-    dc->hotpluggable = false;
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static const TypeInfo piix3_ide_info = {
+@@ -260,6 +261,8 @@ static void piix3_ide_xen_class_init(ObjectClass *klass, void *data)
+     k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
+     k->class_id = PCI_CLASS_STORAGE_IDE;
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static const TypeInfo piix3_ide_xen_info = {
+@@ -280,6 +283,8 @@ static void piix4_ide_class_init(ObjectClass *klass, void *data)
+     k->class_id = PCI_CLASS_STORAGE_IDE;
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+     dc->hotpluggable = false;
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static const TypeInfo piix4_ide_info = {
+diff --git a/hw/ide/via.c b/hw/ide/via.c
+index e2da9ef..6015f85 100644
+--- a/hw/ide/via.c
++++ b/hw/ide/via.c
+@@ -219,6 +219,8 @@ static void via_ide_class_init(ObjectClass *klass, void *data)
+     k->revision = 0x06;
+     k->class_id = PCI_CLASS_STORAGE_IDE;
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static const TypeInfo via_ide_info = {
+diff --git a/hw/input/pckbd.c b/hw/input/pckbd.c
+index 4e1a6a4..2f04f83 100644
+--- a/hw/input/pckbd.c
++++ b/hw/input/pckbd.c
+@@ -582,6 +582,8 @@ static void i8042_class_initfn(ObjectClass *klass, void *data)
+ 
+     dc->realize = i8042_realizefn;
+     dc->vmsd = &vmstate_kbd_isa;
++    /* Disabled for Red Hat Enterprise Linux: */
++    dc->cannot_instantiate_with_device_add_yet = true;
+ }
+ 
+ static const TypeInfo i8042_info = {
+-- 
+1.8.3.1
+

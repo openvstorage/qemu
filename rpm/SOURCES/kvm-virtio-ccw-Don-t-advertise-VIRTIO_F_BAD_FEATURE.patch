@@ -1,0 +1,44 @@
+From 14e29eb806d07600065f2b2cde0e36ee6ff104dc Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:21 +0200
+Subject: [PATCH 047/100] virtio-ccw: Don't advertise VIRTIO_F_BAD_FEATURE
+
+Message-id: <1436260751-25015-19-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66793
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 18/68] virtio-ccw: Don't advertise VIRTIO_F_BAD_FEATURE
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+This was copied from virtio-pci, but it doesn't make much sense for
+ccw, as it doesn't have to handle the broken implementations this bit
+is supposed to deal with. Remove it.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 13644819c5bf322ae4c2a415aca77d5dbde95fe8)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/s390x/virtio-ccw.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index 2b98ae9..c1d24d4 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -1422,7 +1422,6 @@ static void virtio_ccw_device_plugged(DeviceState *d, Error **errp)
+     sch->id.cu_model = virtio_bus_get_vdev_id(&dev->bus);
+ 
+     virtio_add_feature(&vdev->host_features, VIRTIO_F_NOTIFY_ON_EMPTY);
+-    virtio_add_feature(&vdev->host_features, VIRTIO_F_BAD_FEATURE);
+ 
+     css_generate_sch_crws(sch->cssid, sch->ssid, sch->schid,
+                           d->hotplugged, 1);
+-- 
+1.8.3.1
+

@@ -1,0 +1,99 @@
+From cdd98f778297706a23cf8d3848e39a4b3d8c3712 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:22 +0200
+Subject: [PATCH 18/44] hw/acpi/aml-build: Add aml_memory32_fixed() term
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-11-git-send-email-drjones@redhat.com>
+Patchwork-id: 66243
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 10/33] hw/acpi/aml-build: Add aml_memory32_fixed() term
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Add aml_memory32_fixed() for describing device mmio region in resource
+template. These can be used to generating DSDT table for ACPI on ARM.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-6-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit dc17ab1de53d37ddcca81b16dfeae839322fbe5a)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 28 ++++++++++++++++++++++++++++
+ include/hw/acpi/aml-build.h |  2 ++
+ 2 files changed, 30 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index ab649bb..ebfcf90 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -26,6 +26,7 @@
+ #include <string.h>
+ #include "hw/acpi/aml-build.h"
+ #include "qemu/bswap.h"
++#include "qemu/bitops.h"
+ #include "hw/acpi/bios-linker-loader.h"
+ 
+ static GArray *build_alloc_array(void)
+@@ -506,6 +507,33 @@ Aml *aml_call4(const char *method, Aml *arg1, Aml *arg2, Aml *arg3, Aml *arg4)
+     return var;
+ }
+ 
++/*
++ * ACPI 1.0b: 6.4.3.4 32-Bit Fixed Location Memory Range Descriptor
++ * (Type 1, Large Item Name 0x6)
++ */
++Aml *aml_memory32_fixed(uint32_t addr, uint32_t size,
++                        AmlReadAndWrite read_and_write)
++{
++    Aml *var = aml_alloc();
++    build_append_byte(var->buf, 0x86); /* Memory32Fixed Resource Descriptor */
++    build_append_byte(var->buf, 9);    /* Length, bits[7:0] value = 9 */
++    build_append_byte(var->buf, 0);    /* Length, bits[15:8] value = 0 */
++    build_append_byte(var->buf, read_and_write); /* Write status, 1 rw 0 ro */
++
++    /* Range base address */
++    build_append_byte(var->buf, extract32(addr, 0, 8));  /* bits[7:0] */
++    build_append_byte(var->buf, extract32(addr, 8, 8));  /* bits[15:8] */
++    build_append_byte(var->buf, extract32(addr, 16, 8)); /* bits[23:16] */
++    build_append_byte(var->buf, extract32(addr, 24, 8)); /* bits[31:24] */
++
++    /* Range length */
++    build_append_byte(var->buf, extract32(size, 0, 8));  /* bits[7:0] */
++    build_append_byte(var->buf, extract32(size, 8, 8));  /* bits[15:8] */
++    build_append_byte(var->buf, extract32(size, 16, 8)); /* bits[23:16] */
++    build_append_byte(var->buf, extract32(size, 24, 8)); /* bits[31:24] */
++    return var;
++}
++
+ /* ACPI 1.0b: 6.4.2.5 I/O Port Descriptor */
+ Aml *aml_io(AmlIODecode dec, uint16_t min_base, uint16_t max_base,
+             uint8_t aln, uint8_t len)
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 98cdf9e..1c3cbd2 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -168,6 +168,8 @@ Aml *aml_call1(const char *method, Aml *arg1);
+ Aml *aml_call2(const char *method, Aml *arg1, Aml *arg2);
+ Aml *aml_call3(const char *method, Aml *arg1, Aml *arg2, Aml *arg3);
+ Aml *aml_call4(const char *method, Aml *arg1, Aml *arg2, Aml *arg3, Aml *arg4);
++Aml *aml_memory32_fixed(uint32_t addr, uint32_t size,
++                        AmlReadAndWrite read_and_write);
+ Aml *aml_io(AmlIODecode dec, uint16_t min_base, uint16_t max_base,
+             uint8_t aln, uint8_t len);
+ Aml *aml_operation_region(const char *name, AmlRegionSpace rs,
+-- 
+1.8.3.1
+

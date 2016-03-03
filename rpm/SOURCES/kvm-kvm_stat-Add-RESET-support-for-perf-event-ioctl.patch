@@ -1,0 +1,52 @@
+From e711121e3fcfeaf0a3a4fe9ef1007b01225f6c77 Mon Sep 17 00:00:00 2001
+From: "wei@redhat.com" <wei@redhat.com>
+Date: Tue, 3 Feb 2015 19:51:06 +0100
+Subject: kvm_stat: Add RESET support for perf event ioctl
+
+Message-id: <1422993066-11422-4-git-send-email-wei@redhat.com>
+Patchwork-id: 63715
+O-Subject: [qemu-kvm-rhev RHELSA PATCH V2 3/3] kvm_stat: Add RESET support for perf event ioctl
+Bugzilla: 1184603
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+
+While running kvm_stat using tracepoint on ARM64 hardware (e.g. "kvm_stat
+-1 -t"), the initial values of some kvm_userspace_exit counters were found
+to be very suspecious. For instance the tracing tool showed that S390_TSCH
+was called many times on ARM64 machine, which apparently was wrong. It
+turned out the the perf event counters need to be reset before use.
+
+This patch adds RESET ioctl support for perf monitoring. Before calling
+ioctl to enable a perf event, this patch resets the counter first. With
+this patch, the init counter values become correct on ARM64 hardware.
+
+NOTE: This patch is slightly different from the upstream commit
+(fc116efad). I extended the upstream commit with a fix to PPC RESET ioctl
+number, which has been submitted to upstream & queued for QEMU by Paolo.
+
+Example:
+
+==== before patch ====
+kvm_userspace_exit(S390_SIEIC)      1426         0
+kvm_userspace_exit(S390_TSCH)       339         0
+
+==== after patch ====
+kvm_userspace_exit(S390_SIEIC)         0         0
+kvm_userspace_exit(S390_TSCH)         0         0
+
+Signed-off-by: Wei Huang <wei@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+diff --git a/scripts/kvm/kvm_stat b/scripts/kvm/kvm_stat
+index 7e5d256..68ac19e 100755
+--- a/scripts/kvm/kvm_stat
++++ b/scripts/kvm/kvm_stat
+@@ -246,6 +246,7 @@ def ppc_init():
+             'SET_FILTER' : 0x80002406 | (ctypes.sizeof(ctypes.c_char_p) << 16),
+             'ENABLE'     : 0x20002400,
+             'DISABLE'    : 0x20002401,
++            'RESET'      : 0x20002403,
+         }
+     })
+ 

@@ -1,0 +1,90 @@
+From 9c54dc97faea0d676f9aefa8021043f8b648c05b Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 30 Jun 2015 14:14:40 +0200
+Subject: [PATCH 11/11] hw/arm/virt-acpi-build: Add GICv2m description in ACPI
+ MADT table
+
+Message-id: <1435673680-9996-9-git-send-email-drjones@redhat.com>
+Patchwork-id: 66574
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 8/8] hw/arm/virt-acpi-build: Add GICv2m description in ACPI MADT table
+Bugzilla: 1231929
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Add GICv2m description in ACPI MADT table, so guest can use MSI when
+booting with ACPI.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Andrew Jones <drjones@redhat.com>
+Tested-by: Andrew Jones <drjones@redhat.com>
+Message-id: 1434676210-2276-1-git-send-email-shannon.zhao@linaro.org
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ca7937365305d144cf0c97b907dac6f70ea152ef)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/arm/virt-acpi-build.c    | 11 +++++++++++
+ include/hw/acpi/acpi-defs.h | 12 ++++++++++++
+ 2 files changed, 23 insertions(+)
+
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index 40029dd..f365140 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -423,8 +423,10 @@ build_madt(GArray *table_data, GArray *linker, VirtGuestInfo *guest_info,
+ {
+     int madt_start = table_data->len;
+     const MemMapEntry *memmap = guest_info->memmap;
++    const int *irqmap = guest_info->irqmap;
+     AcpiMultipleApicTable *madt;
+     AcpiMadtGenericDistributor *gicd;
++    AcpiMadtGenericMsiFrame *gic_msi;
+     int i;
+ 
+     madt = acpi_data_push(table_data, sizeof *madt);
+@@ -448,6 +450,15 @@ build_madt(GArray *table_data, GArray *linker, VirtGuestInfo *guest_info,
+     gicd->length = sizeof(*gicd);
+     gicd->base_address = memmap[VIRT_GIC_DIST].base;
+ 
++    gic_msi = acpi_data_push(table_data, sizeof *gic_msi);
++    gic_msi->type = ACPI_APIC_GENERIC_MSI_FRAME;
++    gic_msi->length = sizeof(*gic_msi);
++    gic_msi->gic_msi_frame_id = 0;
++    gic_msi->base_address = cpu_to_le64(memmap[VIRT_GIC_V2M].base);
++    gic_msi->flags = cpu_to_le32(1);
++    gic_msi->spi_count = cpu_to_le16(NUM_GICV2M_SPIS);
++    gic_msi->spi_base = cpu_to_le16(irqmap[VIRT_GIC_V2M] + ARM_SPI_BASE);
++
+     build_header(linker, table_data,
+                  (void *)(table_data->data + madt_start), "APIC",
+                  table_data->len - madt_start, 3);
+diff --git a/include/hw/acpi/acpi-defs.h b/include/hw/acpi/acpi-defs.h
+index f2a200c..e26a4ef 100644
+--- a/include/hw/acpi/acpi-defs.h
++++ b/include/hw/acpi/acpi-defs.h
+@@ -372,6 +372,18 @@ struct AcpiMadtGenericDistributor {
+ 
+ typedef struct AcpiMadtGenericDistributor AcpiMadtGenericDistributor;
+ 
++struct AcpiMadtGenericMsiFrame {
++    ACPI_SUB_HEADER_DEF
++    uint16_t reserved;
++    uint32_t gic_msi_frame_id;
++    uint64_t base_address;
++    uint32_t flags;
++    uint16_t spi_count;
++    uint16_t spi_base;
++} QEMU_PACKED;
++
++typedef struct AcpiMadtGenericMsiFrame AcpiMadtGenericMsiFrame;
++
+ /*
+  * Generic Timer Description Table (GTDT)
+  */
+-- 
+1.8.3.1
+

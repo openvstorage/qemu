@@ -1,0 +1,76 @@
+From d4efd4b8c784cea3348f0bbe4fa31701e350e33f Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:43 +0200
+Subject: [PATCH 38/44] ACPI: Add definitions for the SPCR table
+
+Message-id: <1434455325-23399-32-git-send-email-drjones@redhat.com>
+Patchwork-id: 66262
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 31/33] ACPI: Add definitions for the SPCR table
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+SPCR is the Serial Port Console Redirection Table. See the document
+linked from http://uefi.org/acpi. For serial port types, "Interface
+Type", see the documentation for the Debug Port Table 2 (DBG2).
+
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Tested-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1433929959-29530-2-git-send-email-drjones@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit b8a0d75ef85b8f24c92a6c50817fa9579b4a98d9)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/acpi/acpi-defs.h | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/include/hw/acpi/acpi-defs.h b/include/hw/acpi/acpi-defs.h
+index f503ec4..f2a200c 100644
+--- a/include/hw/acpi/acpi-defs.h
++++ b/include/hw/acpi/acpi-defs.h
+@@ -197,6 +197,38 @@ enum {
+ };
+ 
+ /*
++ * Serial Port Console Redirection Table (SPCR), Rev. 1.02
++ *
++ * For .interface_type see Debug Port Table 2 (DBG2) serial port
++ * subtypes in Table 3, Rev. May 22, 2012
++ */
++struct AcpiSerialPortConsoleRedirection {
++    ACPI_TABLE_HEADER_DEF
++    uint8_t  interface_type;
++    uint8_t  reserved1[3];
++    struct AcpiGenericAddress base_address;
++    uint8_t  interrupt_types;
++    uint8_t  irq;
++    uint32_t gsi;
++    uint8_t  baud;
++    uint8_t  parity;
++    uint8_t  stopbits;
++    uint8_t  flowctrl;
++    uint8_t  term_type;
++    uint8_t  reserved2;
++    uint16_t pci_device_id;
++    uint16_t pci_vendor_id;
++    uint8_t  pci_bus;
++    uint8_t  pci_slot;
++    uint8_t  pci_func;
++    uint32_t pci_flags;
++    uint8_t  pci_seg;
++    uint32_t reserved3;
++} QEMU_PACKED;
++typedef struct AcpiSerialPortConsoleRedirection
++               AcpiSerialPortConsoleRedirection;
++
++/*
+  * ACPI 1.0 Root System Description Table (RSDT)
+  */
+ struct AcpiRsdtDescriptorRev1
+-- 
+1.8.3.1
+

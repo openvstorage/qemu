@@ -1,0 +1,46 @@
+From df3084ed5f95873e918d1ba96aef56735014588f Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:18 +0200
+Subject: [PATCH 56/58] spapr: Make hash table size a factor of maxram_size
+
+Message-id: <1437715580-14817-27-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67143
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 26/28] spapr: Make hash table size a factor of maxram_size
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+The hash table size is dependent on ram_size, but since with hotplug
+the memory can grow till maxram_size. Hence make hash table size dependent
+on maxram_size.
+
+This allows to hotplug huge amounts of memory to the guest.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit 6568032d33745893036e93faa61fc234a0d91b92)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 6077f7e..dd8a63d 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1705,7 +1705,7 @@ static void ppc_spapr_init(MachineState *machine)
+      * more than needed for the Linux guests we support. */
+     spapr->htab_shift = 18; /* Minimum architected size */
+     while (spapr->htab_shift <= 46) {
+-        if ((1ULL << (spapr->htab_shift + 7)) >= machine->ram_size) {
++        if ((1ULL << (spapr->htab_shift + 7)) >= machine->maxram_size) {
+             break;
+         }
+         spapr->htab_shift++;
+-- 
+1.8.3.1
+

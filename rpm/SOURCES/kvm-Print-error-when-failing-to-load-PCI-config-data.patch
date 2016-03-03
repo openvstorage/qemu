@@ -1,0 +1,46 @@
+From c87383391c2346f6df5eb2f42f56ee8c68401c11 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Thu, 2 Jul 2015 12:08:01 +0200
+Subject: [PATCH 017/100] Print error when failing to load PCI config data
+
+Message-id: <1435838882-10566-2-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66603
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 1/2] Print error when failing to load PCI config data
+Bugzilla: 1209793
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+When loading migration fails due to a disagreement about
+PCI config data we don't currently get any errors explaining
+that was the cause of the problem or which byte in the config
+data was at fault.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+(cherry picked from commit 7c59364d0329d36a7759033962a469ca714f884d)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci/pci.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index e57255e..b51f229 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -398,6 +398,10 @@ static int get_pci_config_device(QEMUFile *f, void *pv, size_t size)
+     for (i = 0; i < size; ++i) {
+         if ((config[i] ^ s->config[i]) &
+             s->cmask[i] & ~s->wmask[i] & ~s->w1cmask[i]) {
++            error_report("%s: Bad config data: i=0x%x read: %x device: %x "
++                         "cmask: %x wmask: %x w1cmask:%x", __func__,
++                         i, config[i], s->config[i],
++                         s->cmask[i], s->wmask[i], s->w1cmask[i]);
+             g_free(config);
+             return -EINVAL;
+         }
+-- 
+1.8.3.1
+

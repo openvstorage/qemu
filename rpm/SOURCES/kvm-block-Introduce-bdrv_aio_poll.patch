@@ -1,0 +1,55 @@
+From 1ae9f11d018e8536a4bfa197765738b34dfe1633 Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:09 +0200
+Subject: [PATCH 20/22] block: Introduce bdrv_aio_poll
+
+Message-id: <1442456951-3827-11-git-send-email-famz@redhat.com>
+Patchwork-id: 67801
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 10/12] block: Introduce bdrv_aio_poll
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+This call is introduced simply as a wrapper of aio_poll, but it makes it
+is easy to change the polled client types.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+---
+ block.c               | 5 +++++
+ include/block/block.h | 2 ++
+ 2 files changed, 7 insertions(+)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block.c               | 5 +++++
+ include/block/block.h | 2 ++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/block.c b/block.c
+index fb797e9..0380ef1 100644
+--- a/block.c
++++ b/block.c
+@@ -6364,3 +6364,8 @@ BlockAcctStats *bdrv_get_stats(BlockDriverState *bs)
+ {
+     return &bs->stats;
+ }
++
++bool bdrv_aio_poll(AioContext *ctx, bool blocking)
++{
++    return aio_poll(ctx, blocking);
++}
+diff --git a/include/block/block.h b/include/block/block.h
+index 98c6703..074635b 100644
+--- a/include/block/block.h
++++ b/include/block/block.h
+@@ -573,4 +573,6 @@ void bdrv_flush_io_queue(BlockDriverState *bs);
+ 
+ BlockAcctStats *bdrv_get_stats(BlockDriverState *bs);
+ 
++bool bdrv_aio_poll(AioContext *ctx, bool blocking);
++
+ #endif
+-- 
+1.8.3.1
+

@@ -1,0 +1,103 @@
+From 91808b39469266457f39b359b9c51e3de5d843a3 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:25 +0100
+Subject: [PATCH 18/44] vhost-user: add vhost_user_requires_shm_log()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-12-git-send-email-mst@redhat.com>
+Patchwork-id: 68360
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 11/36] vhost-user: add vhost_user_requires_shm_log()
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Check if the backend has VHOST_USER_PROTOCOL_F_LOG_SHMFD feature and
+require a shared log.
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit 1be0ac2109fbaca6e730ac578f0564507d173e2d)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost-user.c            | 14 ++++++++++++--
+ include/hw/virtio/vhost-backend.h |  4 ++++
+ 2 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 137de21..fdd36fe 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -25,9 +25,10 @@
+ 
+ #define VHOST_MEMORY_MAX_NREGIONS    8
+ #define VHOST_USER_F_PROTOCOL_FEATURES 30
+-#define VHOST_USER_PROTOCOL_FEATURE_MASK 0x1ULL
+ 
+-#define VHOST_USER_PROTOCOL_F_MQ    0
++#define VHOST_USER_PROTOCOL_FEATURE_MASK 0x3ULL
++#define VHOST_USER_PROTOCOL_F_MQ         0
++#define VHOST_USER_PROTOCOL_F_LOG_SHMFD  1
+ 
+ typedef enum VhostUserRequest {
+     VHOST_USER_NONE = 0,
+@@ -453,6 +454,14 @@ static int vhost_user_get_vq_index(struct vhost_dev *dev, int idx)
+     return idx;
+ }
+ 
++static bool vhost_user_requires_shm_log(struct vhost_dev *dev)
++{
++    assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_USER);
++
++    return virtio_has_feature(dev->protocol_features,
++                              VHOST_USER_PROTOCOL_F_LOG_SHMFD);
++}
++
+ const VhostOps user_ops = {
+         .backend_type = VHOST_BACKEND_TYPE_USER,
+         .vhost_call = vhost_user_call,
+@@ -461,4 +470,5 @@ const VhostOps user_ops = {
+         .vhost_backend_get_vq_index = vhost_user_get_vq_index,
+         .vhost_backend_set_vring_enable = vhost_user_set_vring_enable,
+         .vhost_set_log_base = vhost_set_log_base,
++        .vhost_requires_shm_log = vhost_user_requires_shm_log,
+ };
+diff --git a/include/hw/virtio/vhost-backend.h b/include/hw/virtio/vhost-backend.h
+index 3e5182b..c5c0914 100644
+--- a/include/hw/virtio/vhost-backend.h
++++ b/include/hw/virtio/vhost-backend.h
+@@ -11,6 +11,8 @@
+ #ifndef VHOST_BACKEND_H_
+ #define VHOST_BACKEND_H_
+ 
++#include <stdbool.h>
++
+ typedef enum VhostBackendType {
+     VHOST_BACKEND_TYPE_NONE = 0,
+     VHOST_BACKEND_TYPE_KERNEL = 1,
+@@ -28,6 +30,7 @@ typedef int (*vhost_backend_get_vq_index)(struct vhost_dev *dev, int idx);
+ typedef int (*vhost_backend_set_vring_enable)(struct vhost_dev *dev, int enable);
+ 
+ typedef int (*vhost_set_log_base_op)(struct vhost_dev *dev, uint64_t base);
++typedef bool (*vhost_requires_shm_log_op)(struct vhost_dev *dev);
+ 
+ typedef struct VhostOps {
+     VhostBackendType backend_type;
+@@ -37,6 +40,7 @@ typedef struct VhostOps {
+     vhost_backend_get_vq_index vhost_backend_get_vq_index;
+     vhost_backend_set_vring_enable vhost_backend_set_vring_enable;
+     vhost_set_log_base_op vhost_set_log_base;
++    vhost_requires_shm_log_op vhost_requires_shm_log;
+ } VhostOps;
+ 
+ extern const VhostOps user_ops;
+-- 
+1.8.3.1
+

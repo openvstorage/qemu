@@ -1,0 +1,49 @@
+From 94fb285a651ae3fd581031e4c3c339a4c7eebcd9 Mon Sep 17 00:00:00 2001
+From: Max Reitz <mreitz@redhat.com>
+Date: Wed, 17 Jun 2015 12:42:54 +0200
+Subject: [PATCH 6/9] qcow2: Set MIN_L2_CACHE_SIZE to 2
+
+Message-id: <1434544976-15816-2-git-send-email-mreitz@redhat.com>
+Patchwork-id: 66281
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 1/3] qcow2: Set MIN_L2_CACHE_SIZE to 2
+Bugzilla: 1226996
+RH-Acked-by: Fam Zheng <famz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+BZ: 1226996
+
+The L2 cache must cover at least two L2 tables, because during COW two
+L2 tables are accessed simultaneously.
+
+Reported-by: Alexander Graf <agraf@suse.de>
+Cc: qemu-stable <qemu-stable@nongnu.org>
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Tested-by: Alexander Graf <agraf@suse.de>
+Reviewed-by: Alberto Garcia <berto@igalia.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit 57e216695948a79d9ced82fc217a37cce70fd986)
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block/qcow2.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/block/qcow2.h b/block/qcow2.h
+index 422b825..2f20949 100644
+--- a/block/qcow2.h
++++ b/block/qcow2.h
+@@ -62,7 +62,8 @@
+ #define MIN_CLUSTER_BITS 9
+ #define MAX_CLUSTER_BITS 21
+ 
+-#define MIN_L2_CACHE_SIZE 1 /* cluster */
++/* Must be at least 2 to cover COW */
++#define MIN_L2_CACHE_SIZE 2 /* clusters */
+ 
+ /* Must be at least 4 to cover all cases of refcount table growth */
+ #define MIN_REFCOUNT_CACHE_SIZE 4 /* clusters */
+-- 
+1.8.3.1
+

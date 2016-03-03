@@ -1,0 +1,49 @@
+From f22a7e172107035e7412b747a73c0640f07c67e7 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:56 +0200
+Subject: [PATCH 11/28] runstate: migration allows more transitions now
+
+Message-id: <1438098431-30847-12-git-send-email-quintela@redhat.com>
+Patchwork-id: 67165
+O-Subject: [RHEL-7 qemu-kvm PATCH 11/26] runstate: migration allows more transitions now
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Next commit would allow to move from incoming migration to error happening on source.
+
+Should we add more states to this transition?  Luiz?
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit ca3fc39ea9045188e37b84c4f92ee79c7ed4b1c3)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ vl.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/vl.c b/vl.c
+index 0f92d6c..f90023a 100644
+--- a/vl.c
++++ b/vl.c
+@@ -545,8 +545,14 @@ static const RunStateTransition runstate_transitions_def[] = {
+     { RUN_STATE_DEBUG, RUN_STATE_RUNNING },
+     { RUN_STATE_DEBUG, RUN_STATE_FINISH_MIGRATE },
+ 
+-    { RUN_STATE_INMIGRATE, RUN_STATE_RUNNING },
++    { RUN_STATE_INMIGRATE, RUN_STATE_INTERNAL_ERROR },
++    { RUN_STATE_INMIGRATE, RUN_STATE_IO_ERROR },
+     { RUN_STATE_INMIGRATE, RUN_STATE_PAUSED },
++    { RUN_STATE_INMIGRATE, RUN_STATE_RUNNING },
++    { RUN_STATE_INMIGRATE, RUN_STATE_SHUTDOWN },
++    { RUN_STATE_INMIGRATE, RUN_STATE_SUSPENDED },
++    { RUN_STATE_INMIGRATE, RUN_STATE_WATCHDOG },
++    { RUN_STATE_INMIGRATE, RUN_STATE_GUEST_PANICKED },
+ 
+     { RUN_STATE_INTERNAL_ERROR, RUN_STATE_PAUSED },
+     { RUN_STATE_INTERNAL_ERROR, RUN_STATE_FINISH_MIGRATE },
+-- 
+1.8.3.1
+

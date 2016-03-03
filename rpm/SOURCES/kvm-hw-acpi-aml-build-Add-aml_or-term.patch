@@ -1,0 +1,66 @@
+From 0f1f9f2c125a9f21261f40662ca676e78db3eb72 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:33 +0200
+Subject: [PATCH 29/44] hw/acpi/aml-build: Add aml_or() term
+
+Message-id: <1434455325-23399-22-git-send-email-drjones@redhat.com>
+Patchwork-id: 66255
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 21/33] hw/acpi/aml-build: Add aml_or() term
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-17-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 922cc8823e484733021a7be5b0e876eba2218623)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 10 ++++++++++
+ include/hw/acpi/aml-build.h |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index e2f5845..882f34c 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -456,6 +456,16 @@ Aml *aml_and(Aml *arg1, Aml *arg2)
+     return var;
+ }
+ 
++/* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefOr */
++Aml *aml_or(Aml *arg1, Aml *arg2)
++{
++    Aml *var = aml_opcode(0x7D /* OrOp */);
++    aml_append(var, arg1);
++    aml_append(var, arg2);
++    build_append_byte(var->buf, 0x00 /* NullNameOp */);
++    return var;
++}
++
+ /* ACPI 1.0b: 16.2.5.3 Type 1 Opcodes Encoding: DefNotify */
+ Aml *aml_notify(Aml *arg1, Aml *arg2)
+ {
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 29b7dbe..fbd0d0c 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -201,6 +201,7 @@ Aml *aml_int(const uint64_t val);
+ Aml *aml_arg(int pos);
+ Aml *aml_store(Aml *val, Aml *target);
+ Aml *aml_and(Aml *arg1, Aml *arg2);
++Aml *aml_or(Aml *arg1, Aml *arg2);
+ Aml *aml_notify(Aml *arg1, Aml *arg2);
+ Aml *aml_call1(const char *method, Aml *arg1);
+ Aml *aml_call2(const char *method, Aml *arg1, Aml *arg2);
+-- 
+1.8.3.1
+

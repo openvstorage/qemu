@@ -1,0 +1,134 @@
+From fc4ba4d844e298abe8c6cc46860dd52bfbd2c5fd Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Wed, 17 Jun 2015 14:07:43 +0200
+Subject: [PATCH 03/23] hw/acpi: piix4_pm_init(): take fw_cfg object no more
+
+Message-id: <1434550063-12144-4-git-send-email-lersek@redhat.com>
+Patchwork-id: 66287
+O-Subject: [RHEV-7.2 qemu-kvm-rhev 3/3] hw/acpi: piix4_pm_init(): take fw_cfg object no more
+Bugzilla: 1204696
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+This PIIX4 init function has no more reason to receive a pointer to the
+FwCfg object. Remove the parameter from the prototype, and update callers.
+
+As a result, the pc_init1() function no longer needs to save the return
+value of pc_memory_init() and xen_load_linux(), which makes it more
+similar to pc_q35_init().
+
+The return type & value of pc_memory_init() and xen_load_linux() are not
+changed themselves; maybe we'll need their return values sometime later.
+
+RHBZ: https://bugzilla.redhat.com/show_bug.cgi?id=1204696
+Cc: Amit Shah <amit.shah@redhat.com>
+Cc: "Michael S. Tsirkin" <mst@redhat.com>
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Cc: Richard Henderson <rth@twiddle.net>
+Cc: Eduardo Habkost <ehabkost@redhat.com>
+Cc: Aurelien Jarno <aurelien@aurel32.net>
+Cc: Leon Alrae <leon.alrae@imgtec.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 6e7d82497dc8da7d420c8fa6632d759e08a18bc3)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/piix4.c      |  3 +--
+ hw/i386/pc_piix.c    | 19 +++++++++----------
+ hw/mips/mips_malta.c |  2 +-
+ include/hw/i386/pc.h |  3 +--
+ 4 files changed, 12 insertions(+), 15 deletions(-)
+
+diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
+index a2df40d..93f250f 100644
+--- a/hw/acpi/piix4.c
++++ b/hw/acpi/piix4.c
+@@ -503,8 +503,7 @@ Object *piix4_pm_find(void)
+ 
+ I2CBus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
+                       qemu_irq sci_irq, qemu_irq smi_irq,
+-                      int kvm_enabled, FWCfgState *fw_cfg,
+-                      DeviceState **piix4_pm)
++                      int kvm_enabled, DeviceState **piix4_pm)
+ {
+     DeviceState *dev;
+     PIIX4PMState *s;
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index e24f20a..8ba87bb 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -100,7 +100,6 @@ static void pc_init1(MachineState *machine,
+     MemoryRegion *pci_memory;
+     MemoryRegion *rom_memory;
+     DeviceState *icc_bridge;
+-    FWCfgState *fw_cfg = NULL;
+     PcGuestInfo *guest_info;
+     ram_addr_t lowmem;
+ 
+@@ -181,16 +180,16 @@ static void pc_init1(MachineState *machine,
+ 
+     /* allocate ram and load rom/bios */
+     if (!xen_enabled()) {
+-        fw_cfg = pc_memory_init(machine, system_memory,
+-                                below_4g_mem_size, above_4g_mem_size,
+-                                rom_memory, &ram_memory, guest_info);
++        pc_memory_init(machine, system_memory,
++                       below_4g_mem_size, above_4g_mem_size,
++                       rom_memory, &ram_memory, guest_info);
+     } else if (machine->kernel_filename != NULL) {
+         /* For xen HVM direct kernel boot, load linux here */
+-        fw_cfg = xen_load_linux(machine->kernel_filename,
+-                                machine->kernel_cmdline,
+-                                machine->initrd_filename,
+-                                below_4g_mem_size,
+-                                guest_info);
++        xen_load_linux(machine->kernel_filename,
++                       machine->kernel_cmdline,
++                       machine->initrd_filename,
++                       below_4g_mem_size,
++                       guest_info);
+     }
+ 
+     gsi_state = g_malloc0(sizeof(*gsi_state));
+@@ -289,7 +288,7 @@ static void pc_init1(MachineState *machine,
+         /* TODO: Populate SPD eeprom data.  */
+         smbus = piix4_pm_init(pci_bus, piix3_devfn + 3, 0xb100,
+                               gsi[9], *smi_irq,
+-                              kvm_enabled(), fw_cfg, &piix4_pm);
++                              kvm_enabled(), &piix4_pm);
+         smbus_eeprom_init(smbus, 8, NULL, 0);
+ 
+         object_property_add_link(OBJECT(machine), PC_MACHINE_ACPI_DEVICE_PROP,
+diff --git a/hw/mips/mips_malta.c b/hw/mips/mips_malta.c
+index b0fa71a..79ab678 100644
+--- a/hw/mips/mips_malta.c
++++ b/hw/mips/mips_malta.c
+@@ -1160,7 +1160,7 @@ void mips_malta_init(MachineState *machine)
+     pci_piix4_ide_init(pci_bus, hd, piix4_devfn + 1);
+     pci_create_simple(pci_bus, piix4_devfn + 2, "piix4-usb-uhci");
+     smbus = piix4_pm_init(pci_bus, piix4_devfn + 3, 0x1100,
+-                          isa_get_irq(NULL, 9), NULL, 0, NULL, NULL);
++                          isa_get_irq(NULL, 9), NULL, 0, NULL);
+     smbus_eeprom_init(smbus, 8, smbus_eeprom_buf, smbus_eeprom_size);
+     g_free(smbus_eeprom_buf);
+     pit = pit_init(isa_bus, 0x40, 0, NULL);
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index bcb97ad..54afc73 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -219,8 +219,7 @@ void ioapic_init_gsi(GSIState *gsi_state, const char *parent_name);
+ 
+ I2CBus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
+                       qemu_irq sci_irq, qemu_irq smi_irq,
+-                      int kvm_enabled, FWCfgState *fw_cfg,
+-                      DeviceState **piix4_pm);
++                      int kvm_enabled, DeviceState **piix4_pm);
+ void piix4_smbus_register_device(SMBusDevice *dev, uint8_t addr);
+ 
+ /* hpet.c */
+-- 
+1.8.3.1
+

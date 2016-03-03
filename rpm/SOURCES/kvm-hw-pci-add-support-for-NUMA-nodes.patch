@@ -1,0 +1,104 @@
+From ac091c008fdd36e7a87e53926c31c9a8cd1e691d Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:33 +0200
+Subject: [PATCH 24/31] hw/pci: add support for NUMA nodes
+
+Message-id: <1435154016-26233-41-git-send-email-marcel@redhat.com>
+Patchwork-id: 66468
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 40/43] hw/pci: add support for NUMA nodes
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+PCI root buses can be attached to a specific NUMA node.
+PCI buses are not attached by default to a NUMA node.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 6a3042b23bbb1fa92c00ea9267c830e7f2e99313)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci/pci.c             | 11 +++++++++++
+ include/hw/pci/pci.h     |  1 +
+ include/hw/pci/pci_bus.h |  1 +
+ include/sysemu/sysemu.h  |  1 +
+ 4 files changed, 14 insertions(+)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index a5598fa..2688be4 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -101,6 +101,11 @@ static int pcibus_num(PCIBus *bus)
+     return bus->parent_dev->config[PCI_SECONDARY_BUS];
+ }
+ 
++static uint16_t pcibus_numa_node(PCIBus *bus)
++{
++    return NUMA_NODE_UNASSIGNED;
++}
++
+ static void pci_bus_class_init(ObjectClass *klass, void *data)
+ {
+     BusClass *k = BUS_CLASS(klass);
+@@ -115,6 +120,7 @@ static void pci_bus_class_init(ObjectClass *klass, void *data)
+ 
+     pbc->is_root = pcibus_is_root;
+     pbc->bus_num = pcibus_num;
++    pbc->numa_node = pcibus_numa_node;
+ }
+ 
+ static const TypeInfo pci_bus_info = {
+@@ -402,6 +408,11 @@ int pci_bus_num(PCIBus *s)
+     return PCI_BUS_GET_CLASS(s)->bus_num(s);
+ }
+ 
++int pci_bus_numa_node(PCIBus *bus)
++{
++    return PCI_BUS_GET_CLASS(bus)->numa_node(bus);
++}
++
+ static int get_pci_config_device(QEMUFile *f, void *pv, size_t size)
+ {
+     PCIDevice *s = container_of(pv, PCIDevice, config);
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index 3d1d3ea..f854ea0 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -387,6 +387,7 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, PCIBus *rootbus,
+ PCIDevice *pci_vga_init(PCIBus *bus);
+ 
+ int pci_bus_num(PCIBus *s);
++int pci_bus_numa_node(PCIBus *bus);
+ void pci_for_each_device(PCIBus *bus, int bus_num,
+                          void (*fn)(PCIBus *bus, PCIDevice *d, void *opaque),
+                          void *opaque);
+diff --git a/include/hw/pci/pci_bus.h b/include/hw/pci/pci_bus.h
+index 7b9939e..403fec6 100644
+--- a/include/hw/pci/pci_bus.h
++++ b/include/hw/pci/pci_bus.h
+@@ -15,6 +15,7 @@ typedef struct PCIBusClass {
+ 
+     bool (*is_root)(PCIBus *bus);
+     int (*bus_num)(PCIBus *bus);
++    uint16_t (*numa_node)(PCIBus *bus);
+ } PCIBusClass;
+ 
+ struct PCIBus {
+diff --git a/include/sysemu/sysemu.h b/include/sysemu/sysemu.h
+index f5e9141..fa928dd 100644
+--- a/include/sysemu/sysemu.h
++++ b/include/sysemu/sysemu.h
+@@ -138,6 +138,7 @@ extern const char *mem_path;
+ extern int mem_prealloc;
+ 
+ #define MAX_NODES 128
++#define NUMA_NODE_UNASSIGNED MAX_NODES
+ 
+ /* The following shall be true for all CPUs:
+  *   cpu->cpu_index < max_cpus <= MAX_CPUMASK_BITS
+-- 
+1.8.3.1
+

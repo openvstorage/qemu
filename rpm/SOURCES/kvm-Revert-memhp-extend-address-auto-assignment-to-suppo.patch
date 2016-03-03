@@ -1,0 +1,140 @@
+From bf4eb5036effc001fecd73e5e61d40683ffead9d Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 6 Nov 2015 15:25:18 +0100
+Subject: [PATCH 11/11] Revert "memhp: extend address auto assignment to
+ support gaps"
+
+Message-id: <1446823518-162714-3-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68302
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 2/2] Revert "memhp: extend address auto assignment to support gaps"
+Bugzilla: 1278282
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Radim Krcmar <rkrcmar@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+This reverts commit 860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.
+
+Upstream commit message:
+    This reverts commit df0acded19ec4b826aa095cfc19d341bd66fafd3.
+
+    There's no point to it now that the only user has been reverted
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+
+cherry-picked from d6a9b0b89d27e0a688f37c1732d4dec40613669e
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c             |  3 +--
+ hw/mem/pc-dimm.c         | 15 ++++++---------
+ hw/ppc/spapr.c           |  2 +-
+ include/hw/mem/pc-dimm.h |  7 +++----
+ 4 files changed, 11 insertions(+), 16 deletions(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 8477b5e..9305bf4 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1701,8 +1701,7 @@ static void pc_dimm_plug(HotplugHandler *hotplug_dev,
+         goto out;
+     }
+ 
+-    pc_dimm_memory_plug(dev, &pcms->hotplug_memory, mr, align, false,
+-                        &local_err);
++    pc_dimm_memory_plug(dev, &pcms->hotplug_memory, mr, align, &local_err);
+     if (local_err) {
+         goto out;
+     }
+diff --git a/hw/mem/pc-dimm.c b/hw/mem/pc-dimm.c
+index 6cc6ac3..bb04862 100644
+--- a/hw/mem/pc-dimm.c
++++ b/hw/mem/pc-dimm.c
+@@ -32,8 +32,7 @@ typedef struct pc_dimms_capacity {
+ } pc_dimms_capacity;
+ 
+ void pc_dimm_memory_plug(DeviceState *dev, MemoryHotplugState *hpms,
+-                         MemoryRegion *mr, uint64_t align, bool gap,
+-                         Error **errp)
++                         MemoryRegion *mr, uint64_t align, Error **errp)
+ {
+     int slot;
+     MachineState *machine = MACHINE(qdev_get_machine());
+@@ -49,7 +48,7 @@ void pc_dimm_memory_plug(DeviceState *dev, MemoryHotplugState *hpms,
+ 
+     addr = pc_dimm_get_free_addr(hpms->base,
+                                  memory_region_size(&hpms->mr),
+-                                 !addr ? NULL : &addr, align, gap,
++                                 !addr ? NULL : &addr, align,
+                                  memory_region_size(mr), &local_err);
+     if (local_err) {
+         goto out;
+@@ -288,8 +287,8 @@ static int pc_dimm_built_list(Object *obj, void *opaque)
+ 
+ uint64_t pc_dimm_get_free_addr(uint64_t address_space_start,
+                                uint64_t address_space_size,
+-                               uint64_t *hint, uint64_t align, bool gap,
+-                               uint64_t size, Error **errp)
++                               uint64_t *hint, uint64_t align, uint64_t size,
++                               Error **errp)
+ {
+     GSList *list = NULL, *item;
+     uint64_t new_addr, ret = 0;
+@@ -334,15 +333,13 @@ uint64_t pc_dimm_get_free_addr(uint64_t address_space_start,
+             goto out;
+         }
+ 
+-        if (ranges_overlap(dimm->addr, dimm_size, new_addr,
+-                           size + (gap ? 1 : 0))) {
++        if (ranges_overlap(dimm->addr, dimm_size, new_addr, size)) {
+             if (hint) {
+                 DeviceState *d = DEVICE(dimm);
+                 error_setg(errp, "address range conflicts with '%s'", d->id);
+                 goto out;
+             }
+-            new_addr = QEMU_ALIGN_UP(dimm->addr + dimm_size + (gap ? 1 : 0),
+-                                     align);
++            new_addr = QEMU_ALIGN_UP(dimm->addr + dimm_size, align);
+         }
+     }
+     ret = new_addr;
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 9fe6f56..6e98371 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -2106,7 +2106,7 @@ static void spapr_memory_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
+         goto out;
+     }
+ 
+-    pc_dimm_memory_plug(dev, &ms->hotplug_memory, mr, align, false, &local_err);
++    pc_dimm_memory_plug(dev, &ms->hotplug_memory, mr, align, &local_err);
+     if (local_err) {
+         goto out;
+     }
+diff --git a/include/hw/mem/pc-dimm.h b/include/hw/mem/pc-dimm.h
+index c1ee7b0..d83bf30 100644
+--- a/include/hw/mem/pc-dimm.h
++++ b/include/hw/mem/pc-dimm.h
+@@ -83,16 +83,15 @@ typedef struct MemoryHotplugState {
+ 
+ uint64_t pc_dimm_get_free_addr(uint64_t address_space_start,
+                                uint64_t address_space_size,
+-                               uint64_t *hint, uint64_t align, bool gap,
+-                               uint64_t size, Error **errp);
++                               uint64_t *hint, uint64_t align, uint64_t size,
++                               Error **errp);
+ 
+ int pc_dimm_get_free_slot(const int *hint, int max_slots, Error **errp);
+ 
+ int qmp_pc_dimm_device_list(Object *obj, void *opaque);
+ uint64_t pc_existing_dimms_capacity(Error **errp);
+ void pc_dimm_memory_plug(DeviceState *dev, MemoryHotplugState *hpms,
+-                         MemoryRegion *mr, uint64_t align, bool gap,
+-                         Error **errp);
++                         MemoryRegion *mr, uint64_t align, Error **errp);
+ void pc_dimm_memory_unplug(DeviceState *dev, MemoryHotplugState *hpms,
+                            MemoryRegion *mr);
+ #endif
+-- 
+1.8.3.1
+

@@ -1,0 +1,49 @@
+From 106ffc923f160ec6843a3d46c407c615f1891cc3 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:03 +0200
+Subject: [PATCH 18/28] migration: No need to call trace_migrate_set_state()
+
+Message-id: <1438098431-30847-19-git-send-email-quintela@redhat.com>
+Patchwork-id: 67172
+O-Subject: [RHEL-7 qemu-kvm PATCH 18/26] migration: No need to call trace_migrate_set_state()
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+We now use the helper everywhere, so no need to call this on this two
+places.  See on previous commit that there were a place where we missed
+to mark the trace.  Now all tracing is done in migrate_set_state().
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit f2bb932491185a39922dff0514c4b08c092f3c35)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/migration.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 07b9fe0..be81af9 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -445,7 +445,6 @@ void migrate_fd_error(MigrationState *s)
+     trace_migrate_fd_error();
+     assert(s->file == NULL);
+     migrate_set_state(s, MIGRATION_STATUS_SETUP, MIGRATION_STATUS_FAILED);
+-    trace_migrate_set_state(MIGRATION_STATUS_FAILED);
+     notifier_list_notify(&migration_state_notifiers, s);
+ }
+ 
+@@ -520,7 +519,6 @@ static MigrationState *migrate_init(const MigrationParams *params)
+ 
+     s->bandwidth_limit = bandwidth_limit;
+     migrate_set_state(s, MIGRATION_STATUS_NONE, MIGRATION_STATUS_SETUP);
+-    trace_migrate_set_state(MIGRATION_STATUS_SETUP);
+ 
+     s->total_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+     return s;
+-- 
+1.8.3.1
+

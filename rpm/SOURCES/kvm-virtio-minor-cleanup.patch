@@ -1,0 +1,40 @@
+From 0ba827207628edcd1daacf72489aeaf26d00f360 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Mon, 10 Aug 2015 05:09:32 +0200
+Subject: [PATCH 11/16] virtio: minor cleanup
+
+Message-id: <1439183375-4841-12-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67438
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 11/14] virtio: minor cleanup
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+There's no need for blk to set ANY_LAYOUT, it's
+done by virtio core as necessary.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit c147b5153e733a14fc65d2098e7036754c185ad1)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/block/virtio-blk.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index 5f9297a..2aa6ad6 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -733,7 +733,6 @@ static uint64_t virtio_blk_get_features(VirtIODevice *vdev, uint64_t features,
+             error_setg(errp, "Please set scsi=off for virtio-blk devices in order to use virtio 1.0");
+             return 0;
+         }
+-        virtio_add_feature(&features, VIRTIO_F_ANY_LAYOUT);
+     } else {
+         virtio_add_feature(&features, VIRTIO_BLK_F_SCSI);
+     }
+-- 
+1.8.3.1
+

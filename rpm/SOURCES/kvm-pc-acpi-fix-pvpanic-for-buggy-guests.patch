@@ -1,0 +1,73 @@
+From f39ebd2314f4db3caf1928c5c9d0ab284519ffd3 Mon Sep 17 00:00:00 2001
+From: Radim Krcmar <rkrcmar@redhat.com>
+Date: Tue, 23 Jun 2015 15:00:46 +0200
+Subject: [PATCH 2/2] pc: acpi: fix pvpanic for buggy guests
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1435071646-9165-1-git-send-email-rkrcmar@redhat.com>
+Patchwork-id: 66365
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] pc: acpi: fix pvpanic for buggy guests
+Bugzilla: 1221943
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+In the old times, we always had pvpanic in ACPI and a _STA method told
+the guest not to use it.  Automatic generation dropped the _STA method
+as the specification says that missing _STA means enabled and working.
+Some guests (Linux) had buggy drivers and this change made them unable
+to utilize pvpanic.
+
+A Linux patch is posted as well, but I think it's worth to make pvpanic
+useable on old guests at the price of three lines and few bytes of SSDT.
+
+The old _STA method was
+  Method (_STA, 0, NotSerialized) {
+      Store (PEST, Local0)
+      If (LEqual (Local0, Zero)) {
+          Return (Zero) }
+      Else {
+          Return (0x0F) }}
+
+Igor pointed out that we don't need to use a method to return a constant
+and that 0xB (don't show in UI) is the common definition now.
+
+Also, the device used to be PEVT.  (PEVT as in "panic event"?)
+
+Signed-off-by: Radim Krčmář <rkrcmar@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 2332333c9738b442fbbd5b83a1eaa6be656ab9b5)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index 8773e8f..d7f0a4e 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -787,7 +787,7 @@ build_ssdt(GArray *table_data, GArray *linker,
+     if (misc->pvpanic_port) {
+         scope = aml_scope("\\_SB.PCI0.ISA");
+ 
+-        dev = aml_device("PEVR");
++        dev = aml_device("PEVT");
+         aml_append(dev, aml_name_decl("_HID", aml_string("QEMU0001")));
+ 
+         crs = aml_resource_template();
+@@ -802,6 +802,9 @@ build_ssdt(GArray *table_data, GArray *linker,
+         aml_append(field, aml_named_field("PEPT", 8));
+         aml_append(dev, field);
+ 
++        /* device present, functioning, decoding, not shown in UI */
++        aml_append(dev, aml_name_decl("_STA", aml_int(0xB)));
++
+         method = aml_method("RDPT", 0);
+         aml_append(method, aml_store(aml_name("PEPT"), aml_local(0)));
+         aml_append(method, aml_return(aml_local(0)));
+-- 
+1.8.3.1
+

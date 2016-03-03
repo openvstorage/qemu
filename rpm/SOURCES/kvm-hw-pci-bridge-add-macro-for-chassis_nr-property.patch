@@ -1,0 +1,79 @@
+From 32c5881b7dee724ac32cc34de0bd974a352bf2fe Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Mon, 13 Jul 2015 19:17:43 +0200
+Subject: [PATCH 17/23] hw/pci-bridge: add macro for "chassis_nr" property
+
+Message-id: <1436815069-15106-7-git-send-email-lersek@redhat.com>
+Patchwork-id: 66997
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 06/12] hw/pci-bridge: add macro for "chassis_nr" property
+Bugzilla: 1242479
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+This should help catch property name typos at compile time.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Marcel Apfelbaum <marcel@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 3cf0ecb3c4f9bb6a7a58a62c0209509b4c9d13c6)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci-bridge/pci_bridge_dev.c      | 3 ++-
+ hw/pci-bridge/pci_expander_bridge.c | 3 ++-
+ include/hw/pci/pci_bridge.h         | 2 ++
+ 3 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/hw/pci-bridge/pci_bridge_dev.c b/hw/pci-bridge/pci_bridge_dev.c
+index d697c7b..f669ecd 100644
+--- a/hw/pci-bridge/pci_bridge_dev.c
++++ b/hw/pci-bridge/pci_bridge_dev.c
+@@ -122,7 +122,8 @@ static void qdev_pci_bridge_dev_reset(DeviceState *qdev)
+ 
+ static Property pci_bridge_dev_properties[] = {
+                     /* Note: 0 is not a legal chassis number. */
+-    DEFINE_PROP_UINT8("chassis_nr", PCIBridgeDev, chassis_nr, 0),
++    DEFINE_PROP_UINT8(PCI_BRIDGE_DEV_PROP_CHASSIS_NR, PCIBridgeDev, chassis_nr,
++                      0),
+     DEFINE_PROP_BIT("msi", PCIBridgeDev, flags, PCI_BRIDGE_DEV_F_MSI_REQ, true),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+diff --git a/hw/pci-bridge/pci_expander_bridge.c b/hw/pci-bridge/pci_expander_bridge.c
+index ec2bb45..3d840ef 100644
+--- a/hw/pci-bridge/pci_expander_bridge.c
++++ b/hw/pci-bridge/pci_expander_bridge.c
+@@ -14,6 +14,7 @@
+ #include "hw/pci/pci_bus.h"
+ #include "hw/pci/pci_host.h"
+ #include "hw/pci/pci_bus.h"
++#include "hw/pci/pci_bridge.h"
+ #include "hw/i386/pc.h"
+ #include "qemu/range.h"
+ #include "qemu/error-report.h"
+@@ -175,7 +176,7 @@ static int pxb_dev_initfn(PCIDevice *dev)
+ 
+     bds = qdev_create(BUS(bus), "pci-bridge");
+     bds->id = dev_name;
+-    qdev_prop_set_uint8(bds, "chassis_nr", pxb->bus_nr);
++    qdev_prop_set_uint8(bds, PCI_BRIDGE_DEV_PROP_CHASSIS_NR, pxb->bus_nr);
+ 
+     PCI_HOST_BRIDGE(ds)->bus = bus;
+ 
+diff --git a/include/hw/pci/pci_bridge.h b/include/hw/pci/pci_bridge.h
+index 1d8f997..f3ac49f 100644
+--- a/include/hw/pci/pci_bridge.h
++++ b/include/hw/pci/pci_bridge.h
+@@ -28,6 +28,8 @@
+ 
+ #include "hw/pci/pci.h"
+ 
++#define PCI_BRIDGE_DEV_PROP_CHASSIS_NR "chassis_nr"
++
+ int pci_bridge_ssvid_init(PCIDevice *dev, uint8_t offset,
+                           uint16_t svid, uint16_t ssid);
+ 
+-- 
+1.8.3.1
+

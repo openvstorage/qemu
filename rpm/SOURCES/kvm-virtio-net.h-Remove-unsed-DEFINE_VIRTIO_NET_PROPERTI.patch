@@ -1,0 +1,53 @@
+From a44e9480be9158adf9142d74896a60b1c7077d6b Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:00 +0200
+Subject: [PATCH 086/100] virtio-net.h: Remove unsed
+ DEFINE_VIRTIO_NET_PROPERTIES
+
+Message-id: <1436260751-25015-58-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66832
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 57/68] virtio-net.h: Remove unsed DEFINE_VIRTIO_NET_PROPERTIES
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Shannon Zhao <shannon.zhao@linaro.org>
+
+Remove unsed DEFINE_VIRTIO_NET_PROPERTIES in virtio-net.h and delete a
+space typo.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Acked-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit db58c063e159f02f0232d1557f0930fd32a6580f)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/virtio/virtio-net.h | 7 +------
+ 1 file changed, 1 insertion(+), 6 deletions(-)
+
+diff --git a/include/hw/virtio/virtio-net.h b/include/hw/virtio/virtio-net.h
+index c142b42..280dacf 100644
+--- a/include/hw/virtio/virtio-net.h
++++ b/include/hw/virtio/virtio-net.h
+@@ -107,12 +107,7 @@ typedef struct VirtIONet {
+  * VIRTIO_NET_F_CTRL_GUEST_OFFLOADS feature bit.
+  */
+ #define VIRTIO_NET_CTRL_GUEST_OFFLOADS   5
+- #define VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET        0
+-
+-#define DEFINE_VIRTIO_NET_PROPERTIES(_state, _field)                           \
+-    DEFINE_PROP_UINT32("x-txtimer", _state, _field.txtimer, TX_TIMER_INTERVAL),\
+-    DEFINE_PROP_INT32("x-txburst", _state, _field.txburst, TX_BURST),          \
+-    DEFINE_PROP_STRING("tx", _state, _field.tx)
++#define VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET        0
+ 
+ void virtio_net_set_netclient_name(VirtIONet *n, const char *name,
+                                    const char *type);
+-- 
+1.8.3.1
+

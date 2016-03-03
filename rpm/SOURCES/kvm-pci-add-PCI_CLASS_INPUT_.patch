@@ -1,0 +1,46 @@
+From 5ac6566f23340fe7af4cd6c636ca54e29ff3da70 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:56 +0200
+Subject: [PATCH 082/100] pci: add PCI_CLASS_INPUT_*
+
+Message-id: <1436260751-25015-54-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66828
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 53/68] pci: add PCI_CLASS_INPUT_*
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit ffaa05037134d48e3ccd7ebbf2d58db26590b96d)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/pci/pci_ids.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/include/hw/pci/pci_ids.h b/include/hw/pci/pci_ids.h
+index d7be386..dfccefc 100644
+--- a/include/hw/pci/pci_ids.h
++++ b/include/hw/pci/pci_ids.h
+@@ -46,6 +46,13 @@
+ #define PCI_CLASS_COMMUNICATION_SERIAL   0x0700
+ #define PCI_CLASS_COMMUNICATION_OTHER    0x0780
+ 
++#define PCI_CLASS_INPUT_KEYBOARD         0x0900
++#define PCI_CLASS_INPUT_PEN              0x0901
++#define PCI_CLASS_INPUT_MOUSE            0x0902
++#define PCI_CLASS_INPUT_SCANNER          0x0903
++#define PCI_CLASS_INPUT_GAMEPORT         0x0904
++#define PCI_CLASS_INPUT_OTHER            0x0980
++
+ #define PCI_CLASS_PROCESSOR_CO           0x0b40
+ #define PCI_CLASS_PROCESSOR_POWERPC      0x0b20
+ 
+-- 
+1.8.3.1
+

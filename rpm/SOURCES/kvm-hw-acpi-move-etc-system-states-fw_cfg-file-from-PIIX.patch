@@ -1,0 +1,102 @@
+From 8a5f450470b2413e8429dfd3a540fb6c7cc6e196 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Wed, 17 Jun 2015 14:07:42 +0200
+Subject: [PATCH 02/23] hw/acpi: move "etc/system-states" fw_cfg file from
+ PIIX4 to core
+
+Message-id: <1434550063-12144-3-git-send-email-lersek@redhat.com>
+Patchwork-id: 66285
+O-Subject: [RHEV-7.2 qemu-kvm-rhev 2/3] hw/acpi: move "etc/system-states" fw_cfg file from PIIX4 to core
+Bugzilla: 1204696
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+The acpi_pm1_cnt_init() core function is responsible for setting up the
+register block that will ultimately react to S3 and S4 requests (see
+acpi_pm1_cnt_write()). It makes sense to advertise this configuration to
+the guest firmware via an easy to parse fw_cfg file (ACPI is too complex
+for firmware to parse), and indeed PIIX4 does that. However, since
+acpi_pm1_cnt_init() is not specific to PIIX4, neither should be the fw_cfg
+file.
+
+This patch makes "etc/system-states" appear on all chipsets modified in
+the previous patch, not just PIIX4 (assuming they have fw_cfg at all).
+
+RHBZ: https://bugzilla.redhat.com/show_bug.cgi?id=1204696
+Cc: Amit Shah <amit.shah@redhat.com>
+Cc: "Michael S. Tsirkin" <mst@redhat.com>
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Cc: Richard Henderson <rth@twiddle.net>
+Cc: Eduardo Habkost <ehabkost@redhat.com>
+Cc: Aurelien Jarno <aurelien@aurel32.net>
+Cc: Leon Alrae <leon.alrae@imgtec.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit e3845e7c47cc3eaf35305c9c0f9d55ca3840b49b)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/core.c  | 12 ++++++++++++
+ hw/acpi/piix4.c |  8 --------
+ 2 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/hw/acpi/core.c b/hw/acpi/core.c
+index c19be8f..f70377f 100644
+--- a/hw/acpi/core.c
++++ b/hw/acpi/core.c
+@@ -22,6 +22,7 @@
+ #include "hw/hw.h"
+ #include "hw/i386/pc.h"
+ #include "hw/acpi/acpi.h"
++#include "hw/nvram/fw_cfg.h"
+ #include "qemu/config-file.h"
+ #include "qapi/opts-visitor.h"
+ #include "qapi/dealloc-visitor.h"
+@@ -595,12 +596,23 @@ static const MemoryRegionOps acpi_pm_cnt_ops = {
+ void acpi_pm1_cnt_init(ACPIREGS *ar, MemoryRegion *parent,
+                        bool disable_s3, bool disable_s4, uint8_t s4_val)
+ {
++    FWCfgState *fw_cfg;
++
+     ar->pm1.cnt.s4_val = s4_val;
+     ar->wakeup.notify = acpi_notify_wakeup;
+     qemu_register_wakeup_notifier(&ar->wakeup);
+     memory_region_init_io(&ar->pm1.cnt.io, memory_region_owner(parent),
+                           &acpi_pm_cnt_ops, ar, "acpi-cnt", 2);
+     memory_region_add_subregion(parent, 4, &ar->pm1.cnt.io);
++
++    fw_cfg = fw_cfg_find();
++    if (fw_cfg) {
++        uint8_t suspend[6] = {128, 0, 0, 129, 128, 128};
++        suspend[3] = 1 | ((!disable_s3) << 7);
++        suspend[4] = s4_val | ((!disable_s4) << 7);
++
++        fw_cfg_add_file(fw_cfg, "etc/system-states", g_memdup(suspend, 6), 6);
++    }
+ }
+ 
+ void acpi_pm1_cnt_reset(ACPIREGS *ar)
+diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
+index 1fb32f5..a2df40d 100644
+--- a/hw/acpi/piix4.c
++++ b/hw/acpi/piix4.c
+@@ -525,14 +525,6 @@ I2CBus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
+ 
+     qdev_init_nofail(dev);
+ 
+-    if (fw_cfg) {
+-        uint8_t suspend[6] = {128, 0, 0, 129, 128, 128};
+-        suspend[3] = 1 | ((!s->disable_s3) << 7);
+-        suspend[4] = s->s4_val | ((!s->disable_s4) << 7);
+-
+-        fw_cfg_add_file(fw_cfg, "etc/system-states", g_memdup(suspend, 6), 6);
+-    }
+-
+     return s->smb.smbus;
+ }
+ 
+-- 
+1.8.3.1
+

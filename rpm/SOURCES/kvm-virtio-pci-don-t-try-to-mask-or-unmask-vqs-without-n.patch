@@ -1,0 +1,83 @@
+From 0ca81271ba0bc4a6613611e10c8189bdd523b7a6 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:56 +0200
+Subject: [PATCH 20/20] virtio-pci: don't try to mask or unmask vqs without
+ notifiers
+
+Message-id: <1434607916-15166-21-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66319
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 20/20] virtio-pci: don't try to mask or unmask vqs without notifiers
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+We should validate the vq index against nvqs_with_notifiers. Otherwise we may
+try to mask or unmask vector for vqs without notifiers (e.g control vq). This
+will lead qemu abort on kvm_irqchip_commit_routes() when trying to boot win8.1
+guest.
+
+Fixes 851c2a75a6e80c8aa5e713864d98cfb512e7229b ("virtio-pci: speedup MSI-X
+masking and unmasking")
+
+Reported-by: Alex Williamson <alex.williamson@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 6652d0811c9463fbfb2d2d1cb2ec03f388145c5f)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 21 ++++++++++++++-------
+ 1 file changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 625bf25..48ff555 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -638,21 +638,26 @@ static int virtio_pci_vector_unmask(PCIDevice *dev, unsigned vector,
+         if (!virtio_queue_get_num(vdev, index)) {
+             break;
+         }
+-        ret = virtio_pci_vq_vector_unmask(proxy, index, vector, msg);
+-        if (ret < 0) {
+-            goto undo;
++        if (index < proxy->nvqs_with_notifiers) {
++            ret = virtio_pci_vq_vector_unmask(proxy, index, vector, msg);
++            if (ret < 0) {
++                goto undo;
++            }
++            ++unmasked;
+         }
+         vq = virtio_vector_next_queue(vq);
+-        ++unmasked;
+     }
+ 
+     return 0;
+ 
+ undo:
+     vq = virtio_vector_first_queue(vdev, vector);
+-    while (vq && --unmasked >= 0) {
++    while (vq && unmasked >= 0) {
+         index = virtio_get_queue_index(vq);
+-        virtio_pci_vq_vector_mask(proxy, index, vector);
++        if (index < proxy->nvqs_with_notifiers) {
++            virtio_pci_vq_vector_mask(proxy, index, vector);
++            --unmasked;
++        }
+         vq = virtio_vector_next_queue(vq);
+     }
+     return ret;
+@@ -670,7 +675,9 @@ static void virtio_pci_vector_mask(PCIDevice *dev, unsigned vector)
+         if (!virtio_queue_get_num(vdev, index)) {
+             break;
+         }
+-        virtio_pci_vq_vector_mask(proxy, index, vector);
++        if (index < proxy->nvqs_with_notifiers) {
++            virtio_pci_vq_vector_mask(proxy, index, vector);
++        }
+         vq = virtio_vector_next_queue(vq);
+     }
+ }
+-- 
+1.8.3.1
+

@@ -1,0 +1,74 @@
+From cc6f14a54a4d4cdd6da634366b613da600105729 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Mon, 11 Jan 2016 08:48:58 +0100
+Subject: [PATCH 2/3] ohci: clear pending SOF on suspend
+
+Message-id: <1452502138-10185-3-git-send-email-lvivier@redhat.com>
+Patchwork-id: 68728
+O-Subject: [RHEL-7.2.z qemu-kvm-rhev PATCH v2 2/2] ohci: clear pending SOF on suspend
+Bugzilla: 1298971
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+
+On overcommitted CPU, kernel can be so slow that an interrupt can
+be triggered by the device whereas the driver is not ready to receive
+it. This drives us into an infinite loop.
+
+On suspend, if a SOF interrupt is raised between the stop of the
+device processing and the change of the device internal state to
+OHCI_USB_SUSPEND (QEMU stops SOF timer on this state change), this
+interrupt is never acknowledged.
+
+This patch clears pending SOF interrupt on OHCI_USB_SUSPEND setting.
+
+Some details:
+
+- ohci_irq(): the OHCI interrupt handler, acknowledges the SOF IRQ
+  only if the state of the driver (rh_state) is OHCI_STATE_RUNNING.
+  So if this interrupt happens and the driver is not in this state,
+  the function is called again and again, moving the system to a
+  CPU starvation.
+
+- ohci_rh_suspend(): the function stop the operation and acknowledge
+  pending interrupts (but doesn't disable it). Later in the function,
+  the device is moved to OHCI_SUSPEND_STATE, and the driver to
+  OHCI_RH_SUSPENDED. If between the moment when the interrupt is
+  acknowledged and the moment when the device is suspended a new
+  interrupt is raised, it will be never acknowledged because the
+  driver is now not in OHCI_RH_RUNNING state.
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Message-id: 1452109525-32150-3-git-send-email-lvivier@redhat.com
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit 087462c7739869e9b888c06c06c8f1bbfd99779c)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1275555
+---
+ hw/usb/hcd-ohci.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/usb/hcd-ohci.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/usb/hcd-ohci.c b/hw/usb/hcd-ohci.c
+index a44fab2..b99e44f 100644
+--- a/hw/usb/hcd-ohci.c
++++ b/hw/usb/hcd-ohci.c
+@@ -1446,6 +1446,9 @@ static void ohci_set_ctl(OHCIState *ohci, uint32_t val)
+         break;
+     case OHCI_USB_SUSPEND:
+         ohci_bus_stop(ohci);
++        /* clear pending SF otherwise linux driver loops in ohci_irq() */
++        ohci->intr_status &= ~OHCI_INTR_SF;
++        ohci_intr_update(ohci);
+         break;
+     case OHCI_USB_RESUME:
+         trace_usb_ohci_resume(ohci->name);
+-- 
+1.8.3.1
+

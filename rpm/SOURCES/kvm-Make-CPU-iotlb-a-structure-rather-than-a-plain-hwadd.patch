@@ -1,0 +1,208 @@
+From 61b58310e9581a5310058690639a66ed92b1c813 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:12 +0200
+Subject: [PATCH 038/100] Make CPU iotlb a structure rather than a plain hwaddr
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1436260751-25015-10-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66784
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 09/68] Make CPU iotlb a structure rather than a plain hwaddr
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Peter Maydell <peter.maydell@linaro.org>
+
+Make the CPU iotlb a structure rather than a plain hwaddr;
+this will allow us to add transaction attributes to it.
+
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Edgar E. Iglesias <edgar.iglesias@xilinx.com>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+(cherry picked from commit e469b22ffda40188954fafaf6e3308f58d50f8f8)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ cputlb.c                |  4 ++--
+ include/exec/cpu-defs.h | 13 +++++++++++--
+ softmmu_template.h      | 32 +++++++++++++++++---------------
+ 3 files changed, 30 insertions(+), 19 deletions(-)
+
+diff --git a/cputlb.c b/cputlb.c
+index 38f2151..5e1cb8f 100644
+--- a/cputlb.c
++++ b/cputlb.c
+@@ -301,7 +301,7 @@ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
+     env->iotlb_v[mmu_idx][vidx] = env->iotlb[mmu_idx][index];
+ 
+     /* refill the tlb */
+-    env->iotlb[mmu_idx][index] = iotlb - vaddr;
++    env->iotlb[mmu_idx][index].addr = iotlb - vaddr;
+     te->addend = addend - vaddr;
+     if (prot & PAGE_READ) {
+         te->addr_read = address;
+@@ -349,7 +349,7 @@ tb_page_addr_t get_page_addr_code(CPUArchState *env1, target_ulong addr)
+                  (addr & TARGET_PAGE_MASK))) {
+         cpu_ldub_code(env1, addr);
+     }
+-    pd = env1->iotlb[mmu_idx][page_index] & ~TARGET_PAGE_MASK;
++    pd = env1->iotlb[mmu_idx][page_index].addr & ~TARGET_PAGE_MASK;
+     mr = iotlb_to_region(cpu, pd);
+     if (memory_region_is_unassigned(mr)) {
+         CPUClass *cc = CPU_GET_CLASS(cpu);
+diff --git a/include/exec/cpu-defs.h b/include/exec/cpu-defs.h
+index 0ca6f0b..7f88185 100644
+--- a/include/exec/cpu-defs.h
++++ b/include/exec/cpu-defs.h
+@@ -102,12 +102,21 @@ typedef struct CPUTLBEntry {
+ 
+ QEMU_BUILD_BUG_ON(sizeof(CPUTLBEntry) != (1 << CPU_TLB_ENTRY_BITS));
+ 
++/* The IOTLB is not accessed directly inline by generated TCG code,
++ * so the CPUIOTLBEntry layout is not as critical as that of the
++ * CPUTLBEntry. (This is also why we don't want to combine the two
++ * structs into one.)
++ */
++typedef struct CPUIOTLBEntry {
++    hwaddr addr;
++} CPUIOTLBEntry;
++
+ #define CPU_COMMON_TLB \
+     /* The meaning of the MMU modes is defined in the target code. */   \
+     CPUTLBEntry tlb_table[NB_MMU_MODES][CPU_TLB_SIZE];                  \
+     CPUTLBEntry tlb_v_table[NB_MMU_MODES][CPU_VTLB_SIZE];               \
+-    hwaddr iotlb[NB_MMU_MODES][CPU_TLB_SIZE];                           \
+-    hwaddr iotlb_v[NB_MMU_MODES][CPU_VTLB_SIZE];                        \
++    CPUIOTLBEntry iotlb[NB_MMU_MODES][CPU_TLB_SIZE];                    \
++    CPUIOTLBEntry iotlb_v[NB_MMU_MODES][CPU_VTLB_SIZE];                 \
+     target_ulong tlb_flush_addr;                                        \
+     target_ulong tlb_flush_mask;                                        \
+     target_ulong vtlb_index;                                            \
+diff --git a/softmmu_template.h b/softmmu_template.h
+index 9c1d53e..0e30986 100644
+--- a/softmmu_template.h
++++ b/softmmu_template.h
+@@ -123,7 +123,7 @@
+      * victim tlb. try to refill from the victim tlb before walking the       \
+      * page table. */                                                         \
+     int vidx;                                                                 \
+-    hwaddr tmpiotlb;                                                          \
++    CPUIOTLBEntry tmpiotlb;                                                   \
+     CPUTLBEntry tmptlb;                                                       \
+     for (vidx = CPU_VTLB_SIZE-1; vidx >= 0; --vidx) {                         \
+         if (env->tlb_v_table[mmu_idx][vidx].ty == (addr & TARGET_PAGE_MASK)) {\
+@@ -143,12 +143,13 @@
+ 
+ #ifndef SOFTMMU_CODE_ACCESS
+ static inline DATA_TYPE glue(io_read, SUFFIX)(CPUArchState *env,
+-                                              hwaddr physaddr,
++                                              CPUIOTLBEntry *iotlbentry,
+                                               target_ulong addr,
+                                               uintptr_t retaddr)
+ {
+     uint64_t val;
+     CPUState *cpu = ENV_GET_CPU(env);
++    hwaddr physaddr = iotlbentry->addr;
+     MemoryRegion *mr = iotlb_to_region(cpu, physaddr);
+ 
+     physaddr = (physaddr & TARGET_PAGE_MASK) + addr;
+@@ -196,15 +197,15 @@ WORD_TYPE helper_le_ld_name(CPUArchState *env, target_ulong addr, int mmu_idx,
+ 
+     /* Handle an IO access.  */
+     if (unlikely(tlb_addr & ~TARGET_PAGE_MASK)) {
+-        hwaddr ioaddr;
++        CPUIOTLBEntry *iotlbentry;
+         if ((addr & (DATA_SIZE - 1)) != 0) {
+             goto do_unaligned_access;
+         }
+-        ioaddr = env->iotlb[mmu_idx][index];
++        iotlbentry = &env->iotlb[mmu_idx][index];
+ 
+         /* ??? Note that the io helpers always read data in the target
+            byte ordering.  We should push the LE/BE request down into io.  */
+-        res = glue(io_read, SUFFIX)(env, ioaddr, addr, retaddr);
++        res = glue(io_read, SUFFIX)(env, iotlbentry, addr, retaddr);
+         res = TGT_LE(res);
+         return res;
+     }
+@@ -284,15 +285,15 @@ WORD_TYPE helper_be_ld_name(CPUArchState *env, target_ulong addr, int mmu_idx,
+ 
+     /* Handle an IO access.  */
+     if (unlikely(tlb_addr & ~TARGET_PAGE_MASK)) {
+-        hwaddr ioaddr;
++        CPUIOTLBEntry *iotlbentry;
+         if ((addr & (DATA_SIZE - 1)) != 0) {
+             goto do_unaligned_access;
+         }
+-        ioaddr = env->iotlb[mmu_idx][index];
++        iotlbentry = &env->iotlb[mmu_idx][index];
+ 
+         /* ??? Note that the io helpers always read data in the target
+            byte ordering.  We should push the LE/BE request down into io.  */
+-        res = glue(io_read, SUFFIX)(env, ioaddr, addr, retaddr);
++        res = glue(io_read, SUFFIX)(env, iotlbentry, addr, retaddr);
+         res = TGT_BE(res);
+         return res;
+     }
+@@ -364,12 +365,13 @@ WORD_TYPE helper_be_lds_name(CPUArchState *env, target_ulong addr,
+ #endif
+ 
+ static inline void glue(io_write, SUFFIX)(CPUArchState *env,
+-                                          hwaddr physaddr,
++                                          CPUIOTLBEntry *iotlbentry,
+                                           DATA_TYPE val,
+                                           target_ulong addr,
+                                           uintptr_t retaddr)
+ {
+     CPUState *cpu = ENV_GET_CPU(env);
++    hwaddr physaddr = iotlbentry->addr;
+     MemoryRegion *mr = iotlb_to_region(cpu, physaddr);
+ 
+     physaddr = (physaddr & TARGET_PAGE_MASK) + addr;
+@@ -410,16 +412,16 @@ void helper_le_st_name(CPUArchState *env, target_ulong addr, DATA_TYPE val,
+ 
+     /* Handle an IO access.  */
+     if (unlikely(tlb_addr & ~TARGET_PAGE_MASK)) {
+-        hwaddr ioaddr;
++        CPUIOTLBEntry *iotlbentry;
+         if ((addr & (DATA_SIZE - 1)) != 0) {
+             goto do_unaligned_access;
+         }
+-        ioaddr = env->iotlb[mmu_idx][index];
++        iotlbentry = &env->iotlb[mmu_idx][index];
+ 
+         /* ??? Note that the io helpers always read data in the target
+            byte ordering.  We should push the LE/BE request down into io.  */
+         val = TGT_LE(val);
+-        glue(io_write, SUFFIX)(env, ioaddr, val, addr, retaddr);
++        glue(io_write, SUFFIX)(env, iotlbentry, val, addr, retaddr);
+         return;
+     }
+ 
+@@ -491,16 +493,16 @@ void helper_be_st_name(CPUArchState *env, target_ulong addr, DATA_TYPE val,
+ 
+     /* Handle an IO access.  */
+     if (unlikely(tlb_addr & ~TARGET_PAGE_MASK)) {
+-        hwaddr ioaddr;
++        CPUIOTLBEntry *iotlbentry;
+         if ((addr & (DATA_SIZE - 1)) != 0) {
+             goto do_unaligned_access;
+         }
+-        ioaddr = env->iotlb[mmu_idx][index];
++        iotlbentry = &env->iotlb[mmu_idx][index];
+ 
+         /* ??? Note that the io helpers always read data in the target
+            byte ordering.  We should push the LE/BE request down into io.  */
+         val = TGT_BE(val);
+-        glue(io_write, SUFFIX)(env, ioaddr, val, addr, retaddr);
++        glue(io_write, SUFFIX)(env, iotlbentry, val, addr, retaddr);
+         return;
+     }
+ 
+-- 
+1.8.3.1
+

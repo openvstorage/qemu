@@ -1,0 +1,184 @@
+From dbabe0687c5ba838b8fb90aae8264c34d14d499e Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:44 +0200
+Subject: [PATCH 08/20] virtio: introduce vector to virtqueues mapping
+
+Message-id: <1434607916-15166-9-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66306
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 08/20] virtio: introduce vector to virtqueues mapping
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Currently we will try to traverse all virtqueues to find a subset that
+using a specific vector. This is sub optimal when we will support
+hundreds or even thousands of virtqueues. So this patch introduces a
+method which could be used by transport to get all virtqueues that
+using a same vector. This is done through QLISTs and the number of
+QLISTs was queried through a transport specific method. When guest
+setting vectors, the virtqueue will be linked and helpers for traverse
+the list was also introduced.
+
+The first user will be virtio pci which will use this to speed up
+MSI-X masking and unmasking handling.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit e0d686bf4b9d018ba5449f057b486bb5e1fa1a0d)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c         |  8 ++++++++
+ hw/virtio/virtio.c             | 36 ++++++++++++++++++++++++++++++++++--
+ include/hw/virtio/virtio-bus.h |  1 +
+ include/hw/virtio/virtio.h     |  3 +++
+ 4 files changed, 46 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index aa34aa5..6b064b9 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -908,6 +908,13 @@ static const TypeInfo virtio_9p_pci_info = {
+  * virtio-pci: This is the PCIDevice which has a virtio-pci-bus.
+  */
+ 
++static int virtio_pci_query_nvectors(DeviceState *d)
++{
++    VirtIOPCIProxy *proxy = VIRTIO_PCI(d);
++
++    return proxy->nvectors;
++}
++
+ /* This is called by virtio-bus just after the device is plugged. */
+ static void virtio_pci_device_plugged(DeviceState *d)
+ {
+@@ -1498,6 +1505,7 @@ static void virtio_pci_bus_class_init(ObjectClass *klass, void *data)
+     k->vmstate_change = virtio_pci_vmstate_change;
+     k->device_plugged = virtio_pci_device_plugged;
+     k->device_unplugged = virtio_pci_device_unplugged;
++    k->query_nvectors = virtio_pci_query_nvectors;
+ }
+ 
+ static const TypeInfo virtio_pci_bus_info = {
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 17c1260..6985e76 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -89,6 +89,7 @@ struct VirtQueue
+     VirtIODevice *vdev;
+     EventNotifier guest_notifier;
+     EventNotifier host_notifier;
++    QLIST_ENTRY(VirtQueue) node;
+ };
+ 
+ /* virt queue functions */
+@@ -605,7 +606,7 @@ void virtio_reset(void *opaque)
+         vdev->vq[i].vring.used = 0;
+         vdev->vq[i].last_avail_idx = 0;
+         vdev->vq[i].pa = 0;
+-        vdev->vq[i].vector = VIRTIO_NO_VECTOR;
++        virtio_queue_set_vector(vdev, i, VIRTIO_NO_VECTOR);
+         vdev->vq[i].signalled_used = 0;
+         vdev->vq[i].signalled_used_valid = false;
+         vdev->vq[i].notification = true;
+@@ -730,6 +731,16 @@ void virtio_queue_set_num(VirtIODevice *vdev, int n, int num)
+     virtqueue_init(&vdev->vq[n]);
+ }
+ 
++VirtQueue *virtio_vector_first_queue(VirtIODevice *vdev, uint16_t vector)
++{
++    return QLIST_FIRST(&vdev->vector_queues[vector]);
++}
++
++VirtQueue *virtio_vector_next_queue(VirtQueue *vq)
++{
++    return QLIST_NEXT(vq, node);
++}
++
+ int virtio_queue_get_num(VirtIODevice *vdev, int n)
+ {
+     return vdev->vq[n].vring.num;
+@@ -780,8 +791,19 @@ uint16_t virtio_queue_vector(VirtIODevice *vdev, int n)
+ 
+ void virtio_queue_set_vector(VirtIODevice *vdev, int n, uint16_t vector)
+ {
+-    if (n < VIRTIO_PCI_QUEUE_MAX)
++    VirtQueue *vq = &vdev->vq[n];
++
++    if (n < VIRTIO_PCI_QUEUE_MAX) {
++        if (vdev->vector_queues &&
++            vdev->vq[n].vector != VIRTIO_NO_VECTOR) {
++            QLIST_REMOVE(vq, node);
++        }
+         vdev->vq[n].vector = vector;
++        if (vdev->vector_queues &&
++            vector != VIRTIO_NO_VECTOR) {
++            QLIST_INSERT_HEAD(&vdev->vector_queues[vector], vq, node);
++        }
++    }
+ }
+ 
+ VirtQueue *virtio_add_queue(VirtIODevice *vdev, int queue_size,
+@@ -1088,6 +1110,7 @@ void virtio_cleanup(VirtIODevice *vdev)
+     qemu_del_vm_change_state_handler(vdev->vmstate);
+     g_free(vdev->config);
+     g_free(vdev->vq);
++    g_free(vdev->vector_queues);
+ }
+ 
+ static void virtio_vmstate_change(void *opaque, int running, RunState state)
+@@ -1125,7 +1148,16 @@ void virtio_instance_init_common(Object *proxy_obj, void *data,
+ void virtio_init(VirtIODevice *vdev, const char *name,
+                  uint16_t device_id, size_t config_size)
+ {
++    BusState *qbus = qdev_get_parent_bus(DEVICE(vdev));
++    VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(qbus);
+     int i;
++    int nvectors = k->query_nvectors ? k->query_nvectors(qbus->parent) : 0;
++
++    if (nvectors) {
++        vdev->vector_queues =
++            g_malloc0(sizeof(*vdev->vector_queues) * nvectors);
++    }
++
+     vdev->device_id = device_id;
+     vdev->status = 0;
+     vdev->isr = 0;
+diff --git a/include/hw/virtio/virtio-bus.h b/include/hw/virtio/virtio-bus.h
+index 0d2e7b4..a4588ca 100644
+--- a/include/hw/virtio/virtio-bus.h
++++ b/include/hw/virtio/virtio-bus.h
+@@ -62,6 +62,7 @@ typedef struct VirtioBusClass {
+      * This is called by virtio-bus just before the device is unplugged.
+      */
+     void (*device_unplugged)(DeviceState *d);
++    int (*query_nvectors)(DeviceState *d);
+     /*
+      * Does the transport have variable vring alignment?
+      * (ie can it ever call virtio_queue_set_align()?)
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index d95f8b6..9706c29 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -84,6 +84,7 @@ struct VirtIODevice
+     VMChangeStateEntry *vmstate;
+     char *bus_name;
+     uint8_t device_endian;
++    QLIST_HEAD(, VirtQueue) * vector_queues;
+ };
+ 
+ typedef struct VirtioDeviceClass {
+@@ -218,6 +219,8 @@ void virtio_queue_set_host_notifier_fd_handler(VirtQueue *vq, bool assign,
+                                                bool set_handler);
+ void virtio_queue_notify_vq(VirtQueue *vq);
+ void virtio_irq(VirtQueue *vq);
++VirtQueue *virtio_vector_first_queue(VirtIODevice *vdev, uint16_t vector);
++VirtQueue *virtio_vector_next_queue(VirtQueue *vq);
+ 
+ static inline void virtio_add_feature(uint32_t *features, unsigned int fbit)
+ {
+-- 
+1.8.3.1
+

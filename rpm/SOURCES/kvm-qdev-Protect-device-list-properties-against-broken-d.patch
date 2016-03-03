@@ -1,0 +1,645 @@
+From 16e2c3a9e465da1bf4ae2a5d2c402c739c3caa4b Mon Sep 17 00:00:00 2001
+Message-Id: <16e2c3a9e465da1bf4ae2a5d2c402c739c3caa4b.1444668695.git.jen@redhat.com>
+In-Reply-To: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+References: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+From: Markus Armbruster <armbru@redhat.com>
+Date: Fri, 9 Oct 2015 14:37:37 -0500
+Subject: [CHANGE 10/11] qdev: Protect device-list-properties against broken
+ devices
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Markus Armbruster <armbru@redhat.com>
+Message-id: <1444401458-7995-9-git-send-email-armbru@redhat.com>
+Patchwork-id: 68113
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 8/9] qdev: Protect device-list-properties against broken devices
+Bugzilla: 1264347
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+Several devices don't survive object_unref(object_new(T)): they crash
+or hang during cleanup, or they leave dangling pointers behind.
+
+This breaks at least device-list-properties, because
+qmp_device_list_properties() needs to create a device to find its
+properties.  Broken in commit f4eb32b "qmp: show QOM properties in
+device-list-properties", v2.1.  Example reproducer:
+
+    $ qemu-system-aarch64 -nodefaults -display none -machine none -S -qmp stdio
+    {"QMP": {"version": {"qemu": {"micro": 50, "minor": 4, "major": 2}, "package": ""}, "capabilities": []}}
+    { "execute": "qmp_capabilities" }
+    {"return": {}}
+    { "execute": "device-list-properties", "arguments": { "typename": "pxa2xx-pcmcia" } }
+    qemu-system-aarch64: /home/armbru/work/qemu/memory.c:1307: memory_region_finalize: Assertion `((&mr->subregions)->tqh_first == ((void *)0))' failed.
+    Aborted (core dumped)
+    [Exit 134 (SIGABRT)]
+
+Unfortunately, I can't fix the problems in these devices right now.
+Instead, add DeviceClass member cannot_destroy_with_object_finalize_yet
+to mark them:
+
+* Hang during cleanup (didn't debug, so I can't say why):
+  "realview_pci", "versatile_pci".
+
+* Dangling pointer in cpus: most CPUs, plus "allwinner-a10", "digic",
+  "fsl,imx25", "fsl,imx31", "xlnx,zynqmp", because they create such
+  CPUs
+
+* Assert kvm_enabled(): "host-x86_64-cpu", host-i386-cpu",
+  "host-powerpc64-cpu", "host-embedded-powerpc-cpu",
+  "host-powerpc-cpu" (the powerpc ones can't currently reach the
+  assertion, because the CPUs are only registered when KVM is enabled,
+  but the assertion is arguably in the wrong place all the same)
+
+Make qmp_device_list_properties() fail cleanly when the device is so
+marked.  This improves device-list-properties from "crashes, hangs or
+leaves dangling pointers behind" to "fails".  Not a complete fix, just
+a better-than-nothing work-around.  In the above reproducer,
+device-list-properties now fails with "Can't list properties of device
+'pxa2xx-pcmcia'".
+
+This also protects -device FOO,help, which uses the same machinery
+since commit ef52358 "qdev-monitor: include QOM properties in -device
+FOO, help output", v2.2.  Example reproducer:
+
+    $ qemu-system-aarch64 -machine none -device pxa2xx-pcmcia,help
+
+Before:
+
+    qemu-system-aarch64: .../memory.c:1307: memory_region_finalize: Assertion `((&mr->subregions)->tqh_first == ((void *)0))' failed.
+
+After:
+
+    Can't list properties of device 'pxa2xx-pcmcia'
+
+Cc: "Andreas Färber" <afaerber@suse.de>
+Cc: "Edgar E. Iglesias" <edgar.iglesias@gmail.com>
+Cc: Alexander Graf <agraf@suse.de>
+Cc: Anthony Green <green@moxielogic.com>
+Cc: Aurelien Jarno <aurelien@aurel32.net>
+Cc: Bastian Koppelmann <kbastian@mail.uni-paderborn.de>
+Cc: Blue Swirl <blauwirbel@gmail.com>
+Cc: Eduardo Habkost <ehabkost@redhat.com>
+Cc: Guan Xuetao <gxt@mprc.pku.edu.cn>
+Cc: Jia Liu <proljc@gmail.com>
+Cc: Leon Alrae <leon.alrae@imgtec.com>
+Cc: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
+Cc: Max Filippov <jcmvbkbc@gmail.com>
+Cc: Michael Walle <michael@walle.cc>
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Cc: Peter Maydell <peter.maydell@linaro.org>
+Cc: Richard Henderson <rth@twiddle.net>
+Cc: qemu-ppc@nongnu.org
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Eduardo Habkost <ehabkost@redhat.com>
+Message-Id: <1443689999-12182-10-git-send-email-armbru@redhat.com>
+(cherry picked from commit 4c315c27661502a0813b129e41c0bf640c34a8d6)
+
+Conflicts:
+	hw/arm/fsl-imx25.c
+	hw/arm/fsl-imx31.c
+	hw/arm/xlnx-zynqmp.c
+	target-arm/cpu.c
+	target-cris/cpu.c
+	target-microblaze/cpu.c
+	target-tilegx/cpu.c
+
+Drop patches to hw/arm/fsl-imx25.c, hw/arm/fsl-imx31.c,
+hw/arm/xlnx-zynqmp.c, target-tilegx/cpu.c, because we don't have them.
+The rest are straightforward conflicts because we don't have QOMified
+target-specific disassembler setup (commit 2de295c..6b625fd).
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+---
+ hw/arm/allwinner-a10.c         |  6 ++++++
+ hw/arm/digic.c                 |  6 ++++++
+ hw/pci-host/versatile.c        | 11 +++++++++++
+ include/hw/qdev-core.h         | 13 +++++++++++++
+ qmp.c                          |  5 +++++
+ target-alpha/cpu.c             |  7 +++++++
+ target-arm/cpu.c               | 11 +++++++++++
+ target-cris/cpu.c              |  7 +++++++
+ target-i386/cpu.c              |  8 ++++++++
+ target-lm32/cpu.c              |  7 +++++++
+ target-m68k/cpu.c              |  7 +++++++
+ target-microblaze/cpu.c        |  6 ++++++
+ target-mips/cpu.c              |  7 +++++++
+ target-moxie/cpu.c             |  7 +++++++
+ target-openrisc/cpu.c          |  7 +++++++
+ target-ppc/kvm.c               |  4 ++++
+ target-s390x/cpu.c             |  7 +++++++
+ target-sh4/cpu.c               |  7 +++++++
+ target-sparc/cpu.c             |  7 +++++++
+ target-tricore/cpu.c           |  6 ++++++
+ target-unicore32/cpu.c         |  7 +++++++
+ target-xtensa/cpu.c            |  7 +++++++
+ tests/device-introspect-test.c | 27 ---------------------------
+ 23 files changed, 160 insertions(+), 27 deletions(-)
+
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ hw/arm/allwinner-a10.c         |  6 ++++++
+ hw/arm/digic.c                 |  6 ++++++
+ hw/pci-host/versatile.c        | 11 +++++++++++
+ include/hw/qdev-core.h         | 13 +++++++++++++
+ qmp.c                          |  5 +++++
+ target-alpha/cpu.c             |  7 +++++++
+ target-arm/cpu.c               | 11 +++++++++++
+ target-cris/cpu.c              |  7 +++++++
+ target-i386/cpu.c              |  8 ++++++++
+ target-lm32/cpu.c              |  7 +++++++
+ target-m68k/cpu.c              |  7 +++++++
+ target-microblaze/cpu.c        |  6 ++++++
+ target-mips/cpu.c              |  7 +++++++
+ target-moxie/cpu.c             |  7 +++++++
+ target-openrisc/cpu.c          |  7 +++++++
+ target-ppc/kvm.c               |  4 ++++
+ target-s390x/cpu.c             |  7 +++++++
+ target-sh4/cpu.c               |  7 +++++++
+ target-sparc/cpu.c             |  7 +++++++
+ target-tricore/cpu.c           |  6 ++++++
+ target-unicore32/cpu.c         |  7 +++++++
+ target-xtensa/cpu.c            |  7 +++++++
+ tests/device-introspect-test.c | 27 ---------------------------
+ 23 files changed, 160 insertions(+), 27 deletions(-)
+
+diff --git a/hw/arm/allwinner-a10.c b/hw/arm/allwinner-a10.c
+index ff249af..43dc0a1 100644
+--- a/hw/arm/allwinner-a10.c
++++ b/hw/arm/allwinner-a10.c
+@@ -103,6 +103,12 @@ static void aw_a10_class_init(ObjectClass *oc, void *data)
+     DeviceClass *dc = DEVICE_CLASS(oc);
+ 
+     dc->realize = aw_a10_realize;
++
++    /*
++     * Reason: creates an ARM CPU, thus use after free(), see
++     * arm_cpu_class_init()
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo aw_a10_type_info = {
+diff --git a/hw/arm/digic.c b/hw/arm/digic.c
+index ec8c330..90f8190 100644
+--- a/hw/arm/digic.c
++++ b/hw/arm/digic.c
+@@ -97,6 +97,12 @@ static void digic_class_init(ObjectClass *oc, void *data)
+     DeviceClass *dc = DEVICE_CLASS(oc);
+ 
+     dc->realize = digic_realize;
++
++    /*
++     * Reason: creates an ARM CPU, thus use after free(), see
++     * arm_cpu_class_init()
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo digic_type_info = {
+diff --git a/hw/pci-host/versatile.c b/hw/pci-host/versatile.c
+index 6d23553..7172b90 100644
+--- a/hw/pci-host/versatile.c
++++ b/hw/pci-host/versatile.c
+@@ -500,6 +500,8 @@ static void pci_vpb_class_init(ObjectClass *klass, void *data)
+     dc->reset = pci_vpb_reset;
+     dc->vmsd = &pci_vpb_vmstate;
+     dc->props = pci_vpb_properties;
++    /* Reason: object_unref() hangs */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo pci_vpb_info = {
+@@ -521,10 +523,19 @@ static void pci_realview_init(Object *obj)
+     s->mem_win_size[2] = 0x08000000;
+ }
+ 
++static void pci_realview_class_init(ObjectClass *class, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(class);
++
++    /* Reason: object_unref() hangs */
++    dc->cannot_destroy_with_object_finalize_yet = true;
++}
++
+ static const TypeInfo pci_realview_info = {
+     .name          = "realview_pci",
+     .parent        = TYPE_VERSATILE_PCI,
+     .instance_init = pci_realview_init,
++    .class_init    = pci_realview_class_init,
+ };
+ 
+ static void versatile_pci_register_types(void)
+diff --git a/include/hw/qdev-core.h b/include/hw/qdev-core.h
+index 5b7acf1..0206889 100644
+--- a/include/hw/qdev-core.h
++++ b/include/hw/qdev-core.h
+@@ -114,6 +114,19 @@ typedef struct DeviceClass {
+      * TODO remove once we're there
+      */
+     bool cannot_instantiate_with_device_add_yet;
++    /*
++     * Does this device model survive object_unref(object_new(TNAME))?
++     * All device models should, and this flag shouldn't exist.  Some
++     * devices crash in object_new(), some crash or hang in
++     * object_unref().  Makes introspecting properties with
++     * qmp_device_list_properties() dangerous.  Bad, because it's used
++     * by -device FOO,help.  This flag serves to protect that code.
++     * It should never be set without a comment explaining why it is
++     * set.
++     * TODO remove once we're there
++     */
++    bool cannot_destroy_with_object_finalize_yet;
++
+     bool hotpluggable;
+ 
+     /* callbacks */
+diff --git a/qmp.c b/qmp.c
+index df18aeb..6609bb4 100644
+--- a/qmp.c
++++ b/qmp.c
+@@ -534,6 +534,11 @@ DevicePropertyInfoList *qmp_device_list_properties(const char *typename,
+         return NULL;
+     }
+ 
++    if (DEVICE_CLASS(klass)->cannot_destroy_with_object_finalize_yet) {
++        error_setg(errp, "Can't list properties of device '%s'", typename);
++        return NULL;
++    }
++
+     obj = object_new(typename);
+ 
+     QTAILQ_FOREACH(prop, &obj->properties, node) {
+diff --git a/target-alpha/cpu.c b/target-alpha/cpu.c
+index a98b7d8..cf181cb 100644
+--- a/target-alpha/cpu.c
++++ b/target-alpha/cpu.c
+@@ -298,6 +298,13 @@ static void alpha_cpu_class_init(ObjectClass *oc, void *data)
+     dc->vmsd = &vmstate_alpha_cpu;
+ #endif
+     cc->gdb_num_core_regs = 67;
++
++    /*
++     * Reason: alpha_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo alpha_cpu_type_info = {
+diff --git a/target-arm/cpu.c b/target-arm/cpu.c
+index cd8d0f5..46aa35a 100644
+--- a/target-arm/cpu.c
++++ b/target-arm/cpu.c
+@@ -1228,6 +1228,17 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
+     cc->gdb_core_xml_file = "arm-core.xml";
+     cc->gdb_stop_before_watchpoint = true;
+     cc->debug_excp_handler = arm_debug_excp_handler;
++
++    /*
++     * Reason: arm_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     *
++     * Once this is fixed, the devices that create ARM CPUs should be
++     * updated not to set cannot_destroy_with_object_finalize_yet,
++     * unless they still screw up something else.
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static void cpu_register(const ARMCPUInfo *info)
+diff --git a/target-cris/cpu.c b/target-cris/cpu.c
+index 16cfba9..ac446c0 100644
+--- a/target-cris/cpu.c
++++ b/target-cris/cpu.c
+@@ -292,6 +292,13 @@ static void cris_cpu_class_init(ObjectClass *oc, void *data)
+ 
+     cc->gdb_num_core_regs = 49;
+     cc->gdb_stop_before_watchpoint = true;
++
++    /*
++     * Reason: cris_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo cris_cpu_type_info = {
+diff --git a/target-i386/cpu.c b/target-i386/cpu.c
+index 51790df..6cf1d43 100644
+--- a/target-i386/cpu.c
++++ b/target-i386/cpu.c
+@@ -1480,6 +1480,8 @@ static void host_x86_cpu_class_init(ObjectClass *oc, void *data)
+      */
+ 
+     dc->props = host_x86_cpu_properties;
++    /* Reason: host_x86_cpu_initfn() dies when !kvm_enabled() */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static void host_x86_cpu_initfn(Object *obj)
+@@ -3080,6 +3082,12 @@ static void x86_cpu_common_class_init(ObjectClass *oc, void *data)
+ #endif
+     cc->cpu_exec_enter = x86_cpu_exec_enter;
+     cc->cpu_exec_exit = x86_cpu_exec_exit;
++
++    /*
++     * Reason: x86_cpu_initfn() calls cpu_exec_init(), which saves the
++     * object in cpus -> dangling pointer after final object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo x86_cpu_type_info = {
+diff --git a/target-lm32/cpu.c b/target-lm32/cpu.c
+index f8081f5..6b5fe78 100644
+--- a/target-lm32/cpu.c
++++ b/target-lm32/cpu.c
+@@ -275,6 +275,13 @@ static void lm32_cpu_class_init(ObjectClass *oc, void *data)
+     cc->gdb_num_core_regs = 32 + 7;
+     cc->gdb_stop_before_watchpoint = true;
+     cc->debug_excp_handler = lm32_debug_excp_handler;
++
++    /*
++     * Reason: lm32_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static void lm32_register_cpu_type(const LM32CPUInfo *info)
+diff --git a/target-m68k/cpu.c b/target-m68k/cpu.c
+index 4cfb725..34407f1 100644
+--- a/target-m68k/cpu.c
++++ b/target-m68k/cpu.c
+@@ -212,6 +212,13 @@ static void m68k_cpu_class_init(ObjectClass *c, void *data)
+     dc->vmsd = &vmstate_m68k_cpu;
+     cc->gdb_num_core_regs = 18;
+     cc->gdb_core_xml_file = "cf-core.xml";
++
++    /*
++     * Reason: m68k_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static void register_cpu_type(const M68kCPUInfo *info)
+diff --git a/target-microblaze/cpu.c b/target-microblaze/cpu.c
+index 67e3182..1f74a5f 100644
+--- a/target-microblaze/cpu.c
++++ b/target-microblaze/cpu.c
+@@ -183,6 +183,12 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
+     dc->vmsd = &vmstate_mb_cpu;
+     dc->props = mb_properties;
+     cc->gdb_num_core_regs = 32 + 5;
++
++    /*
++     * Reason: mb_cpu_initfn() calls cpu_exec_init(), which saves the
++     * object in cpus -> dangling pointer after final object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo mb_cpu_type_info = {
+diff --git a/target-mips/cpu.c b/target-mips/cpu.c
+index 958c999..6bd7f95 100644
+--- a/target-mips/cpu.c
++++ b/target-mips/cpu.c
+@@ -153,6 +153,13 @@ static void mips_cpu_class_init(ObjectClass *c, void *data)
+ 
+     cc->gdb_num_core_regs = 73;
+     cc->gdb_stop_before_watchpoint = true;
++
++    /*
++     * Reason: mips_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo mips_cpu_type_info = {
+diff --git a/target-moxie/cpu.c b/target-moxie/cpu.c
+index 47b617f..5390643 100644
+--- a/target-moxie/cpu.c
++++ b/target-moxie/cpu.c
+@@ -114,6 +114,13 @@ static void moxie_cpu_class_init(ObjectClass *oc, void *data)
+     cc->get_phys_page_debug = moxie_cpu_get_phys_page_debug;
+     cc->vmsd = &vmstate_moxie_cpu;
+ #endif
++
++    /*
++     * Reason: moxie_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static void moxielite_initfn(Object *obj)
+diff --git a/target-openrisc/cpu.c b/target-openrisc/cpu.c
+index 39bedc1..4571b5b 100644
+--- a/target-openrisc/cpu.c
++++ b/target-openrisc/cpu.c
+@@ -177,6 +177,13 @@ static void openrisc_cpu_class_init(ObjectClass *oc, void *data)
+     dc->vmsd = &vmstate_openrisc_cpu;
+ #endif
+     cc->gdb_num_core_regs = 32 + 3;
++
++    /*
++     * Reason: openrisc_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static void cpu_register(const OpenRISCCPUInfo *info)
+diff --git a/target-ppc/kvm.c b/target-ppc/kvm.c
+index f4ea18d..9a7f244 100644
+--- a/target-ppc/kvm.c
++++ b/target-ppc/kvm.c
+@@ -2134,6 +2134,7 @@ static void kvmppc_host_cpu_initfn(Object *obj)
+ 
+ static void kvmppc_host_cpu_class_init(ObjectClass *oc, void *data)
+ {
++    DeviceClass *dc = DEVICE_CLASS(oc);
+     PowerPCCPUClass *pcc = POWERPC_CPU_CLASS(oc);
+     uint32_t vmx = kvmppc_get_vmx();
+     uint32_t dfp = kvmppc_get_dfp();
+@@ -2160,6 +2161,9 @@ static void kvmppc_host_cpu_class_init(ObjectClass *oc, void *data)
+     if (icache_size != -1) {
+         pcc->l1_icache_size = icache_size;
+     }
++
++    /* Reason: kvmppc_host_cpu_initfn() dies when !kvm_enabled() */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ bool kvmppc_has_cap_epr(void)
+diff --git a/target-s390x/cpu.c b/target-s390x/cpu.c
+index e0537fa..9783b90 100644
+--- a/target-s390x/cpu.c
++++ b/target-s390x/cpu.c
+@@ -327,6 +327,13 @@ static void s390_cpu_class_init(ObjectClass *oc, void *data)
+ #endif
+     cc->gdb_num_core_regs = S390_NUM_CORE_REGS;
+     cc->gdb_core_xml_file = "s390x-core64.xml";
++
++    /*
++     * Reason: s390_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo s390_cpu_type_info = {
+diff --git a/target-sh4/cpu.c b/target-sh4/cpu.c
+index d187a2b..4b71786 100644
+--- a/target-sh4/cpu.c
++++ b/target-sh4/cpu.c
+@@ -289,6 +289,13 @@ static void superh_cpu_class_init(ObjectClass *oc, void *data)
+ #endif
+     dc->vmsd = &vmstate_sh_cpu;
+     cc->gdb_num_core_regs = 59;
++
++    /*
++     * Reason: superh_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo superh_cpu_type_info = {
+diff --git a/target-sparc/cpu.c b/target-sparc/cpu.c
+index a952097..71af126 100644
+--- a/target-sparc/cpu.c
++++ b/target-sparc/cpu.c
+@@ -854,6 +854,13 @@ static void sparc_cpu_class_init(ObjectClass *oc, void *data)
+ #else
+     cc->gdb_num_core_regs = 72;
+ #endif
++
++    /*
++     * Reason: sparc_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo sparc_cpu_type_info = {
+diff --git a/target-tricore/cpu.c b/target-tricore/cpu.c
+index 2ba0cf4..153bcdd 100644
+--- a/target-tricore/cpu.c
++++ b/target-tricore/cpu.c
+@@ -158,6 +158,12 @@ static void tricore_cpu_class_init(ObjectClass *c, void *data)
+     cc->set_pc = tricore_cpu_set_pc;
+     cc->synchronize_from_tb = tricore_cpu_synchronize_from_tb;
+ 
++    /*
++     * Reason: tricore_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static void cpu_register(const TriCoreCPUInfo *info)
+diff --git a/target-unicore32/cpu.c b/target-unicore32/cpu.c
+index 5b32987..4dd449d 100644
+--- a/target-unicore32/cpu.c
++++ b/target-unicore32/cpu.c
+@@ -155,6 +155,13 @@ static void uc32_cpu_class_init(ObjectClass *oc, void *data)
+     cc->get_phys_page_debug = uc32_cpu_get_phys_page_debug;
+ #endif
+     dc->vmsd = &vmstate_uc32_cpu;
++
++    /*
++     * Reason: uc32_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static void uc32_register_cpu_type(const UniCore32CPUInfo *info)
+diff --git a/target-xtensa/cpu.c b/target-xtensa/cpu.c
+index 2b75678..d53987d 100644
+--- a/target-xtensa/cpu.c
++++ b/target-xtensa/cpu.c
+@@ -155,6 +155,13 @@ static void xtensa_cpu_class_init(ObjectClass *oc, void *data)
+ #endif
+     cc->debug_excp_handler = xtensa_breakpoint_handler;
+     dc->vmsd = &vmstate_xtensa_cpu;
++
++    /*
++     * Reason: xtensa_cpu_initfn() calls cpu_exec_init(), which saves
++     * the object in cpus -> dangling pointer after final
++     * object_unref().
++     */
++    dc->cannot_destroy_with_object_finalize_yet = true;
+ }
+ 
+ static const TypeInfo xtensa_cpu_type_info = {
+diff --git a/tests/device-introspect-test.c b/tests/device-introspect-test.c
+index 8a27b4a..11d5fea 100644
+--- a/tests/device-introspect-test.c
++++ b/tests/device-introspect-test.c
+@@ -91,30 +91,6 @@ static void test_device_intro_abstract(void)
+     qtest_end();
+ }
+ 
+-static bool blacklisted(const char *type)
+-{
+-    static const char *blacklist[] = {
+-        /* hang in object_unref(): */
+-        "realview_pci", "versatile_pci",
+-        /* create a CPU, thus use after free (see below): */
+-        "allwinner-a10", "digic", "fsl,imx25", "fsl,imx31", "xlnx,zynqmp",
+-    };
+-    size_t len = strlen(type);
+-    int i;
+-
+-    if (len >= 4 && !strcmp(type + len - 4, "-cpu")) {
+-        /* use after free: cpu_exec_init() saves CPUState in cpus */
+-        return true;
+-    }
+-
+-    for (i = 0; i < ARRAY_SIZE(blacklist); i++) {
+-        if (!strcmp(blacklist[i], type)) {
+-            return true;
+-        }
+-    }
+-    return false;
+-}
+-
+ static void test_device_intro_concrete(void)
+ {
+     QList *types;
+@@ -128,9 +104,6 @@ static void test_device_intro_concrete(void)
+         type = qdict_get_try_str(qobject_to_qdict(qlist_entry_obj(entry)),
+                                 "name");
+         g_assert(type);
+-        if (blacklisted(type)) {
+-            continue;           /* FIXME broken device, skip */
+-        }
+         test_one_device(type);
+     }
+ 
+-- 
+2.4.3
+

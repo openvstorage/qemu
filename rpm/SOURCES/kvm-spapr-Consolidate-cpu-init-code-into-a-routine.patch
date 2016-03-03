@@ -1,0 +1,110 @@
+From 883cb59cc0fdb237f85a64ab0969a7b8ba5b51b0 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:12 +0200
+Subject: [PATCH 50/58] spapr: Consolidate cpu init code into a routine
+
+Message-id: <1437715580-14817-21-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67137
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 20/28] spapr: Consolidate cpu init code into a routine
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Factor out bits of sPAPR specific CPU initialization code into
+a separate routine so that it can be called from CPU hotplug
+path too.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit bab99ea09897fb65255cc4e147d87c077fafcfe6)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c | 54 +++++++++++++++++++++++++++++-------------------------
+ 1 file changed, 29 insertions(+), 25 deletions(-)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index d54063d..d9c9301 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1408,6 +1408,34 @@ static void spapr_boot_set(void *opaque, const char *boot_device,
+     machine->boot_order = g_strdup(boot_device);
+ }
+ 
++static void spapr_cpu_init(sPAPRMachineState *spapr, PowerPCCPU *cpu)
++{
++    CPUPPCState *env = &cpu->env;
++
++    /* Set time-base frequency to 512 MHz */
++    cpu_ppc_tb_init(env, TIMEBASE_FREQ);
++
++    /* PAPR always has exception vectors in RAM not ROM. To ensure this,
++     * MSR[IP] should never be set.
++     */
++    env->msr_mask &= ~(1 << 6);
++
++    /* Tell KVM that we're in PAPR mode */
++    if (kvm_enabled()) {
++        kvmppc_set_papr(cpu);
++    }
++
++    if (cpu->max_compat) {
++        if (ppc_set_compat(cpu, cpu->max_compat) < 0) {
++            exit(1);
++        }
++    }
++
++    xics_cpu_setup(spapr->icp, cpu);
++
++    qemu_register_reset(spapr_cpu_reset, cpu);
++}
++
+ /* pSeries LPAR / sPAPR hardware init */
+ static void ppc_spapr_init(MachineState *machine)
+ {
+@@ -1417,7 +1445,6 @@ static void ppc_spapr_init(MachineState *machine)
+     const char *kernel_cmdline = machine->kernel_cmdline;
+     const char *initrd_filename = machine->initrd_filename;
+     PowerPCCPU *cpu;
+-    CPUPPCState *env;
+     PCIHostState *phb;
+     int i;
+     MemoryRegion *sysmem = get_system_memory();
+@@ -1502,30 +1529,7 @@ static void ppc_spapr_init(MachineState *machine)
+             fprintf(stderr, "Unable to find PowerPC CPU definition\n");
+             exit(1);
+         }
+-        env = &cpu->env;
+-
+-        /* Set time-base frequency to 512 MHz */
+-        cpu_ppc_tb_init(env, TIMEBASE_FREQ);
+-
+-        /* PAPR always has exception vectors in RAM not ROM. To ensure this,
+-         * MSR[IP] should never be set.
+-         */
+-        env->msr_mask &= ~(1 << 6);
+-
+-        /* Tell KVM that we're in PAPR mode */
+-        if (kvm_enabled()) {
+-            kvmppc_set_papr(cpu);
+-        }
+-
+-        if (cpu->max_compat) {
+-            if (ppc_set_compat(cpu, cpu->max_compat) < 0) {
+-                exit(1);
+-            }
+-        }
+-
+-        xics_cpu_setup(spapr->icp, cpu);
+-
+-        qemu_register_reset(spapr_cpu_reset, cpu);
++        spapr_cpu_init(spapr, cpu);
+     }
+ 
+     if (kvm_enabled()) {
+-- 
+1.8.3.1
+

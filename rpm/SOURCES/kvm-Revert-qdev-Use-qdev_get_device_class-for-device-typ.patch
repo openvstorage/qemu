@@ -1,0 +1,101 @@
+From 303a00fd9a45eb5d6febe8f29960c581d5157118 Mon Sep 17 00:00:00 2001
+Message-Id: <303a00fd9a45eb5d6febe8f29960c581d5157118.1444668695.git.jen@redhat.com>
+In-Reply-To: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+References: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+From: Markus Armbruster <armbru@redhat.com>
+Date: Fri, 9 Oct 2015 14:37:38 -0500
+Subject: [CHANGE 11/11] Revert "qdev: Use qdev_get_device_class() for -device
+ <type>, help"
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Markus Armbruster <armbru@redhat.com>
+Message-id: <1444401458-7995-10-git-send-email-armbru@redhat.com>
+Patchwork-id: 68114
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 9/9] Revert "qdev: Use qdev_get_device_class() for -device <type>, help"
+Bugzilla: 1264347
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+This reverts commit 31bed5509dfcbdfc293154ce81086a4dbd7a80b6.
+
+The reverted commit changed qdev_device_help() to reject abstract
+devices and devices that have cannot_instantiate_with_device_add_yet
+set, to fix crash bugs like -device x86_64-cpu,help.
+
+Rejecting abstract devices makes sense: they're purely internal, and
+the implementation of the help feature can't cope with them.
+
+Rejecting non-pluggable devices makes less sense: even though you
+can't use them with -device, the help may still be useful elsewhere,
+for instance with -global.  This is a regression: -device FOO,help
+used to help even for FOO that aren't pluggable.
+
+The previous two commits fixed the crash bug at a lower layer, so
+reverting this one is now safe.  Fixes the -device FOO,help
+regression, except for the broken devices marked
+cannot_even_create_with_object_new_yet.  For those, the error message
+is improved.
+
+Example of a device where the regression is fixed:
+
+    $ qemu-system-x86_64 -device PIIX4_PM,help
+    PIIX4_PM.command_serr_enable=bool (on/off)
+    PIIX4_PM.multifunction=bool (on/off)
+    PIIX4_PM.rombar=uint32
+    PIIX4_PM.romfile=str
+    PIIX4_PM.addr=int32 (Slot and optional function number, example: 06.0 or 06)
+    PIIX4_PM.memory-hotplug-support=bool
+    PIIX4_PM.acpi-pci-hotplug-with-bridge-support=bool
+    PIIX4_PM.s4_val=uint8
+    PIIX4_PM.disable_s4=uint8
+    PIIX4_PM.disable_s3=uint8
+    PIIX4_PM.smb_io_base=uint32
+
+Example of a device where it isn't fixed:
+
+    $ qemu-system-x86_64 -device host-x86_64-cpu,help
+    Can't list properties of device 'host-x86_64-cpu'
+
+Both failed with "Parameter 'driver' expects pluggable device type"
+before.
+
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Eduardo Habkost <ehabkost@redhat.com>
+Message-Id: <1443689999-12182-11-git-send-email-armbru@redhat.com>
+(cherry picked from commit 33fe96833015cf15f4c0aa5bf8d34f60526e0732)
+---
+ qdev-monitor.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ qdev-monitor.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/qdev-monitor.c b/qdev-monitor.c
+index 1d87f57..4a56976 100644
+--- a/qdev-monitor.c
++++ b/qdev-monitor.c
+@@ -235,9 +235,12 @@ int qdev_device_help(QemuOpts *opts)
+         return 0;
+     }
+ 
+-    qdev_get_device_class(&driver, &local_err);
+-    if (local_err) {
+-        goto error;
++    if (!object_class_by_name(driver)) {
++        const char *typename = find_typename_by_alias(driver);
++
++        if (typename) {
++            driver = typename;
++        }
+     }
+ 
+     prop_list = qmp_device_list_properties(driver, &local_err);
+-- 
+2.4.3
+

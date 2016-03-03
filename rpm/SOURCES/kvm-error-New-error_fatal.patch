@@ -1,0 +1,123 @@
+From b060c5a8bd6d1ae075b1ca9965cc871a94d03a31 Mon Sep 17 00:00:00 2001
+From: Markus Armbruster <armbru@redhat.com>
+Date: Mon, 21 Sep 2015 16:15:32 +0200
+Subject: [PATCH 04/10] error: New error_fatal
+
+Message-id: <1442852135-32495-2-git-send-email-armbru@redhat.com>
+Patchwork-id: 67850
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 1/4] error: New error_fatal
+Bugzilla: 1232308
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+Similar to error_abort, but doesn't report where the error was
+created, and terminates the process with exit(1) rather than abort().
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Message-Id: <1441983105-26376-2-git-send-email-armbru@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Peter Crosthwaite <crosthwaite.peter@gmail.com>
+(cherry picked from commit a29a37b994ca3c5a1d39fa0e8934f7e0f2cf57ef)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	include/qapi/error.h
+	util/error.c
+
+Conflicts because we lack "On abort, report where the error was
+created" (commit fbf054c..1e9b65b).  Would be nice to have, but
+requires the QError purge (commit f006cf7..a0b1a66 plus
+prerequisites), and that seems to invasive right now.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+---
+ include/qapi/error.h |  5 +++++
+ util/error.c         | 32 ++++++++++++++++++++++----------
+ 2 files changed, 27 insertions(+), 10 deletions(-)
+
+diff --git a/include/qapi/error.h b/include/qapi/error.h
+index f44c451..0f1d78c 100644
+--- a/include/qapi/error.h
++++ b/include/qapi/error.h
+@@ -105,4 +105,9 @@ void error_free(Error *err);
+ 
+ extern Error *error_abort;
+ 
++/*
++ * Pass to error_setg() & friends to exit(1) on error.
++ */
++extern Error *error_fatal;
++
+ #endif
+diff --git a/util/error.c b/util/error.c
+index 14f4351..10d04b8 100644
+--- a/util/error.c
++++ b/util/error.c
+@@ -2,9 +2,11 @@
+  * QEMU Error Objects
+  *
+  * Copyright IBM, Corp. 2011
++ * Copyright (C) 2011-2015 Red Hat, Inc.
+  *
+  * Authors:
+  *  Anthony Liguori   <aliguori@us.ibm.com>
++ *  Markus Armbruster <armbru@redhat.com>,
+  *
+  * This work is licensed under the terms of the GNU LGPL, version 2.  See
+  * the COPYING.LIB file in the top-level directory.
+@@ -21,6 +23,19 @@ struct Error
+ };
+ 
+ Error *error_abort;
++Error *error_fatal;
++
++static void error_handle_fatal(Error **errp, Error *err)
++{
++    if (errp == &error_abort) {
++        error_report_err(err);
++        abort();
++    }
++    if (errp == &error_fatal) {
++        error_report_err(err);
++        exit(1);
++    }
++}
+ 
+ void error_set(Error **errp, ErrorClass err_class, const char *fmt, ...)
+ {
+@@ -40,11 +55,7 @@ void error_set(Error **errp, ErrorClass err_class, const char *fmt, ...)
+     va_end(ap);
+     err->err_class = err_class;
+ 
+-    if (errp == &error_abort) {
+-        error_report_err(err);
+-        abort();
+-    }
+-
++    error_handle_fatal(errp, err);
+     *errp = err;
+ 
+     errno = saved_errno;
+@@ -168,12 +179,13 @@ void error_free(Error *err)
+ 
+ void error_propagate(Error **dst_errp, Error *local_err)
+ {
+-    if (local_err && dst_errp == &error_abort) {
+-        error_report_err(local_err);
+-        abort();
+-    } else if (dst_errp && !*dst_errp) {
++    if (!local_err) {
++        return;
++    }
++    error_handle_fatal(dst_errp, local_err);
++    if (dst_errp && !*dst_errp) {
+         *dst_errp = local_err;
+-    } else if (local_err) {
++    } else {
+         error_free(local_err);
+     }
+ }
+-- 
+1.8.3.1
+

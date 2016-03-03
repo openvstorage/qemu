@@ -1,0 +1,62 @@
+From 0a5e3f6ae47911e102050bcc5274592c07fd8acb Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 9 Nov 2015 10:36:52 +0100
+Subject: [PATCH 07/44] pc: memhp: do not emit inserting event for coldplugged
+ DIMMs
+
+Message-id: <1447065412-176891-3-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68310
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev 2/2] pc: memhp: do not emit inserting event for coldplugged DIMMs
+Bugzilla: 1283072
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+currently acpi_memory_plug_cb() sets is_inserting for
+cold- and hot-plugged DIMMs as result ASL MHPD.MSCN()
+method issues device check even for every coldplugged
+DIMM. There isn't much harm in it but if we try to
+unplug such DIMM, OSPM will issue device check
+intstead of device eject event. So OSPM won't eject
+memory module as expected and it will try to eject it
+only when another memory device is hot-(un)plugged.
+
+As a fix do not set 'is_inserting' event and do not
+issue SCI for cold-plugged DIMMs as they are
+enumerated and activated by OSPM during guest's boot.
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+
+cherry-picked from 4828b10bda6a74a22a7695303e0648157d0e3ea4
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/memory_hotplug.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/hw/acpi/memory_hotplug.c b/hw/acpi/memory_hotplug.c
+index 2ff0d5c..ce428df 100644
+--- a/hw/acpi/memory_hotplug.c
++++ b/hw/acpi/memory_hotplug.c
+@@ -238,10 +238,12 @@ void acpi_memory_plug_cb(ACPIREGS *ar, qemu_irq irq, MemHotplugState *mem_st,
+ 
+     mdev->dimm = dev;
+     mdev->is_enabled = true;
+-    mdev->is_inserting = true;
++    if (dev->hotplugged) {
++        mdev->is_inserting = true;
+ 
+-    /* do ACPI magic */
+-    acpi_send_gpe_event(ar, irq, ACPI_MEMORY_HOTPLUG_STATUS);
++        /* do ACPI magic */
++        acpi_send_gpe_event(ar, irq, ACPI_MEMORY_HOTPLUG_STATUS);
++    }
+     return;
+ }
+ 
+-- 
+1.8.3.1
+

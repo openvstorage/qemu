@@ -1,0 +1,148 @@
+From 3efd9ee648c39581ebe00bf7e1edf319dc037887 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:07 +0100
+Subject: [PATCH 12/44] util: add linux-only memfd fallback
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-6-git-send-email-mst@redhat.com>
+Patchwork-id: 68368
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 05/36] util: add linux-only memfd fallback
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Implement memfd_create() fallback if not available in system libc.
+memfd_create() is still not included in glibc today, atlhough it's been
+available since Linux 3.17 in Oct 2014.
+
+memfd has numerous advantages over traditional shm/mmap for ipc memory
+sharing with fd handler, which we are going to make use of for
+vhost-user logging memory in following patches.
+
+The next patches are going to introduce helpers to use best practices of
+memfd usage and provide some compatibility fallback. memfd.c is thus
+temporarily useless and eventually empty if memfd_create() is provided
+by the system.
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit f04cf9239addd12d6be9e7ff137262755e3680d3)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/qemu/memfd.h | 20 +++++++++++++++++++
+ util/Makefile.objs   |  1 +
+ util/memfd.c         | 55 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 76 insertions(+)
+ create mode 100644 include/qemu/memfd.h
+ create mode 100644 util/memfd.c
+
+diff --git a/include/qemu/memfd.h b/include/qemu/memfd.h
+new file mode 100644
+index 0000000..8b1fe6a
+--- /dev/null
++++ b/include/qemu/memfd.h
+@@ -0,0 +1,20 @@
++#ifndef QEMU_MEMFD_H
++#define QEMU_MEMFD_H
++
++#include "config-host.h"
++
++#ifndef F_LINUX_SPECIFIC_BASE
++#define F_LINUX_SPECIFIC_BASE 1024
++#endif
++
++#ifndef F_ADD_SEALS
++#define F_ADD_SEALS (F_LINUX_SPECIFIC_BASE + 9)
++#define F_GET_SEALS (F_LINUX_SPECIFIC_BASE + 10)
++
++#define F_SEAL_SEAL     0x0001  /* prevent further seals from being set */
++#define F_SEAL_SHRINK   0x0002  /* prevent file from shrinking */
++#define F_SEAL_GROW     0x0004  /* prevent file from growing */
++#define F_SEAL_WRITE    0x0008  /* prevent writes */
++#endif
++
++#endif /* QEMU_MEMFD_H */
+diff --git a/util/Makefile.objs b/util/Makefile.objs
+index cedfdf9..de56a16 100644
+--- a/util/Makefile.objs
++++ b/util/Makefile.objs
+@@ -5,6 +5,7 @@ util-obj-$(CONFIG_POSIX) += oslib-posix.o
+ util-obj-$(CONFIG_POSIX) += qemu-openpty.o
+ util-obj-$(CONFIG_POSIX) += qemu-thread-posix.o
+ util-obj-$(CONFIG_WIN32) += event_notifier-win32.o
++util-obj-$(CONFIG_POSIX) += memfd.o
+ util-obj-$(CONFIG_WIN32) += oslib-win32.o
+ util-obj-$(CONFIG_WIN32) += qemu-thread-win32.o
+ util-obj-y += envlist.o path.o module.o
+diff --git a/util/memfd.c b/util/memfd.c
+new file mode 100644
+index 0000000..e43a3f8
+--- /dev/null
++++ b/util/memfd.c
+@@ -0,0 +1,55 @@
++/*
++ * memfd.c
++ *
++ * Copyright (c) 2015 Red Hat, Inc.
++ *
++ * QEMU library functions on POSIX which are shared between QEMU and
++ * the QEMU tools.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++ * THE SOFTWARE.
++ */
++
++#include "qemu/osdep.h"
++
++#include "qemu/memfd.h"
++
++#ifdef CONFIG_MEMFD
++#include <sys/memfd.h>
++#elif defined CONFIG_LINUX
++#include <unistd.h>
++#include <sys/syscall.h>
++#include <asm/unistd.h>
++
++inline static int memfd_create(const char *name, unsigned int flags)
++{
++#ifdef __NR_memfd_create
++    return syscall(__NR_memfd_create, name, flags);
++#else
++    return -1;
++#endif
++}
++#endif
++
++#ifndef MFD_CLOEXEC
++#define MFD_CLOEXEC 0x0001U
++#endif
++
++#ifndef MFD_ALLOW_SEALING
++#define MFD_ALLOW_SEALING 0x0002U
++#endif
+-- 
+1.8.3.1
+

@@ -1,0 +1,152 @@
+From d7b5349ddcdd59be21ac081d43609374ffc56087 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:48 +0200
+Subject: [PATCH 12/20] virtio: device_plugged() can fail
+
+Message-id: <1434607916-15166-13-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66310
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 12/20] virtio: device_plugged() can fail
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Notes: conflicts since commit 6b8f1020540c27246277377aa2c3331ad2bfb160
+       ("virtio: move host_features") was not backported. So still
+       need to add Error *parameter to mmio version of device_plugged
+       in RHEL7.
+
+This patch passes error pointer to transport specific device_plugged()
+callback. Through this way, device_plugged() can do some transport
+specific check and fail. This will be uesd by following patches that
+check the number of virtqueues against the transport limitation.
+
+Cc: Cornelia Huck <cornelia.huck@de.ibm.com>
+Cc: Christian Borntraeger <borntraeger@de.ibm.com>
+Cc: Richard Henderson <rth@twiddle.net>
+Cc: Alexander Graf <agraf@suse.de>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit e83980455c8c7eb066405de512be7c4bace3ac4d)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/virtio/virtio-bus.c
+---
+ hw/s390x/virtio-ccw.c          | 2 +-
+ hw/virtio/virtio-bus.c         | 5 ++---
+ hw/virtio/virtio-mmio.c        | 2 +-
+ hw/virtio/virtio-pci.c         | 2 +-
+ hw/virtio/virtio.c             | 7 ++++++-
+ include/hw/virtio/virtio-bus.h | 4 ++--
+ 6 files changed, 13 insertions(+), 9 deletions(-)
+
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index e68dcc7..28d2879 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -1379,7 +1379,7 @@ static int virtio_ccw_load_config(DeviceState *d, QEMUFile *f)
+ }
+ 
+ /* This is called by virtio-bus just after the device is plugged. */
+-static void virtio_ccw_device_plugged(DeviceState *d)
++static void virtio_ccw_device_plugged(DeviceState *d, Error **errp)
+ {
+     VirtioCcwDevice *dev = VIRTIO_CCW_DEVICE(d);
+     SubchDev *sch = dev->sch;
+diff --git a/hw/virtio/virtio-bus.c b/hw/virtio/virtio-bus.c
+index be886e7..24cde3d 100644
+--- a/hw/virtio/virtio-bus.c
++++ b/hw/virtio/virtio-bus.c
+@@ -38,7 +38,7 @@ do { printf("virtio_bus: " fmt , ## __VA_ARGS__); } while (0)
+ #endif
+ 
+ /* A VirtIODevice is being plugged */
+-int virtio_bus_device_plugged(VirtIODevice *vdev)
++void virtio_bus_device_plugged(VirtIODevice *vdev, Error **errp)
+ {
+     DeviceState *qdev = DEVICE(vdev);
+     BusState *qbus = BUS(qdev_get_parent_bus(qdev));
+@@ -47,10 +47,9 @@ int virtio_bus_device_plugged(VirtIODevice *vdev)
+     DPRINTF("%s: plug device.\n", qbus->name);
+ 
+     if (klass->device_plugged != NULL) {
+-        klass->device_plugged(qbus->parent);
++        klass->device_plugged(qbus->parent, errp);
+     }
+ 
+-    return 0;
+ }
+ 
+ /* Reset the virtio_bus */
+diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
+index 10123f3..dd3f80b 100644
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -345,7 +345,7 @@ static void virtio_mmio_reset(DeviceState *d)
+ /* virtio-mmio device */
+ 
+ /* This is called by virtio-bus just after the device is plugged. */
+-static void virtio_mmio_device_plugged(DeviceState *opaque)
++static void virtio_mmio_device_plugged(DeviceState *opaque, Error **errp)
+ {
+     VirtIOMMIOProxy *proxy = VIRTIO_MMIO(opaque);
+ 
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index b91e799..96d54f1 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -918,7 +918,7 @@ static int virtio_pci_query_nvectors(DeviceState *d)
+ }
+ 
+ /* This is called by virtio-bus just after the device is plugged. */
+-static void virtio_pci_device_plugged(DeviceState *d)
++static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+ {
+     VirtIOPCIProxy *proxy = VIRTIO_PCI(d);
+     VirtioBusState *bus = &proxy->bus;
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 6985e76..0b50f9d 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -1328,7 +1328,12 @@ static void virtio_device_realize(DeviceState *dev, Error **errp)
+             return;
+         }
+     }
+-    virtio_bus_device_plugged(vdev);
++
++    virtio_bus_device_plugged(vdev, &err);
++    if (err != NULL) {
++        error_propagate(errp, err);
++        return;
++    }
+ }
+ 
+ static void virtio_device_unrealize(DeviceState *dev, Error **errp)
+diff --git a/include/hw/virtio/virtio-bus.h b/include/hw/virtio/virtio-bus.h
+index a4588ca..e5bbfbf 100644
+--- a/include/hw/virtio/virtio-bus.h
++++ b/include/hw/virtio/virtio-bus.h
+@@ -56,7 +56,7 @@ typedef struct VirtioBusClass {
+      * transport independent init function.
+      * This is called by virtio-bus just after the device is plugged.
+      */
+-    void (*device_plugged)(DeviceState *d);
++    void (*device_plugged)(DeviceState *d, Error **errp);
+     /*
+      * transport independent exit function.
+      * This is called by virtio-bus just before the device is unplugged.
+@@ -75,7 +75,7 @@ struct VirtioBusState {
+     BusState parent_obj;
+ };
+ 
+-int virtio_bus_device_plugged(VirtIODevice *vdev);
++void virtio_bus_device_plugged(VirtIODevice *vdev, Error **errp);
+ void virtio_bus_reset(VirtioBusState *bus);
+ void virtio_bus_device_unplugged(VirtIODevice *bus);
+ /* Get the device id of the plugged device. */
+-- 
+1.8.3.1
+

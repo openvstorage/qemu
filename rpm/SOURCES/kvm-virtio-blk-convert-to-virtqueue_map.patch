@@ -1,0 +1,44 @@
+From 0fcb4fcf78b779840646fc8f57be875eb0e67bd8 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 20 Nov 2015 10:44:36 +0100
+Subject: [PATCH 3/9] virtio-blk: convert to virtqueue_map
+
+Message-id: <1448016282-257478-4-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68408
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 3/9] virtio-blk: convert to virtqueue_map
+Bugzilla: 1288096
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Michael S. Tsirkin <mst@redhat.com>
+
+Drop deprecated use of virtqueue_map_sg.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+(cherry picked from commit 3d8db153b4b4e12b6d11590ccd318fff0eafd688)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/block/virtio-blk.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index e00e6e6..6dd7fed 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -834,10 +834,7 @@ static int virtio_blk_load_device(VirtIODevice *vdev, QEMUFile *f,
+         req->next = s->rq;
+         s->rq = req;
+ 
+-        virtqueue_map_sg(req->elem.in_sg, req->elem.in_addr,
+-            req->elem.in_num, 1);
+-        virtqueue_map_sg(req->elem.out_sg, req->elem.out_addr,
+-            req->elem.out_num, 0);
++        virtqueue_map(&req->elem);
+     }
+ 
+     return 0;
+-- 
+1.8.3.1
+

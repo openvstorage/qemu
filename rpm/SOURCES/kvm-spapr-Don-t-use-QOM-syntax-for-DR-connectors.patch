@@ -1,0 +1,81 @@
+From 390671e38a7e5701403698673039a8ad8082314d Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Tue, 15 Sep 2015 01:18:37 +0200
+Subject: [PATCH 01/22] spapr: Don't use QOM [*] syntax for DR connectors.
+
+Message-id: <1442279917-3996-1-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67758
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] spapr: Don't use QOM [*] syntax for DR connectors.
+Bugzilla: 1262143
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+The dynamic reconfiguration (hotplug) code for the pseries machine type
+uses a "DR connector" QOM object for each resource it will be possible
+to hotplug.  Each of these is added to its owner using
+    object_property_add_child(owner, "dr-connector[*], ...);
+
+That works ok, mostly, but it means that the property indices are
+arbitrary, depending on the order in which the connectors are constructed.
+When we have both memory and cpu hotplug, the connectors will be under the
+same parent (at least in the current drafts), meaning the indices don't
+correspond to any meaningful ID.
+
+It gets worse when large amounts of hotpluggable RAM is configured.  For
+RAM, there's a DR connector object for every 256MB of potential memory.  So
+if maxmem=2T, for example, there are 8192 objects under the same parent.
+
+The QOM interfaces aren't really designed for this.  In particular
+object_property_add() with [*] has O(n^2) time complexity (in the number of
+existing children): first it has a linear search through array indices to
+find a free slot, each of which is attempted to a recursive call to
+object_property_add() with a specific [N].  Those calls are O(n) because
+there's a linear search through all properties to check for duplicates.
+
+By using a meaningful index value, which we already know is unique we can
+avoid the [*] special behaviour.  That lets us reduce the total time for
+creating the DR objects from O(n^3) to O(n^2).
+
+O(n^2) is still kind of crappy, but it's enough to reduce the startup time
+of qemu with maxmem=2T from ~20 minutes to ~4 seconds.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Cc: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Tested-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: Alexey Kardashevskiy <aik@ozlabs.ru>
+
+Upstream: In spapr-next, not merged upstream
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_drc.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/hw/ppc/spapr_drc.c b/hw/ppc/spapr_drc.c
+index 5732b49..13ad2a1 100644
+--- a/hw/ppc/spapr_drc.c
++++ b/hw/ppc/spapr_drc.c
+@@ -450,14 +450,17 @@ sPAPRDRConnector *spapr_dr_connector_new(Object *owner,
+ {
+     sPAPRDRConnector *drc =
+         SPAPR_DR_CONNECTOR(object_new(TYPE_SPAPR_DR_CONNECTOR));
++    char *prop_name;
+ 
+     g_assert(type);
+ 
+     drc->type = type;
+     drc->id = id;
+     drc->owner = owner;
+-    object_property_add_child(owner, "dr-connector[*]", OBJECT(drc), NULL);
++    prop_name = g_strdup_printf("dr-connector[%"PRIu32"]", get_index(drc));
++    object_property_add_child(owner, prop_name, OBJECT(drc), NULL);
+     object_property_set_bool(OBJECT(drc), true, "realized", NULL);
++    g_free(prop_name);
+ 
+     /* human-readable name for a DRC to encode into the DT
+      * description. this is mainly only used within a guest in place
+-- 
+1.8.3.1
+

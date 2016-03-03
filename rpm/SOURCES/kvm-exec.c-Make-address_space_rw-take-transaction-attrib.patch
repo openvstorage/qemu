@@ -1,0 +1,445 @@
+From 692b3daf84e024d4ff6add8b1e66162daf21f060 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:15 +0200
+Subject: [PATCH 041/100] exec.c: Make address_space_rw take transaction
+ attributes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1436260751-25015-13-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66787
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 12/68] exec.c: Make address_space_rw take transaction attributes
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Peter Maydell <peter.maydell@linaro.org>
+
+Make address_space_rw take transaction attributes, rather
+than always using the 'unspecified' attributes.
+
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Edgar E. Iglesias <edgar.iglesias@xilinx.com>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+(cherry picked from commit 5c9eb0286c819c1836220a32f2e1a7b5004ac79a)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ dma-helpers.c            |  3 ++-
+ exec.c                   | 51 ++++++++++++++++++++++++++----------------------
+ hw/mips/mips_jazz.c      |  6 ++++--
+ hw/pci-host/prep.c       |  6 ++++--
+ include/exec/memory.h    | 31 ++++++++++++++++++-----------
+ include/sysemu/dma.h     |  3 ++-
+ ioport.c                 | 16 +++++++++------
+ kvm-all.c                |  3 ++-
+ scripts/coverity-model.c |  8 +++++---
+ 9 files changed, 77 insertions(+), 50 deletions(-)
+
+diff --git a/dma-helpers.c b/dma-helpers.c
+index 6918572..33b1983 100644
+--- a/dma-helpers.c
++++ b/dma-helpers.c
+@@ -28,7 +28,8 @@ int dma_memory_set(AddressSpace *as, dma_addr_t addr, uint8_t c, dma_addr_t len)
+     memset(fillbuf, c, FILLBUF_SIZE);
+     while (len > 0) {
+         l = len < FILLBUF_SIZE ? len : FILLBUF_SIZE;
+-        error |= address_space_rw(as, addr, fillbuf, l, true);
++        error |= address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED,
++                                  fillbuf, l, true);
+         len -= l;
+         addr += l;
+     }
+diff --git a/exec.c b/exec.c
+index bba6f26..9811a9c 100644
+--- a/exec.c
++++ b/exec.c
+@@ -1946,13 +1946,16 @@ static MemTxResult subpage_read(void *opaque, hwaddr addr, uint64_t *data,
+ {
+     subpage_t *subpage = opaque;
+     uint8_t buf[8];
++    MemTxResult res;
+ 
+ #if defined(DEBUG_SUBPAGE)
+     printf("%s: subpage %p len %u addr " TARGET_FMT_plx "\n", __func__,
+            subpage, len, addr);
+ #endif
+-    if (address_space_read(subpage->as, addr + subpage->base, buf, len)) {
+-        return MEMTX_DECODE_ERROR;
++    res = address_space_read(subpage->as, addr + subpage->base,
++                             attrs, buf, len);
++    if (res) {
++        return res;
+     }
+     switch (len) {
+     case 1:
+@@ -1999,10 +2002,8 @@ static MemTxResult subpage_write(void *opaque, hwaddr addr,
+     default:
+         abort();
+     }
+-    if (address_space_write(subpage->as, addr + subpage->base, buf, len)) {
+-        return MEMTX_DECODE_ERROR;
+-    }
+-    return MEMTX_OK;
++    return address_space_write(subpage->as, addr + subpage->base,
++                               attrs, buf, len);
+ }
+ 
+ static bool subpage_accepts(void *opaque, hwaddr addr,
+@@ -2313,8 +2314,8 @@ static int memory_access_size(MemoryRegion *mr, unsigned l, hwaddr addr)
+     return l;
+ }
+ 
+-bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+-                      int len, bool is_write)
++MemTxResult address_space_rw(AddressSpace *as, hwaddr addr, MemTxAttrs attrs,
++                             uint8_t *buf, int len, bool is_write)
+ {
+     hwaddr l;
+     uint8_t *ptr;
+@@ -2322,7 +2323,6 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+     hwaddr addr1;
+     MemoryRegion *mr;
+     MemTxResult result = MEMTX_OK;
+-    MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
+ 
+     while (len > 0) {
+         l = len;
+@@ -2414,22 +2414,24 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+     return result;
+ }
+ 
+-bool address_space_write(AddressSpace *as, hwaddr addr,
+-                         const uint8_t *buf, int len)
++MemTxResult address_space_write(AddressSpace *as, hwaddr addr, MemTxAttrs attrs,
++                                const uint8_t *buf, int len)
+ {
+-    return address_space_rw(as, addr, (uint8_t *)buf, len, true);
++    return address_space_rw(as, addr, attrs, (uint8_t *)buf, len, true);
+ }
+ 
+-bool address_space_read(AddressSpace *as, hwaddr addr, uint8_t *buf, int len)
++MemTxResult address_space_read(AddressSpace *as, hwaddr addr, MemTxAttrs attrs,
++                               uint8_t *buf, int len)
+ {
+-    return address_space_rw(as, addr, buf, len, false);
++    return address_space_rw(as, addr, attrs, buf, len, false);
+ }
+ 
+ 
+ void cpu_physical_memory_rw(hwaddr addr, uint8_t *buf,
+                             int len, int is_write)
+ {
+-    address_space_rw(&address_space_memory, addr, buf, len, is_write);
++    address_space_rw(&address_space_memory, addr, MEMTXATTRS_UNSPECIFIED,
++                     buf, len, is_write);
+ }
+ 
+ enum write_rom_type {
+@@ -2600,7 +2602,8 @@ void *address_space_map(AddressSpace *as,
+         memory_region_ref(mr);
+         bounce.mr = mr;
+         if (!is_write) {
+-            address_space_read(as, addr, bounce.buffer, l);
++            address_space_read(as, addr, MEMTXATTRS_UNSPECIFIED,
++                               bounce.buffer, l);
+         }
+ 
+         *plen = l;
+@@ -2653,7 +2656,8 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
+         return;
+     }
+     if (is_write) {
+-        address_space_write(as, bounce.addr, bounce.buffer, access_len);
++        address_space_write(as, bounce.addr, MEMTXATTRS_UNSPECIFIED,
++                            bounce.buffer, access_len);
+     }
+     qemu_vfree(bounce.buffer);
+     bounce.buffer = NULL;
+@@ -2797,7 +2801,7 @@ uint64_t ldq_be_phys(AddressSpace *as, hwaddr addr)
+ uint32_t ldub_phys(AddressSpace *as, hwaddr addr)
+ {
+     uint8_t val;
+-    address_space_rw(as, addr, &val, 1, 0);
++    address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED, &val, 1, 0);
+     return val;
+ }
+ 
+@@ -2954,7 +2958,7 @@ void stl_be_phys(AddressSpace *as, hwaddr addr, uint32_t val)
+ void stb_phys(AddressSpace *as, hwaddr addr, uint32_t val)
+ {
+     uint8_t v = val;
+-    address_space_rw(as, addr, &v, 1, 1);
++    address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED, &v, 1, 1);
+ }
+ 
+ /* warning: addr must be aligned */
+@@ -3018,19 +3022,19 @@ void stw_be_phys(AddressSpace *as, hwaddr addr, uint32_t val)
+ void stq_phys(AddressSpace *as, hwaddr addr, uint64_t val)
+ {
+     val = tswap64(val);
+-    address_space_rw(as, addr, (void *) &val, 8, 1);
++    address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED, (void *) &val, 8, 1);
+ }
+ 
+ void stq_le_phys(AddressSpace *as, hwaddr addr, uint64_t val)
+ {
+     val = cpu_to_le64(val);
+-    address_space_rw(as, addr, (void *) &val, 8, 1);
++    address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED, (void *) &val, 8, 1);
+ }
+ 
+ void stq_be_phys(AddressSpace *as, hwaddr addr, uint64_t val)
+ {
+     val = cpu_to_be64(val);
+-    address_space_rw(as, addr, (void *) &val, 8, 1);
++    address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED, (void *) &val, 8, 1);
+ }
+ 
+ /* virtual memory access for debug (includes writing to ROM) */
+@@ -3054,7 +3058,8 @@ int cpu_memory_rw_debug(CPUState *cpu, target_ulong addr,
+         if (is_write) {
+             cpu_physical_memory_write_rom(cpu->as, phys_addr, buf, l);
+         } else {
+-            address_space_rw(cpu->as, phys_addr, buf, l, 0);
++            address_space_rw(cpu->as, phys_addr, MEMTXATTRS_UNSPECIFIED,
++                             buf, l, 0);
+         }
+         len -= l;
+         buf += l;
+diff --git a/hw/mips/mips_jazz.c b/hw/mips/mips_jazz.c
+index 07f3c27..2c153e0 100644
+--- a/hw/mips/mips_jazz.c
++++ b/hw/mips/mips_jazz.c
+@@ -61,7 +61,8 @@ static void main_cpu_reset(void *opaque)
+ static uint64_t rtc_read(void *opaque, hwaddr addr, unsigned size)
+ {
+     uint8_t val;
+-    address_space_read(&address_space_memory, 0x90000071, &val, 1);
++    address_space_read(&address_space_memory, 0x90000071,
++                       MEMTXATTRS_UNSPECIFIED, &val, 1);
+     return val;
+ }
+ 
+@@ -69,7 +70,8 @@ static void rtc_write(void *opaque, hwaddr addr,
+                       uint64_t val, unsigned size)
+ {
+     uint8_t buf = val & 0xff;
+-    address_space_write(&address_space_memory, 0x90000071, &buf, 1);
++    address_space_write(&address_space_memory, 0x90000071,
++                        MEMTXATTRS_UNSPECIFIED, &buf, 1);
+ }
+ 
+ static const MemoryRegionOps rtc_ops = {
+diff --git a/hw/pci-host/prep.c b/hw/pci-host/prep.c
+index 6cea6ff..c63f45d 100644
+--- a/hw/pci-host/prep.c
++++ b/hw/pci-host/prep.c
+@@ -140,7 +140,8 @@ static uint64_t raven_io_read(void *opaque, hwaddr addr,
+     uint8_t buf[4];
+ 
+     addr = raven_io_address(s, addr);
+-    address_space_read(&s->pci_io_as, addr + 0x80000000, buf, size);
++    address_space_read(&s->pci_io_as, addr + 0x80000000,
++                       MEMTXATTRS_UNSPECIFIED, buf, size);
+ 
+     if (size == 1) {
+         return buf[0];
+@@ -171,7 +172,8 @@ static void raven_io_write(void *opaque, hwaddr addr,
+         g_assert_not_reached();
+     }
+ 
+-    address_space_write(&s->pci_io_as, addr + 0x80000000, buf, size);
++    address_space_write(&s->pci_io_as, addr + 0x80000000,
++                        MEMTXATTRS_UNSPECIFIED, buf, size);
+ }
+ 
+ static const MemoryRegionOps raven_io_ops = {
+diff --git a/include/exec/memory.h b/include/exec/memory.h
+index a289eec..660908e 100644
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
+@@ -1120,41 +1120,50 @@ void address_space_destroy(AddressSpace *as);
+ /**
+  * address_space_rw: read from or write to an address space.
+  *
+- * Return true if the operation hit any unassigned memory or encountered an
+- * IOMMU fault.
++ * Return a MemTxResult indicating whether the operation succeeded
++ * or failed (eg unassigned memory, device rejected the transaction,
++ * IOMMU fault).
+  *
+  * @as: #AddressSpace to be accessed
+  * @addr: address within that address space
++ * @attrs: memory transaction attributes
+  * @buf: buffer with the data transferred
+  * @is_write: indicates the transfer direction
+  */
+-bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+-                      int len, bool is_write);
++MemTxResult address_space_rw(AddressSpace *as, hwaddr addr,
++                             MemTxAttrs attrs, uint8_t *buf,
++                             int len, bool is_write);
+ 
+ /**
+  * address_space_write: write to address space.
+  *
+- * Return true if the operation hit any unassigned memory or encountered an
+- * IOMMU fault.
++ * Return a MemTxResult indicating whether the operation succeeded
++ * or failed (eg unassigned memory, device rejected the transaction,
++ * IOMMU fault).
+  *
+  * @as: #AddressSpace to be accessed
+  * @addr: address within that address space
++ * @attrs: memory transaction attributes
+  * @buf: buffer with the data transferred
+  */
+-bool address_space_write(AddressSpace *as, hwaddr addr,
+-                         const uint8_t *buf, int len);
++MemTxResult address_space_write(AddressSpace *as, hwaddr addr,
++                                MemTxAttrs attrs,
++                                const uint8_t *buf, int len);
+ 
+ /**
+  * address_space_read: read from an address space.
+  *
+- * Return true if the operation hit any unassigned memory or encountered an
+- * IOMMU fault.
++ * Return a MemTxResult indicating whether the operation succeeded
++ * or failed (eg unassigned memory, device rejected the transaction,
++ * IOMMU fault).
+  *
+  * @as: #AddressSpace to be accessed
+  * @addr: address within that address space
++ * @attrs: memory transaction attributes
+  * @buf: buffer with the data transferred
+  */
+-bool address_space_read(AddressSpace *as, hwaddr addr, uint8_t *buf, int len);
++MemTxResult address_space_read(AddressSpace *as, hwaddr addr, MemTxAttrs attrs,
++                               uint8_t *buf, int len);
+ 
+ /* address_space_translate: translate an address range into an address space
+  * into a MemoryRegion and an address range into that section
+diff --git a/include/sysemu/dma.h b/include/sysemu/dma.h
+index 3f2f4c8..efa8b99 100644
+--- a/include/sysemu/dma.h
++++ b/include/sysemu/dma.h
+@@ -88,7 +88,8 @@ static inline int dma_memory_rw_relaxed(AddressSpace *as, dma_addr_t addr,
+                                         void *buf, dma_addr_t len,
+                                         DMADirection dir)
+ {
+-    return address_space_rw(as, addr, buf, len, dir == DMA_DIRECTION_FROM_DEVICE);
++    return (bool)address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED,
++                                  buf, len, dir == DMA_DIRECTION_FROM_DEVICE);
+ }
+ 
+ static inline int dma_memory_read_relaxed(AddressSpace *as, dma_addr_t addr,
+diff --git a/ioport.c b/ioport.c
+index 783a3ae..b345bd9 100644
+--- a/ioport.c
++++ b/ioport.c
+@@ -64,7 +64,8 @@ void cpu_outb(pio_addr_t addr, uint8_t val)
+ {
+     LOG_IOPORT("outb: %04"FMT_pioaddr" %02"PRIx8"\n", addr, val);
+     trace_cpu_out(addr, val);
+-    address_space_write(&address_space_io, addr, &val, 1);
++    address_space_write(&address_space_io, addr, MEMTXATTRS_UNSPECIFIED,
++                        &val, 1);
+ }
+ 
+ void cpu_outw(pio_addr_t addr, uint16_t val)
+@@ -74,7 +75,8 @@ void cpu_outw(pio_addr_t addr, uint16_t val)
+     LOG_IOPORT("outw: %04"FMT_pioaddr" %04"PRIx16"\n", addr, val);
+     trace_cpu_out(addr, val);
+     stw_p(buf, val);
+-    address_space_write(&address_space_io, addr, buf, 2);
++    address_space_write(&address_space_io, addr, MEMTXATTRS_UNSPECIFIED,
++                        buf, 2);
+ }
+ 
+ void cpu_outl(pio_addr_t addr, uint32_t val)
+@@ -84,14 +86,16 @@ void cpu_outl(pio_addr_t addr, uint32_t val)
+     LOG_IOPORT("outl: %04"FMT_pioaddr" %08"PRIx32"\n", addr, val);
+     trace_cpu_out(addr, val);
+     stl_p(buf, val);
+-    address_space_write(&address_space_io, addr, buf, 4);
++    address_space_write(&address_space_io, addr, MEMTXATTRS_UNSPECIFIED,
++                        buf, 4);
+ }
+ 
+ uint8_t cpu_inb(pio_addr_t addr)
+ {
+     uint8_t val;
+ 
+-    address_space_read(&address_space_io, addr, &val, 1);
++    address_space_read(&address_space_io, addr, MEMTXATTRS_UNSPECIFIED,
++                       &val, 1);
+     trace_cpu_in(addr, val);
+     LOG_IOPORT("inb : %04"FMT_pioaddr" %02"PRIx8"\n", addr, val);
+     return val;
+@@ -102,7 +106,7 @@ uint16_t cpu_inw(pio_addr_t addr)
+     uint8_t buf[2];
+     uint16_t val;
+ 
+-    address_space_read(&address_space_io, addr, buf, 2);
++    address_space_read(&address_space_io, addr, MEMTXATTRS_UNSPECIFIED, buf, 2);
+     val = lduw_p(buf);
+     trace_cpu_in(addr, val);
+     LOG_IOPORT("inw : %04"FMT_pioaddr" %04"PRIx16"\n", addr, val);
+@@ -114,7 +118,7 @@ uint32_t cpu_inl(pio_addr_t addr)
+     uint8_t buf[4];
+     uint32_t val;
+ 
+-    address_space_read(&address_space_io, addr, buf, 4);
++    address_space_read(&address_space_io, addr, MEMTXATTRS_UNSPECIFIED, buf, 4);
+     val = ldl_p(buf);
+     trace_cpu_in(addr, val);
+     LOG_IOPORT("inl : %04"FMT_pioaddr" %08"PRIx32"\n", addr, val);
+diff --git a/kvm-all.c b/kvm-all.c
+index adf442d..365ad3f 100644
+--- a/kvm-all.c
++++ b/kvm-all.c
+@@ -1670,7 +1670,8 @@ static void kvm_handle_io(uint16_t port, void *data, int direction, int size,
+     uint8_t *ptr = data;
+ 
+     for (i = 0; i < count; i++) {
+-        address_space_rw(&address_space_io, port, ptr, size,
++        address_space_rw(&address_space_io, port, MEMTXATTRS_UNSPECIFIED,
++                         ptr, size,
+                          direction == KVM_EXIT_IO_OUT);
+         ptr += size;
+     }
+diff --git a/scripts/coverity-model.c b/scripts/coverity-model.c
+index cdda259..224d2d1 100644
+--- a/scripts/coverity-model.c
++++ b/scripts/coverity-model.c
+@@ -46,6 +46,8 @@ typedef struct va_list_str *va_list;
+ 
+ typedef struct AddressSpace AddressSpace;
+ typedef uint64_t hwaddr;
++typedef uint32_t MemTxResult;
++typedef uint64_t MemTxAttrs;
+ 
+ static void __write(uint8_t *buf, ssize_t len)
+ {
+@@ -65,10 +67,10 @@ static void __read(uint8_t *buf, ssize_t len)
+     int last = buf[len-1];
+ }
+ 
+-bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+-                      int len, bool is_write)
++MemTxResult address_space_rw(AddressSpace *as, hwaddr addr, MemTxAttrs attrs,
++                             uint8_t *buf, int len, bool is_write)
+ {
+-    bool result;
++    MemTxResult result;
+ 
+     // TODO: investigate impact of treating reads as producing
+     // tainted data, with __coverity_tainted_data_argument__(buf).
+-- 
+1.8.3.1
+

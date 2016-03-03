@@ -1,0 +1,62 @@
+From 4a6a15c270cd744163fd8388ffd4159c8d76ea37 Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Mon, 13 Jul 2015 03:27:23 +0200
+Subject: [PATCH 05/58] block: Remove bdrv_reset_dirty
+
+Message-id: <1436758047-4639-6-git-send-email-famz@redhat.com>
+Patchwork-id: 66963
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 5/9] block: Remove bdrv_reset_dirty
+Bugzilla: 1242316
+RH-Acked-by: Jeffrey Cody <jcody@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Using this function would always be wrong because a dirty bitmap must
+have a specific owner that consumes the dirty bits and calls
+bdrv_reset_dirty_bitmap().
+
+Remove the unused function to avoid future misuse.
+
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Reviewed-by: John Snow <jsnow@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 6e82e4bce127654b2dd42ef393587775be792334)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block.c | 11 -----------
+ 1 file changed, 11 deletions(-)
+
+diff --git a/block.c b/block.c
+index 84aab22..fb797e9 100644
+--- a/block.c
++++ b/block.c
+@@ -99,8 +99,6 @@ static QLIST_HEAD(, BlockDriver) bdrv_drivers =
+ 
+ static void bdrv_set_dirty(BlockDriverState *bs, int64_t cur_sector,
+                            int nr_sectors);
+-static void bdrv_reset_dirty(BlockDriverState *bs, int64_t cur_sector,
+-                             int nr_sectors);
+ /* If non-zero, use only whitelisted block drivers */
+ static int use_bdrv_whitelist;
+ 
+@@ -5672,15 +5670,6 @@ static void bdrv_set_dirty(BlockDriverState *bs, int64_t cur_sector,
+     }
+ }
+ 
+-static void bdrv_reset_dirty(BlockDriverState *bs, int64_t cur_sector,
+-                             int nr_sectors)
+-{
+-    BdrvDirtyBitmap *bitmap;
+-    QLIST_FOREACH(bitmap, &bs->dirty_bitmaps, list) {
+-        hbitmap_reset(bitmap->bitmap, cur_sector, nr_sectors);
+-    }
+-}
+-
+ int64_t bdrv_get_dirty_count(BlockDriverState *bs, BdrvDirtyBitmap *bitmap)
+ {
+     return hbitmap_count(bitmap->bitmap);
+-- 
+1.8.3.1
+

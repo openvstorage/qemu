@@ -1,0 +1,49 @@
+From 9681e2ec9fe96352abb26637c18b4eeacb00b634 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:41:50 +0200
+Subject: [PATCH 10/58] rdma: fix memory leak
+
+Message-id: <1436794926-1598-2-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66974
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 01/17] rdma: fix memory leak
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: Gonglei <arei.gonglei@huawei.com>
+
+Variable "r" going out of scope leaks the storage
+it points to in line 3268.
+
+Signed-off-by: Gonglei <arei.gonglei@huawei.com>
+Reviewed-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 728470bea15b11ba7b3e3db54f0d9939908e0e65)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/rdma.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/migration/rdma.c b/migration/rdma.c
+index 77e3444..ec52f1d 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -3256,12 +3256,13 @@ static const QEMUFileOps rdma_write_ops = {
+ 
+ static void *qemu_fopen_rdma(RDMAContext *rdma, const char *mode)
+ {
+-    QEMUFileRDMA *r = g_malloc0(sizeof(QEMUFileRDMA));
++    QEMUFileRDMA *r;
+ 
+     if (qemu_file_mode_is_not_valid(mode)) {
+         return NULL;
+     }
+ 
++    r = g_malloc0(sizeof(QEMUFileRDMA));
+     r->rdma = rdma;
+ 
+     if (mode[0] == 'w') {
+-- 
+1.8.3.1
+

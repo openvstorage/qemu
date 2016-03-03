@@ -1,0 +1,124 @@
+From d2e564010a0478143b0a67d2c3bd648d14967b15 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Mon, 10 Aug 2015 05:09:28 +0200
+Subject: [PATCH 07/16] virtio: set any_layout in virtio core
+
+Message-id: <1439183375-4841-8-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67434
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 07/14] virtio: set any_layout in virtio core
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+Notes: conflicts since we don't have HW_COMPAT_2_3 and we need compat
+       flags for RHEL7.1.
+
+Exceptions:
+    - virtio-blk
+    - compat machine types
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 09999a5f7fc8e3636feda4358a79a25a09467594)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	include/hw/compat.h
+---
+ hw/block/virtio-blk.c      |  1 +
+ hw/net/virtio-net.c        |  2 --
+ hw/scsi/virtio-scsi.c      |  2 --
+ include/hw/compat.h        | 20 ++++++++++++++++++++
+ include/hw/virtio/virtio.h |  4 +++-
+ 5 files changed, 24 insertions(+), 5 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index cf54710..480e4dc 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -727,6 +727,7 @@ static uint64_t virtio_blk_get_features(VirtIODevice *vdev, uint64_t features)
+     virtio_add_feature(&features, VIRTIO_BLK_F_TOPOLOGY);
+     virtio_add_feature(&features, VIRTIO_BLK_F_BLK_SIZE);
+     virtio_add_feature(&features, VIRTIO_BLK_F_SCSI);
++    virtio_clear_feature(&features, VIRTIO_F_ANY_LAYOUT);
+ 
+     if (s->conf.config_wce) {
+         virtio_add_feature(&features, VIRTIO_BLK_F_CONFIG_WCE);
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 1282216..1f75c2b 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -1725,8 +1725,6 @@ static void virtio_net_instance_init(Object *obj)
+ }
+ 
+ static Property virtio_net_properties[] = {
+-    DEFINE_PROP_BIT("any_layout", VirtIONet, host_features,
+-                    VIRTIO_F_ANY_LAYOUT, true),
+     DEFINE_PROP_BIT("csum", VirtIONet, host_features, VIRTIO_NET_F_CSUM, true),
+     DEFINE_PROP_BIT("guest_csum", VirtIONet, host_features,
+                     VIRTIO_NET_F_GUEST_CSUM, true),
+diff --git a/hw/scsi/virtio-scsi.c b/hw/scsi/virtio-scsi.c
+index 3d71e04..f7f00e1 100644
+--- a/hw/scsi/virtio-scsi.c
++++ b/hw/scsi/virtio-scsi.c
+@@ -958,8 +958,6 @@ static Property virtio_scsi_properties[] = {
+                                                   0xFFFF),
+     DEFINE_PROP_UINT32("cmd_per_lun", VirtIOSCSI, parent_obj.conf.cmd_per_lun,
+                                                   128),
+-    DEFINE_PROP_BIT("any_layout", VirtIOSCSI, host_features,
+-                                              VIRTIO_F_ANY_LAYOUT, true),
+     DEFINE_PROP_BIT("hotplug", VirtIOSCSI, host_features,
+                                            VIRTIO_SCSI_F_HOTPLUG, true),
+     DEFINE_PROP_BIT("param_change", VirtIOSCSI, host_features,
+diff --git a/include/hw/compat.h b/include/hw/compat.h
+index ec5d0e6..02e6c25 100644
+--- a/include/hw/compat.h
++++ b/include/hw/compat.h
+@@ -60,6 +60,26 @@
+             .driver   = "virtio-pci",\
+             .property = "virtio-pci-bus-master-bug-migration",\
+             .value    = "on",\
++        },{\
++            .driver   = "virtio-blk-pci",\
++            .property = "any_layout",\
++            .value    = "off",\
++        },{\
++            .driver   = "virtio-balloon-pci",\
++            .property = "any_layout",\
++            .value    = "off",\
++        },{\
++            .driver   = "virtio-serial-pci",\
++            .property = "any_layout",\
++            .value    = "off",\
++        },{\
++            .driver   = "virtio-9p-pci",\
++            .property = "any_layout",\
++            .value    = "off",\
++        },{\
++            .driver   = "virtio-rng-pci",\
++            .property = "any_layout",\
++            .value    = "off",\
+         }
+ 
+ #endif /* HW_COMPAT_H */
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 48f0377..9a396e1 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -218,7 +218,9 @@ typedef struct VirtIORNGConf VirtIORNGConf;
+     DEFINE_PROP_BIT64("event_idx", _state, _field,        \
+                       VIRTIO_RING_F_EVENT_IDX, true),     \
+     DEFINE_PROP_BIT64("notify_on_empty", _state, _field,  \
+-                      VIRTIO_F_NOTIFY_ON_EMPTY, true)
++                      VIRTIO_F_NOTIFY_ON_EMPTY, true), \
++    DEFINE_PROP_BIT64("any_layout", _state, _field, \
++                      VIRTIO_F_ANY_LAYOUT, true)
+ 
+ hwaddr virtio_queue_get_desc_addr(VirtIODevice *vdev, int n);
+ hwaddr virtio_queue_get_avail_addr(VirtIODevice *vdev, int n);
+-- 
+1.8.3.1
+

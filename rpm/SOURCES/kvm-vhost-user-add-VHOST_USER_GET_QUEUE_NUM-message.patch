@@ -1,0 +1,182 @@
+From 12d4ac3b6a9a06c296a1d58f4fdb07b045c603b5 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Wed, 30 Sep 2015 10:25:35 +0200
+Subject: [PATCH 06/11] vhost-user: add VHOST_USER_GET_QUEUE_NUM message
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1443608650-22364-7-git-send-email-mst@redhat.com>
+Patchwork-id: 68002
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 6/9] vhost-user: add VHOST_USER_GET_QUEUE_NUM message
+Bugzilla: 1276100
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+
+From: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+
+This is for querying how many queues the backend supports if it has mq
+support(when VHOST_USER_PROTOCOL_F_MQ flag is set from the quried
+protocol features).
+
+vhost_net_get_max_queues() is the interface to export that value, and
+to tell if the backend supports # of queues user requested, which is
+done in the following patch.
+
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Tested-by: Marcel Apfelbaum <marcel@redhat.com>
+(cherry picked from commit e2051e9e004649b53af4db34f78c689fb44e075b)
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/vhost-user.txt | 11 +++++++++++
+ hw/net/vhost_net.c        | 12 ++++++++++++
+ hw/virtio/vhost-user.c    | 15 ++++++++++++++-
+ include/hw/virtio/vhost.h |  1 +
+ include/net/vhost_net.h   |  1 +
+ 5 files changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/docs/specs/vhost-user.txt b/docs/specs/vhost-user.txt
+index 70da3b1..4b9d5bc 100644
+--- a/docs/specs/vhost-user.txt
++++ b/docs/specs/vhost-user.txt
+@@ -301,3 +301,14 @@ Message types
+       Bits (0-7) of the payload contain the vring index. Bit 8 is the
+       invalid FD flag. This flag is set when there is no file descriptor
+       in the ancillary data.
++
++ * VHOST_USER_GET_QUEUE_NUM
++
++      Id: 17
++      Equivalent ioctl: N/A
++      Master payload: N/A
++      Slave payload: u64
++
++      Query how many queues the backend supports. This request should be
++      sent only when VHOST_USER_PROTOCOL_F_MQ is set in quried protocol
++      features by VHOST_USER_GET_PROTOCOL_FEATURES.
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index 54e62fd..19c31a4 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -122,6 +122,11 @@ void vhost_net_ack_features(struct vhost_net *net, uint64_t features)
+     vhost_ack_features(&net->dev, vhost_net_get_feature_bits(net), features);
+ }
+ 
++uint64_t vhost_net_get_max_queues(VHostNetState *net)
++{
++    return net->dev.max_queues;
++}
++
+ static int vhost_net_get_fd(NetClientState *backend)
+ {
+     switch (backend->info->type) {
+@@ -144,6 +149,8 @@ struct vhost_net *vhost_net_init(VhostNetOptions *options)
+         goto fail;
+     }
+ 
++    net->dev.max_queues = 1;
++
+     if (backend_kernel) {
+         r = vhost_net_get_fd(options->net_backend);
+         if (r < 0) {
+@@ -407,6 +414,11 @@ VHostNetState *get_vhost_net(NetClientState *nc)
+     return vhost_net;
+ }
+ #else
++uint64_t vhost_net_get_max_queues(VHostNetState *net)
++{
++    return 1;
++}
++
+ struct vhost_net *vhost_net_init(VhostNetOptions *options)
+ {
+     error_report("vhost-net support is not compiled in");
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 87198a4..81ba0e4 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -25,7 +25,9 @@
+ 
+ #define VHOST_MEMORY_MAX_NREGIONS    8
+ #define VHOST_USER_F_PROTOCOL_FEATURES 30
+-#define VHOST_USER_PROTOCOL_FEATURE_MASK 0x0ULL
++#define VHOST_USER_PROTOCOL_FEATURE_MASK 0x1ULL
++
++#define VHOST_USER_PROTOCOL_F_MQ    0
+ 
+ typedef enum VhostUserRequest {
+     VHOST_USER_NONE = 0,
+@@ -45,6 +47,7 @@ typedef enum VhostUserRequest {
+     VHOST_USER_SET_VRING_ERR = 14,
+     VHOST_USER_GET_PROTOCOL_FEATURES = 15,
+     VHOST_USER_SET_PROTOCOL_FEATURES = 16,
++    VHOST_USER_GET_QUEUE_NUM = 17,
+     VHOST_USER_MAX
+ } VhostUserRequest;
+ 
+@@ -211,6 +214,7 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+     switch (msg_request) {
+     case VHOST_USER_GET_FEATURES:
+     case VHOST_USER_GET_PROTOCOL_FEATURES:
++    case VHOST_USER_GET_QUEUE_NUM:
+         need_reply = 1;
+         break;
+ 
+@@ -315,6 +319,7 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+         switch (msg_request) {
+         case VHOST_USER_GET_FEATURES:
+         case VHOST_USER_GET_PROTOCOL_FEATURES:
++        case VHOST_USER_GET_QUEUE_NUM:
+             if (msg.size != sizeof(m.u64)) {
+                 error_report("Received bad msg size.\n");
+                 return -1;
+@@ -366,6 +371,14 @@ static int vhost_user_init(struct vhost_dev *dev, void *opaque)
+         if (err < 0) {
+             return err;
+         }
++
++        /* query the max queues we support if backend supports Multiple Queue */
++        if (dev->protocol_features & (1ULL << VHOST_USER_PROTOCOL_F_MQ)) {
++            err = vhost_user_call(dev, VHOST_USER_GET_QUEUE_NUM, &dev->max_queues);
++            if (err < 0) {
++                return err;
++            }
++        }
+     }
+ 
+     return 0;
+diff --git a/include/hw/virtio/vhost.h b/include/hw/virtio/vhost.h
+index 798c8cc..9593f63 100644
+--- a/include/hw/virtio/vhost.h
++++ b/include/hw/virtio/vhost.h
+@@ -42,6 +42,7 @@ struct vhost_dev {
+     unsigned long long acked_features;
+     unsigned long long backend_features;
+     unsigned long long protocol_features;
++    unsigned long long max_queues;
+     bool started;
+     bool log_enabled;
+     vhost_log_chunk_t *log;
+diff --git a/include/net/vhost_net.h b/include/net/vhost_net.h
+index 840d4b1..8db723e 100644
+--- a/include/net/vhost_net.h
++++ b/include/net/vhost_net.h
+@@ -13,6 +13,7 @@ typedef struct VhostNetOptions {
+     void *opaque;
+ } VhostNetOptions;
+ 
++uint64_t vhost_net_get_max_queues(VHostNetState *net);
+ struct vhost_net *vhost_net_init(VhostNetOptions *options);
+ 
+ int vhost_net_start(VirtIODevice *dev, NetClientState *ncs, int total_queues);
+-- 
+1.8.3.1
+

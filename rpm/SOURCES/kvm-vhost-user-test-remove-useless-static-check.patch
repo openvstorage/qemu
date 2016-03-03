@@ -1,0 +1,44 @@
+From eaeec6ab6580a357483331c979e945a398946fdf Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:33:07 +0100
+Subject: [PATCH 33/44] vhost-user-test: remove useless static check
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-27-git-send-email-mst@redhat.com>
+Patchwork-id: 68373
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 26/36] vhost-user-test: remove useless static check
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit 82755ff202e96ad9bc74c1268481f96e50907ae1)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/vhost-user-test.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/tests/vhost-user-test.c b/tests/vhost-user-test.c
+index 59a5691..0271fc5 100644
+--- a/tests/vhost-user-test.c
++++ b/tests/vhost-user-test.c
+@@ -186,7 +186,6 @@ static void read_guest_mem(void)
+         munmap(guest_mem, memory.regions[i].memory_size);
+     }
+ 
+-    g_assert_cmpint(1, ==, 1);
+     g_mutex_unlock(&data_mutex);
+ }
+ 
+-- 
+1.8.3.1
+

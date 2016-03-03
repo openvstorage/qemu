@@ -1,0 +1,149 @@
+From f0682d6c727d666484d77167f5fb79bfcdd67273 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:35 +0200
+Subject: [PATCH 26/31] apci: fix PXB behaviour if used with unsupported BIOS
+
+Message-id: <1435154016-26233-43-git-send-email-marcel@redhat.com>
+Patchwork-id: 66471
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 42/43] apci: fix PXB behaviour if used with unsupported BIOS
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+PXB does not work with unsupported bioses, but should
+not interfere with normal OS operation.
+We don't ship them anymore, but it's reasonable
+to keep the work-around until we update the bios in qemu.
+
+Fix this by not adding PXB mem/IO chunks to _CRS
+if they weren't configured by BIOS.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 0f6dd8e1d514b8c24689499ed72ea89fd0d967f3)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c | 87 ++++++++++++++++++++++++++++++++++------------------
+ 1 file changed, 58 insertions(+), 29 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index dbd0d8d..589534e 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -784,6 +784,14 @@ static Aml *build_crs(PCIHostState *host,
+             range_base = r->addr;
+             range_limit = r->addr + r->size - 1;
+ 
++            /*
++             * Work-around for old bioses
++             * that do not support multiple root buses
++             */
++            if (!range_base || range_base > range_limit) {
++                continue;
++            }
++
+             if (r->type & PCI_BASE_ADDRESS_SPACE_IO) {
+                 aml_append(crs,
+                     aml_word_io(AML_MIN_FIXED, AML_MAX_FIXED,
+@@ -817,45 +825,66 @@ static Aml *build_crs(PCIHostState *host,
+ 
+             range_base = pci_bridge_get_base(dev, PCI_BASE_ADDRESS_SPACE_IO);
+             range_limit = pci_bridge_get_limit(dev, PCI_BASE_ADDRESS_SPACE_IO);
+-            aml_append(crs,
+-                aml_word_io(AML_MIN_FIXED, AML_MAX_FIXED,
+-                            AML_POS_DECODE, AML_ENTIRE_RANGE,
+-                            0,
+-                            range_base,
+-                            range_limit,
+-                            0,
+-                            range_limit - range_base + 1));
+-            crs_range_insert(io_ranges, range_base, range_limit);
++
++            /*
++             * Work-around for old bioses
++             * that do not support multiple root buses
++             */
++            if (range_base || range_base > range_limit) {
++                aml_append(crs,
++                           aml_word_io(AML_MIN_FIXED, AML_MAX_FIXED,
++                                       AML_POS_DECODE, AML_ENTIRE_RANGE,
++                                       0,
++                                       range_base,
++                                       range_limit,
++                                       0,
++                                       range_limit - range_base + 1));
++                crs_range_insert(io_ranges, range_base, range_limit);
++            }
+ 
+             range_base =
+                 pci_bridge_get_base(dev, PCI_BASE_ADDRESS_SPACE_MEMORY);
+             range_limit =
+                 pci_bridge_get_limit(dev, PCI_BASE_ADDRESS_SPACE_MEMORY);
+-            aml_append(crs,
+-                aml_dword_memory(AML_POS_DECODE, AML_MIN_FIXED,
+-                                 AML_MAX_FIXED, AML_NON_CACHEABLE,
+-                                 AML_READ_WRITE,
+-                                 0,
+-                                 range_base,
+-                                 range_limit,
+-                                 0,
+-                                 range_limit - range_base + 1));
+-            crs_range_insert(mem_ranges, range_base, range_limit);
++
++            /*
++             * Work-around for old bioses
++             * that do not support multiple root buses
++             */
++            if (range_base || range_base > range_limit) {
++                aml_append(crs,
++                           aml_dword_memory(AML_POS_DECODE, AML_MIN_FIXED,
++                                            AML_MAX_FIXED, AML_NON_CACHEABLE,
++                                            AML_READ_WRITE,
++                                            0,
++                                            range_base,
++                                            range_limit,
++                                            0,
++                                            range_limit - range_base + 1));
++                crs_range_insert(mem_ranges, range_base, range_limit);
++          }
+ 
+             range_base =
+                 pci_bridge_get_base(dev, PCI_BASE_ADDRESS_MEM_PREFETCH);
+             range_limit =
+                 pci_bridge_get_limit(dev, PCI_BASE_ADDRESS_MEM_PREFETCH);
+-            aml_append(crs,
+-                aml_dword_memory(AML_POS_DECODE, AML_MIN_FIXED,
+-                                 AML_MAX_FIXED, AML_NON_CACHEABLE,
+-                                 AML_READ_WRITE,
+-                                 0,
+-                                 range_base,
+-                                 range_limit,
+-                                 0,
+-                                 range_limit - range_base + 1));
+-            crs_range_insert(mem_ranges, range_base, range_limit);
++
++            /*
++             * Work-around for old bioses
++             * that do not support multiple root buses
++             */
++            if (range_base || range_base > range_limit) {
++                aml_append(crs,
++                           aml_dword_memory(AML_POS_DECODE, AML_MIN_FIXED,
++                                            AML_MAX_FIXED, AML_NON_CACHEABLE,
++                                            AML_READ_WRITE,
++                                            0,
++                                            range_base,
++                                            range_limit,
++                                            0,
++                                            range_limit - range_base + 1));
++                crs_range_insert(mem_ranges, range_base, range_limit);
++            }
+         }
+     }
+ 
+-- 
+1.8.3.1
+

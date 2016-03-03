@@ -1,0 +1,80 @@
+From c675eaf95b1d771c3a64b2a125f89a4e760eaf99 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:31 +0200
+Subject: [PATCH 27/44] hw/acpi/aml-build: Make aml_buffer() definition
+ consistent with the spec
+
+Message-id: <1434455325-23399-20-git-send-email-drjones@redhat.com>
+Patchwork-id: 66254
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 19/33] hw/acpi/aml-build: Make aml_buffer() definition consistent with the spec
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+According to ACPI spec, DefBuffer can take two parameters: BufferSize
+and ByteList. Make it consistent with the spec. Uninitialized buffer
+could be requested by passing ByteList as NULL to reserve space.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-15-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ed8b5847e46c24d6e9c286892a00a34bee9b0835)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 16 ++++++++++++++--
+ include/hw/acpi/aml-build.h |  2 +-
+ 2 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 2c890c8..82a8306 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -643,10 +643,22 @@ Aml *aml_resource_template(void)
+     return var;
+ }
+ 
+-/* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefBuffer */
+-Aml *aml_buffer(void)
++/* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefBuffer
++ * Pass byte_list as NULL to request uninitialized buffer to reserve space.
++ */
++Aml *aml_buffer(int buffer_size, uint8_t *byte_list)
+ {
++    int i;
+     Aml *var = aml_bundle(0x11 /* BufferOp */, AML_BUFFER);
++
++    for (i = 0; i < buffer_size; i++) {
++        if (byte_list == NULL) {
++            build_append_byte(var->buf, 0x0);
++        } else {
++            build_append_byte(var->buf, byte_list[i]);
++        }
++    }
++
+     return var;
+ }
+ 
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 2c07a43..d6388de 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -253,7 +253,7 @@ Aml *aml_device(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
+ Aml *aml_method(const char *name, int arg_count);
+ Aml *aml_if(Aml *predicate);
+ Aml *aml_package(uint8_t num_elements);
+-Aml *aml_buffer(void);
++Aml *aml_buffer(int buffer_size, uint8_t *byte_list);
+ Aml *aml_resource_template(void);
+ Aml *aml_field(const char *name, AmlAccessType type, AmlUpdateRule rule);
+ Aml *aml_varpackage(uint32_t num_elements);
+-- 
+1.8.3.1
+

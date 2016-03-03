@@ -1,0 +1,401 @@
+From 53ff274ad2119f3019244d867b6249075308fa46 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:11 +0200
+Subject: [PATCH 037/100] memory: Replace io_mem_read/write with
+ memory_region_dispatch_read/write
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1436260751-25015-9-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66783
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 08/68] memory: Replace io_mem_read/write with memory_region_dispatch_read/write
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Peter Maydell <peter.maydell@linaro.org>
+
+Rather than retaining io_mem_read/write as simple wrappers around
+the memory_region_dispatch_read/write functions, make the latter
+public and change all the callers to use them, since we need to
+touch all the callsites anyway to add MemTxAttrs and MemTxResult
+support. Delete io_mem_read and io_mem_write entirely.
+
+(All the callers currently pass MEMTXATTRS_UNSPECIFIED
+and convert the return value back to bool or ignore it.)
+
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+(cherry picked from commit 3b6434953934e6d4a776ed426d8c6d6badee176f)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ exec.c                   | 47 +++++++++++++++++++++++++++++++----------------
+ hw/s390x/s390-pci-inst.c | 10 +++++++---
+ hw/vfio/pci.c            | 18 ++++++++++++------
+ include/exec/exec-all.h  |  4 ----
+ include/exec/memory.h    | 31 +++++++++++++++++++++++++++++++
+ memory.c                 | 33 ++++++++++-----------------------
+ softmmu_template.h       |  6 ++++--
+ 7 files changed, 95 insertions(+), 54 deletions(-)
+
+diff --git a/exec.c b/exec.c
+index 874ecfc..34dafd2 100644
+--- a/exec.c
++++ b/exec.c
+@@ -2312,7 +2312,8 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+     uint64_t val;
+     hwaddr addr1;
+     MemoryRegion *mr;
+-    bool error = false;
++    MemTxResult result = MEMTX_OK;
++    MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
+ 
+     while (len > 0) {
+         l = len;
+@@ -2327,22 +2328,26 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+                 case 8:
+                     /* 64 bit write access */
+                     val = ldq_p(buf);
+-                    error |= io_mem_write(mr, addr1, val, 8);
++                    result |= memory_region_dispatch_write(mr, addr1, val, 8,
++                                                           attrs);
+                     break;
+                 case 4:
+                     /* 32 bit write access */
+                     val = ldl_p(buf);
+-                    error |= io_mem_write(mr, addr1, val, 4);
++                    result |= memory_region_dispatch_write(mr, addr1, val, 4,
++                                                           attrs);
+                     break;
+                 case 2:
+                     /* 16 bit write access */
+                     val = lduw_p(buf);
+-                    error |= io_mem_write(mr, addr1, val, 2);
++                    result |= memory_region_dispatch_write(mr, addr1, val, 2,
++                                                           attrs);
+                     break;
+                 case 1:
+                     /* 8 bit write access */
+                     val = ldub_p(buf);
+-                    error |= io_mem_write(mr, addr1, val, 1);
++                    result |= memory_region_dispatch_write(mr, addr1, val, 1,
++                                                           attrs);
+                     break;
+                 default:
+                     abort();
+@@ -2361,22 +2366,26 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+                 switch (l) {
+                 case 8:
+                     /* 64 bit read access */
+-                    error |= io_mem_read(mr, addr1, &val, 8);
++                    result |= memory_region_dispatch_read(mr, addr1, &val, 8,
++                                                          attrs);
+                     stq_p(buf, val);
+                     break;
+                 case 4:
+                     /* 32 bit read access */
+-                    error |= io_mem_read(mr, addr1, &val, 4);
++                    result |= memory_region_dispatch_read(mr, addr1, &val, 4,
++                                                          attrs);
+                     stl_p(buf, val);
+                     break;
+                 case 2:
+                     /* 16 bit read access */
+-                    error |= io_mem_read(mr, addr1, &val, 2);
++                    result |= memory_region_dispatch_read(mr, addr1, &val, 2,
++                                                          attrs);
+                     stw_p(buf, val);
+                     break;
+                 case 1:
+                     /* 8 bit read access */
+-                    error |= io_mem_read(mr, addr1, &val, 1);
++                    result |= memory_region_dispatch_read(mr, addr1, &val, 1,
++                                                          attrs);
+                     stb_p(buf, val);
+                     break;
+                 default:
+@@ -2393,7 +2402,7 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
+         addr += l;
+     }
+ 
+-    return error;
++    return result;
+ }
+ 
+ bool address_space_write(AddressSpace *as, hwaddr addr,
+@@ -2669,7 +2678,8 @@ static inline uint32_t ldl_phys_internal(AddressSpace *as, hwaddr addr,
+     mr = address_space_translate(as, addr, &addr1, &l, false);
+     if (l < 4 || !memory_access_is_direct(mr, false)) {
+         /* I/O case */
+-        io_mem_read(mr, addr1, &val, 4);
++        memory_region_dispatch_read(mr, addr1, &val, 4,
++                                    MEMTXATTRS_UNSPECIFIED);
+ #if defined(TARGET_WORDS_BIGENDIAN)
+         if (endian == DEVICE_LITTLE_ENDIAN) {
+             val = bswap32(val);
+@@ -2728,7 +2738,8 @@ static inline uint64_t ldq_phys_internal(AddressSpace *as, hwaddr addr,
+                                  false);
+     if (l < 8 || !memory_access_is_direct(mr, false)) {
+         /* I/O case */
+-        io_mem_read(mr, addr1, &val, 8);
++        memory_region_dispatch_read(mr, addr1, &val, 8,
++                                    MEMTXATTRS_UNSPECIFIED);
+ #if defined(TARGET_WORDS_BIGENDIAN)
+         if (endian == DEVICE_LITTLE_ENDIAN) {
+             val = bswap64(val);
+@@ -2795,7 +2806,8 @@ static inline uint32_t lduw_phys_internal(AddressSpace *as, hwaddr addr,
+                                  false);
+     if (l < 2 || !memory_access_is_direct(mr, false)) {
+         /* I/O case */
+-        io_mem_read(mr, addr1, &val, 2);
++        memory_region_dispatch_read(mr, addr1, &val, 2,
++                                    MEMTXATTRS_UNSPECIFIED);
+ #if defined(TARGET_WORDS_BIGENDIAN)
+         if (endian == DEVICE_LITTLE_ENDIAN) {
+             val = bswap16(val);
+@@ -2853,7 +2865,8 @@ void stl_phys_notdirty(AddressSpace *as, hwaddr addr, uint32_t val)
+     mr = address_space_translate(as, addr, &addr1, &l,
+                                  true);
+     if (l < 4 || !memory_access_is_direct(mr, true)) {
+-        io_mem_write(mr, addr1, val, 4);
++        memory_region_dispatch_write(mr, addr1, val, 4,
++                                     MEMTXATTRS_UNSPECIFIED);
+     } else {
+         addr1 += memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK;
+         ptr = qemu_get_ram_ptr(addr1);
+@@ -2892,7 +2905,8 @@ static inline void stl_phys_internal(AddressSpace *as,
+             val = bswap32(val);
+         }
+ #endif
+-        io_mem_write(mr, addr1, val, 4);
++        memory_region_dispatch_write(mr, addr1, val, 4,
++                                     MEMTXATTRS_UNSPECIFIED);
+     } else {
+         /* RAM case */
+         addr1 += memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK;
+@@ -2955,7 +2969,8 @@ static inline void stw_phys_internal(AddressSpace *as,
+             val = bswap16(val);
+         }
+ #endif
+-        io_mem_write(mr, addr1, val, 2);
++        memory_region_dispatch_write(mr, addr1, val, 2,
++                                     MEMTXATTRS_UNSPECIFIED);
+     } else {
+         /* RAM case */
+         addr1 += memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK;
+diff --git a/hw/s390x/s390-pci-inst.c b/hw/s390x/s390-pci-inst.c
+index 08d8aa6..8f7288f 100644
+--- a/hw/s390x/s390-pci-inst.c
++++ b/hw/s390x/s390-pci-inst.c
+@@ -331,7 +331,8 @@ int pcilg_service_call(S390CPU *cpu, uint8_t r1, uint8_t r2)
+             return 0;
+         }
+         MemoryRegion *mr = pbdev->pdev->io_regions[pcias].memory;
+-        io_mem_read(mr, offset, &data, len);
++        memory_region_dispatch_read(mr, offset, &data, len,
++                                    MEMTXATTRS_UNSPECIFIED);
+     } else if (pcias == 15) {
+         if ((4 - (offset & 0x3)) < len) {
+             program_interrupt(env, PGM_OPERAND, 4);
+@@ -456,7 +457,8 @@ int pcistg_service_call(S390CPU *cpu, uint8_t r1, uint8_t r2)
+             mr = pbdev->pdev->io_regions[pcias].memory;
+         }
+ 
+-        io_mem_write(mr, offset, data, len);
++        memory_region_dispatch_write(mr, offset, data, len,
++                                     MEMTXATTRS_UNSPECIFIED);
+     } else if (pcias == 15) {
+         if ((4 - (offset & 0x3)) < len) {
+             program_interrupt(env, PGM_OPERAND, 4);
+@@ -606,7 +608,9 @@ int pcistb_service_call(S390CPU *cpu, uint8_t r1, uint8_t r3, uint64_t gaddr)
+     }
+ 
+     for (i = 0; i < len / 8; i++) {
+-        io_mem_write(mr, env->regs[r3] + i * 8, ldq_p(buffer + i * 8), 8);
++        memory_region_dispatch_write(mr, env->regs[r3] + i * 8,
++                                     ldq_p(buffer + i * 8), 8,
++                                     MEMTXATTRS_UNSPECIFIED);
+     }
+ 
+     setcc(cpu, ZPCI_PCI_LS_OK);
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 0ec51e2..244a1ce 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -1532,9 +1532,12 @@ static uint64_t vfio_rtl8168_window_quirk_read(void *opaque,
+                 return 0;
+             }
+ 
+-            io_mem_read(&vdev->pdev.msix_table_mmio,
+-                        (hwaddr)(quirk->data.address_match & 0xfff),
+-                        &val, size);
++            memory_region_dispatch_read(&vdev->pdev.msix_table_mmio,
++                                        (hwaddr)(quirk->data.address_match
++                                                 & 0xfff),
++                                        &val,
++                                        size,
++                                        MEMTXATTRS_UNSPECIFIED);
+             return val;
+         }
+     }
+@@ -1562,9 +1565,12 @@ static void vfio_rtl8168_window_quirk_write(void *opaque, hwaddr addr,
+                         memory_region_name(&quirk->mem),
+                         vdev->vbasedev.name);
+ 
+-                io_mem_write(&vdev->pdev.msix_table_mmio,
+-                             (hwaddr)(quirk->data.address_match & 0xfff),
+-                             data, size);
++                memory_region_dispatch_write(&vdev->pdev.msix_table_mmio,
++                                             (hwaddr)(quirk->data.address_match
++                                                      & 0xfff),
++                                             data,
++                                             size,
++                                             MEMTXATTRS_UNSPECIFIED);
+             }
+ 
+             quirk->data.flags = 1;
+diff --git a/include/exec/exec-all.h b/include/exec/exec-all.h
+index 8eb0db3..ff1bc3e 100644
+--- a/include/exec/exec-all.h
++++ b/include/exec/exec-all.h
+@@ -341,10 +341,6 @@ void phys_mem_set_alloc(void *(*alloc)(size_t, uint64_t *align));
+ 
+ struct MemoryRegion *iotlb_to_region(CPUState *cpu,
+                                      hwaddr index);
+-bool io_mem_read(struct MemoryRegion *mr, hwaddr addr,
+-                 uint64_t *pvalue, unsigned size);
+-bool io_mem_write(struct MemoryRegion *mr, hwaddr addr,
+-                  uint64_t value, unsigned size);
+ 
+ void tlb_fill(CPUState *cpu, target_ulong addr, int is_write, int mmu_idx,
+               uintptr_t retaddr);
+diff --git a/include/exec/memory.h b/include/exec/memory.h
+index 88de117..a289eec 100644
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
+@@ -1065,6 +1065,37 @@ void memory_global_dirty_log_stop(void);
+ void mtree_info(fprintf_function mon_printf, void *f);
+ 
+ /**
++ * memory_region_dispatch_read: perform a read directly to the specified
++ * MemoryRegion.
++ *
++ * @mr: #MemoryRegion to access
++ * @addr: address within that region
++ * @pval: pointer to uint64_t which the data is written to
++ * @size: size of the access in bytes
++ * @attrs: memory transaction attributes to use for the access
++ */
++MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
++                                        hwaddr addr,
++                                        uint64_t *pval,
++                                        unsigned size,
++                                        MemTxAttrs attrs);
++/**
++ * memory_region_dispatch_write: perform a write directly to the specified
++ * MemoryRegion.
++ *
++ * @mr: #MemoryRegion to access
++ * @addr: address within that region
++ * @data: data to write
++ * @size: size of the access in bytes
++ * @attrs: memory transaction attributes to use for the access
++ */
++MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
++                                         hwaddr addr,
++                                         uint64_t data,
++                                         unsigned size,
++                                         MemTxAttrs attrs);
++
++/**
+  * address_space_init: initializes an address space
+  *
+  * @as: an uninitialized #AddressSpace
+diff --git a/memory.c b/memory.c
+index 23d6345..0f6cb81 100644
+--- a/memory.c
++++ b/memory.c
+@@ -1131,11 +1131,11 @@ static MemTxResult memory_region_dispatch_read1(MemoryRegion *mr,
+     }
+ }
+ 
+-static MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
+-                                               hwaddr addr,
+-                                               uint64_t *pval,
+-                                               unsigned size,
+-                                               MemTxAttrs attrs)
++MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
++                                        hwaddr addr,
++                                        uint64_t *pval,
++                                        unsigned size,
++                                        MemTxAttrs attrs)
+ {
+     MemTxResult r;
+ 
+@@ -1149,11 +1149,11 @@ static MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
+     return r;
+ }
+ 
+-static MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
+-                                                hwaddr addr,
+-                                                uint64_t data,
+-                                                unsigned size,
+-                                                MemTxAttrs attrs)
++MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
++                                         hwaddr addr,
++                                         uint64_t data,
++                                         unsigned size,
++                                         MemTxAttrs attrs)
+ {
+     if (!memory_region_access_valid(mr, addr, size, true)) {
+         unassigned_mem_write(mr, addr, data, size);
+@@ -2070,19 +2070,6 @@ void address_space_destroy(AddressSpace *as)
+     call_rcu(as, do_address_space_destroy, rcu);
+ }
+ 
+-bool io_mem_read(MemoryRegion *mr, hwaddr addr, uint64_t *pval, unsigned size)
+-{
+-    return memory_region_dispatch_read(mr, addr, pval, size,
+-                                       MEMTXATTRS_UNSPECIFIED);
+-}
+-
+-bool io_mem_write(MemoryRegion *mr, hwaddr addr,
+-                  uint64_t val, unsigned size)
+-{
+-    return memory_region_dispatch_write(mr, addr, val, size,
+-                                        MEMTXATTRS_UNSPECIFIED);
+-}
+-
+ typedef struct MemoryRegionList MemoryRegionList;
+ 
+ struct MemoryRegionList {
+diff --git a/softmmu_template.h b/softmmu_template.h
+index 0e3dd35..9c1d53e 100644
+--- a/softmmu_template.h
++++ b/softmmu_template.h
+@@ -158,7 +158,8 @@ static inline DATA_TYPE glue(io_read, SUFFIX)(CPUArchState *env,
+     }
+ 
+     cpu->mem_io_vaddr = addr;
+-    io_mem_read(mr, physaddr, &val, 1 << SHIFT);
++    memory_region_dispatch_read(mr, physaddr, &val, 1 << SHIFT,
++                                MEMTXATTRS_UNSPECIFIED);
+     return val;
+ }
+ #endif
+@@ -378,7 +379,8 @@ static inline void glue(io_write, SUFFIX)(CPUArchState *env,
+ 
+     cpu->mem_io_vaddr = addr;
+     cpu->mem_io_pc = retaddr;
+-    io_mem_write(mr, physaddr, val, 1 << SHIFT);
++    memory_region_dispatch_write(mr, physaddr, val, 1 << SHIFT,
++                                 MEMTXATTRS_UNSPECIFIED);
+ }
+ 
+ void helper_le_st_name(CPUArchState *env, target_ulong addr, DATA_TYPE val,
+-- 
+1.8.3.1
+

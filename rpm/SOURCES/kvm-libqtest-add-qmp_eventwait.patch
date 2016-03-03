@@ -1,0 +1,127 @@
+From 0313e785fb55ebfa34071c219ab4d3d9d9a39307 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:31:55 +0100
+Subject: [PATCH 08/44] libqtest: add qmp_eventwait
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-2-git-send-email-mst@redhat.com>
+Patchwork-id: 68355
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 01/36] libqtest: add qmp_eventwait
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: John Snow <jsnow@redhat.com>
+
+Allow the user to poll until a desired interrupt occurs.
+
+Signed-off-by: John Snow <jsnow@redhat.com>
+Message-id: 1426018503-821-4-git-send-email-jsnow@redhat.com
+(cherry picked from commit 8fe941f749b2db3735abade1c298552de4eab496)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/ide-test.c | 11 +----------
+ tests/libqtest.c | 15 +++++++++++++++
+ tests/libqtest.h | 20 ++++++++++++++++++++
+ 3 files changed, 36 insertions(+), 10 deletions(-)
+
+diff --git a/tests/ide-test.c b/tests/ide-test.c
+index ef55753..eddcff8 100644
+--- a/tests/ide-test.c
++++ b/tests/ide-test.c
+@@ -516,7 +516,6 @@ static void test_retry_flush(const char *machine)
+ {
+     uint8_t data;
+     const char *s;
+-    QDict *response;
+ 
+     prepare_blkdebug_script(debug_path, "flush_to_disk");
+ 
+@@ -535,15 +534,7 @@ static void test_retry_flush(const char *machine)
+     assert_bit_set(data, BSY | DRDY);
+     assert_bit_clear(data, DF | ERR | DRQ);
+ 
+-    for (;; response = NULL) {
+-        response = qmp_receive();
+-        if ((qdict_haskey(response, "event")) &&
+-            (strcmp(qdict_get_str(response, "event"), "STOP") == 0)) {
+-            QDECREF(response);
+-            break;
+-        }
+-        QDECREF(response);
+-    }
++    qmp_eventwait("STOP");
+ 
+     /* Complete the command */
+     s = "{'execute':'cont' }";
+diff --git a/tests/libqtest.c b/tests/libqtest.c
+index ffe78a0..7c50290 100644
+--- a/tests/libqtest.c
++++ b/tests/libqtest.c
+@@ -477,6 +477,21 @@ char *qtest_hmp(QTestState *s, const char *fmt, ...)
+     return ret;
+ }
+ 
++void qtest_qmp_eventwait(QTestState *s, const char *event)
++{
++    QDict *response;
++
++    for (;;) {
++        response = qtest_qmp_receive(s);
++        if ((qdict_haskey(response, "event")) &&
++            (strcmp(qdict_get_str(response, "event"), event) == 0)) {
++            QDECREF(response);
++            break;
++        }
++        QDECREF(response);
++    }
++}
++
+ const char *qtest_get_arch(void)
+ {
+     const char *qemu = getenv("QTEST_QEMU_BINARY");
+diff --git a/tests/libqtest.h b/tests/libqtest.h
+index eddac6e..7341f5e 100644
+--- a/tests/libqtest.h
++++ b/tests/libqtest.h
+@@ -115,6 +115,15 @@ char *qtest_hmp(QTestState *s, const char *fmt, ...);
+ char *qtest_hmpv(QTestState *s, const char *fmt, va_list ap);
+ 
+ /**
++ * qtest_qmp_eventwait:
++ * @s: #QTestState instance to operate on.
++ * @s: #event event to wait for.
++ *
++ * Continuosly polls for QMP responses until it receives the desired event.
++ */
++void qtest_qmp_eventwait(QTestState *s, const char *event);
++
++/**
+  * qtest_get_irq:
+  * @s: #QTestState instance to operate on.
+  * @num: Interrupt to observe.
+@@ -462,6 +471,17 @@ static inline QDict *qmp_receive(void)
+ char *hmp(const char *fmt, ...);
+ 
+ /**
++ * qmp_eventwait:
++ * @s: #event event to wait for.
++ *
++ * Continuosly polls for QMP responses until it receives the desired event.
++ */
++static inline void qmp_eventwait(const char *event)
++{
++    return qtest_qmp_eventwait(global_qtest, event);
++}
++
++/**
+  * get_irq:
+  * @num: Interrupt to observe.
+  *
+-- 
+1.8.3.1
+

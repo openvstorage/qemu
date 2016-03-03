@@ -1,0 +1,45 @@
+From 40c34e20a6a2cfed44da1a43ffdfee7c474c052e Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:25:55 +0200
+Subject: [PATCH 33/58] pc: Abort if HotplugHandlerClass::plug() fails
+
+Message-id: <1437715580-14817-4-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67120
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 03/28] pc: Abort if HotplugHandlerClass::plug() fails
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+HotplugHandlerClass::plug() shouldn't fail and hence use error_abort
+to abort if it fails.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Tested-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+(cherry picked from commit 8e23184b6b2f8426041854b18fb56a3ff197d5a0)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 5903b22..a3de32a 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1701,7 +1701,7 @@ static void pc_dimm_plug(HotplugHandler *hotplug_dev,
+     }
+ 
+     hhc = HOTPLUG_HANDLER_GET_CLASS(pcms->acpi_dev);
+-    hhc->plug(HOTPLUG_HANDLER(pcms->acpi_dev), dev, &local_err);
++    hhc->plug(HOTPLUG_HANDLER(pcms->acpi_dev), dev, &error_abort);
+ out:
+     error_propagate(errp, local_err);
+ }
+-- 
+1.8.3.1
+

@@ -1,0 +1,142 @@
+From 8633a6ea90f85aa86f251c6295888ac211f92a2a Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 20 Nov 2015 10:44:34 +0100
+Subject: [PATCH 1/9] virtio: introduce virtio_map
+
+Message-id: <1448016282-257478-2-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68406
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 1/9] virtio: introduce virtio_map
+Bugzilla: 1288096
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Michael S. Tsirkin <mst@redhat.com>
+
+virtio_map_sg currently fails if one of the entries it's mapping is
+contigious in GPA but not HVA address space.  Introduce virtio_map which
+handles this by splitting sg entries.
+
+This new API generally turns out to be a good idea since it's harder to
+misuse: at least in one case the existing one was used incorrectly.
+
+This will still fail if there's no space left in the sg, but luckily max
+queue size in use is currently 256, while max sg size is 1024, so we
+should be OK even is all entries happen to cross a single DIMM boundary.
+
+Won't work well with very small DIMM sizes, unfortunately:
+e.g. this will fail with 4K DIMMs where a single
+request might span a large number of DIMMs.
+
+Let's hope these are uncommon - at least we are not breaking things.
+
+Note: virtio-scsi calls virtio_map_sg on data loaded from network, and
+validates input, asserting on failure.  Copy the validating code here -
+it will be dropped from virtio-scsi in a follow-up patch.
+
+Reported-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+(cherry picked from commit 8059feee004111534c4c0652e2f0715e9b4e0754)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio.c         | 56 ++++++++++++++++++++++++++++++++++++++--------
+ include/hw/virtio/virtio.h |  1 +
+ 2 files changed, 48 insertions(+), 9 deletions(-)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 0832db9..3fe6a8b 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -434,28 +434,66 @@ int virtqueue_avail_bytes(VirtQueue *vq, unsigned int in_bytes,
+     return in_bytes <= in_total && out_bytes <= out_total;
+ }
+ 
+-void virtqueue_map_sg(struct iovec *sg, hwaddr *addr,
+-    size_t num_sg, int is_write)
++static void virtqueue_map_iovec(struct iovec *sg, hwaddr *addr,
++                                unsigned int *num_sg, unsigned int max_size,
++                                int is_write)
+ {
+     unsigned int i;
+     hwaddr len;
+ 
+-    if (num_sg > VIRTQUEUE_MAX_SIZE) {
+-        error_report("virtio: map attempt out of bounds: %zd > %d",
+-                     num_sg, VIRTQUEUE_MAX_SIZE);
+-        exit(1);
+-    }
++    /* Note: this function MUST validate input, some callers
++     * are passing in num_sg values received over the network.
++     */
++    /* TODO: teach all callers that this can fail, and return failure instead
++     * of asserting here.
++     * When we do, we might be able to re-enable NDEBUG below.
++     */
++#ifdef NDEBUG
++#error building with NDEBUG is not supported
++#endif
++    assert(*num_sg <= max_size);
+ 
+-    for (i = 0; i < num_sg; i++) {
++    for (i = 0; i < *num_sg; i++) {
+         len = sg[i].iov_len;
+         sg[i].iov_base = cpu_physical_memory_map(addr[i], &len, is_write);
+-        if (sg[i].iov_base == NULL || len != sg[i].iov_len) {
++        if (!sg[i].iov_base) {
+             error_report("virtio: error trying to map MMIO memory");
+             exit(1);
+         }
++        if (len == sg[i].iov_len) {
++            continue;
++        }
++        if (*num_sg >= max_size) {
++            error_report("virtio: memory split makes iovec too large");
++            exit(1);
++        }
++        memmove(sg + i + 1, sg + i, sizeof(*sg) * (*num_sg - i));
++        memmove(addr + i + 1, addr + i, sizeof(*addr) * (*num_sg - i));
++        assert(len < sg[i + 1].iov_len);
++        sg[i].iov_len = len;
++        addr[i + 1] += len;
++        sg[i + 1].iov_len -= len;
++        ++*num_sg;
+     }
+ }
+ 
++/* Deprecated: don't use in new code */
++void virtqueue_map_sg(struct iovec *sg, hwaddr *addr,
++                      size_t num_sg, int is_write)
++{
++    virtqueue_map_iovec(sg, addr, &num_sg, num_sg, is_write);
++}
++
++void virtqueue_map(VirtQueueElement *elem)
++{
++    virtqueue_map_iovec(elem->in_sg, elem->in_addr, &elem->in_num,
++                        MIN(ARRAY_SIZE(elem->in_sg), ARRAY_SIZE(elem->in_addr)),
++                        1);
++    virtqueue_map_iovec(elem->out_sg, elem->out_addr, &elem->out_num,
++                        MIN(ARRAY_SIZE(elem->out_sg), ARRAY_SIZE(elem->out_addr)),
++                        0);
++}
++
+ int virtqueue_pop(VirtQueue *vq, VirtQueueElement *elem)
+ {
+     unsigned int i, head, max;
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index d60ca9d..f5c5086 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -151,6 +151,7 @@ void virtqueue_fill(VirtQueue *vq, const VirtQueueElement *elem,
+ 
+ void virtqueue_map_sg(struct iovec *sg, hwaddr *addr,
+     size_t num_sg, int is_write);
++void virtqueue_map(VirtQueueElement *elem);
+ int virtqueue_pop(VirtQueue *vq, VirtQueueElement *elem);
+ int virtqueue_avail_bytes(VirtQueue *vq, unsigned int in_bytes,
+                           unsigned int out_bytes);
+-- 
+1.8.3.1
+

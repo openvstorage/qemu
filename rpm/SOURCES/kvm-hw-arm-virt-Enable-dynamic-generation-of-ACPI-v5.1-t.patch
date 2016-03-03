@@ -1,0 +1,85 @@
+From 1a296292c1d0d00f901ff855b928ecd9c4c7f11e Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:41 +0200
+Subject: [PATCH 37/44] hw/arm/virt: Enable dynamic generation of ACPI v5.1
+ tables
+
+Message-id: <1434455325-23399-30-git-send-email-drjones@redhat.com>
+Patchwork-id: 66265
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 29/33] hw/arm/virt: Enable dynamic generation of ACPI v5.1 tables
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Initialize VirtGuestInfoState and register a machine_init_done notify to
+call virt_acpi_build().
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Message-id: 1432522520-8068-25-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit d7c2e2db28eb7e8f2ed7467fa2f2c59026b206d1)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/arm/virt.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 13c169b..bc5b262 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -44,6 +44,7 @@
+ #include "qemu/bitops.h"
+ #include "qemu/error-report.h"
+ #include "hw/pci-host/gpex.h"
++#include "hw/arm/virt-acpi-build.h"
+ 
+ /* Number of external interrupt lines to configure the GIC with */
+ #define NUM_IRQS 128
+@@ -700,6 +701,14 @@ static void *machvirt_dtb(const struct arm_boot_info *binfo, int *fdt_size)
+     return board->fdt;
+ }
+ 
++static
++void virt_guest_info_machine_done(Notifier *notifier, void *data)
++{
++    VirtGuestInfoState *guest_info_state = container_of(notifier,
++                                              VirtGuestInfoState, machine_done);
++    virt_acpi_setup(&guest_info_state->info);
++}
++
+ static void machvirt_init(MachineState *machine)
+ {
+     VirtMachineState *vms = VIRT_MACHINE(machine);
+@@ -709,6 +718,8 @@ static void machvirt_init(MachineState *machine)
+     MemoryRegion *ram = g_new(MemoryRegion, 1);
+     const char *cpu_model = machine->cpu_model;
+     VirtBoardInfo *vbi;
++    VirtGuestInfoState *guest_info_state = g_malloc0(sizeof *guest_info_state);
++    VirtGuestInfo *guest_info = &guest_info_state->info;
+     uint32_t gic_phandle;
+     char **cpustr;
+ 
+@@ -801,6 +812,14 @@ static void machvirt_init(MachineState *machine)
+     create_virtio_devices(vbi, pic);
+ 
+     create_fw_cfg(vbi);
++    rom_set_fw(fw_cfg_find());
++
++    guest_info->smp_cpus = smp_cpus;
++    guest_info->fw_cfg = fw_cfg_find();
++    guest_info->memmap = vbi->memmap;
++    guest_info->irqmap = vbi->irqmap;
++    guest_info_state->machine_done.notify = virt_guest_info_machine_done;
++    qemu_add_machine_init_done_notifier(&guest_info_state->machine_done);
+ 
+     vbi->bootinfo.ram_size = machine->ram_size;
+     vbi->bootinfo.kernel_filename = machine->kernel_filename;
+-- 
+1.8.3.1
+

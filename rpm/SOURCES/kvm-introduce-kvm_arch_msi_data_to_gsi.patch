@@ -1,0 +1,130 @@
+From ef3d992b904c1523374ad3c6631687a1886ed509 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 30 Jun 2015 14:14:37 +0200
+Subject: [PATCH 08/11] kvm: introduce kvm_arch_msi_data_to_gsi
+
+Message-id: <1435673680-9996-6-git-send-email-drjones@redhat.com>
+Patchwork-id: 66573
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 5/8] kvm: introduce kvm_arch_msi_data_to_gsi
+Bugzilla: 1231929
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Author: Eric Auger <eric.auger@linaro.org>
+
+On ARM the MSI data corresponds to the shared peripheral interrupt (SPI)
+ID. This latter equals to the SPI index + 32. to retrieve the SPI index,
+matching the gsi, an architecture specific function is introduced.
+
+Signed-off-by: Eric Auger <eric.auger@linaro.org>
+Acked-by: Christoffer Dall <christoffer.dall@linaro.org>
+Acked-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 1850b6b7d027bb4b45010a7d1da919267fff2cd4)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/sysemu/kvm.h | 2 ++
+ kvm-all.c            | 2 +-
+ target-arm/kvm.c     | 5 +++++
+ target-i386/kvm.c    | 5 +++++
+ target-mips/kvm.c    | 5 +++++
+ target-ppc/kvm.c     | 5 +++++
+ target-s390x/kvm.c   | 5 +++++
+ 7 files changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/include/sysemu/kvm.h b/include/sysemu/kvm.h
+index 197e6c0..ebd8b17 100644
+--- a/include/sysemu/kvm.h
++++ b/include/sysemu/kvm.h
+@@ -286,6 +286,8 @@ void kvm_arch_init_irq_routing(KVMState *s);
+ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
+                              uint64_t address, uint32_t data);
+ 
++int kvm_arch_msi_data_to_gsi(uint32_t data);
++
+ int kvm_set_irq(KVMState *s, int irq, int level);
+ int kvm_irqchip_send_msi(KVMState *s, MSIMessage msg);
+ 
+diff --git a/kvm-all.c b/kvm-all.c
+index 365ad3f..de763de 100644
+--- a/kvm-all.c
++++ b/kvm-all.c
+@@ -1228,7 +1228,7 @@ int kvm_irqchip_add_msi_route(KVMState *s, MSIMessage msg)
+     int virq;
+ 
+     if (kvm_gsi_direct_mapping()) {
+-        return msg.data & 0xffff;
++        return kvm_arch_msi_data_to_gsi(msg.data);
+     }
+ 
+     if (!kvm_gsi_routing_enabled()) {
+diff --git a/target-arm/kvm.c b/target-arm/kvm.c
+index fdd9ba3..05d5634 100644
+--- a/target-arm/kvm.c
++++ b/target-arm/kvm.c
+@@ -598,3 +598,8 @@ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
+ {
+     return 0;
+ }
++
++int kvm_arch_msi_data_to_gsi(uint32_t data)
++{
++    return (data - 32) & 0xffff;
++}
+diff --git a/target-i386/kvm.c b/target-i386/kvm.c
+index 41d09e5..a832328 100644
+--- a/target-i386/kvm.c
++++ b/target-i386/kvm.c
+@@ -2764,3 +2764,8 @@ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
+ {
+     return 0;
+ }
++
++int kvm_arch_msi_data_to_gsi(uint32_t data)
++{
++    abort();
++}
+diff --git a/target-mips/kvm.c b/target-mips/kvm.c
+index 4d1f7ea..09eb8f9 100644
+--- a/target-mips/kvm.c
++++ b/target-mips/kvm.c
+@@ -694,3 +694,8 @@ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
+ {
+     return 0;
+ }
++
++int kvm_arch_msi_data_to_gsi(uint32_t data)
++{
++    abort();
++}
+diff --git a/target-ppc/kvm.c b/target-ppc/kvm.c
+index 16f62b5..70d3a52 100644
+--- a/target-ppc/kvm.c
++++ b/target-ppc/kvm.c
+@@ -2425,3 +2425,8 @@ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
+ {
+     return 0;
+ }
++
++int kvm_arch_msi_data_to_gsi(uint32_t data)
++{
++    return data & 0xffff;
++}
+diff --git a/target-s390x/kvm.c b/target-s390x/kvm.c
+index b48c643..5911a38 100644
+--- a/target-s390x/kvm.c
++++ b/target-s390x/kvm.c
+@@ -1940,3 +1940,8 @@ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
+     route->u.adapter.adapter_id = pbdev->routes.adapter.adapter_id;
+     return 0;
+ }
++
++int kvm_arch_msi_data_to_gsi(uint32_t data)
++{
++    abort();
++}
+-- 
+1.8.3.1
+

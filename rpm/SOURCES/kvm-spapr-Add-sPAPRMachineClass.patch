@@ -1,0 +1,77 @@
+From 3d9f3de4e33a9422b2f84968566e44f107dd519e Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:06 +0200
+Subject: [PATCH 44/58] spapr: Add sPAPRMachineClass
+
+Message-id: <1437715580-14817-15-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67131
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 14/28] spapr: Add sPAPRMachineClass
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Currently although we have an sPAPRMachineState descended from MachineState
+we don't have an sPAPRMAchineClass descended from MachineClass.  So far it
+hasn't been needed, but several upcoming features are going to want it,
+so this patch creates a stub implementation.
+
+Signed-off-by: Michael Roth <mdroth@linux.vnet.ibm.com>
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 183930c0d753e53d22c27d573b1803b04f8d68ac)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c         |  1 +
+ include/hw/ppc/spapr.h | 15 +++++++++++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 891c7bf..bde9415 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1807,6 +1807,7 @@ static const TypeInfo spapr_machine_info = {
+     .abstract      = true,
+     .instance_size = sizeof(sPAPRMachineState),
+     .instance_init = spapr_machine_initfn,
++    .class_size    = sizeof(sPAPRMachineClass),
+     .class_init    = spapr_machine_class_init,
+     .interfaces = (InterfaceInfo[]) {
+         { TYPE_FW_PATH_PROVIDER },
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index d9dde83..0bf46f7 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -15,11 +15,26 @@ typedef struct sPAPREventLogEntry sPAPREventLogEntry;
+ #define HPTE64_V_HPTE_DIRTY     0x0000000000000040ULL
+ #define SPAPR_ENTRY_POINT       0x100
+ 
++typedef struct sPAPRMachineClass sPAPRMachineClass;
+ typedef struct sPAPRMachineState sPAPRMachineState;
+ 
+ #define TYPE_SPAPR_MACHINE      "spapr-machine"
+ #define SPAPR_MACHINE(obj) \
+     OBJECT_CHECK(sPAPRMachineState, (obj), TYPE_SPAPR_MACHINE)
++#define SPAPR_MACHINE_GET_CLASS(obj) \
++    OBJECT_GET_CLASS(sPAPRMachineClass, obj, TYPE_SPAPR_MACHINE)
++#define SPAPR_MACHINE_CLASS(klass) \
++    OBJECT_CLASS_CHECK(sPAPRMachineClass, klass, TYPE_SPAPR_MACHINE)
++
++/**
++ * sPAPRMachineClass:
++ */
++struct sPAPRMachineClass {
++    /*< private >*/
++    MachineClass parent_class;
++
++    /*< public >*/
++};
+ 
+ /**
+  * sPAPRMachineState:
+-- 
+1.8.3.1
+

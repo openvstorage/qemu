@@ -1,0 +1,219 @@
+From c2b94e1e77ee451473bcb5613a3f43362d02b616 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Wed, 30 Sep 2015 10:25:51 +0200
+Subject: [PATCH 09/11] vhost-user: add a new message to disable/enable a
+ specific virt queue.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1443608650-22364-10-git-send-email-mst@redhat.com>
+Patchwork-id: 68005
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 9/9] vhost-user: add a new message to disable/enable a specific virt queue.
+Bugzilla: 1276100
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+
+From: Changchun Ouyang <changchun.ouyang@intel.com>
+
+Add a new message, VHOST_USER_SET_VRING_ENABLE, to enable or disable
+a specific virt queue, which is similar to attach/detach queue for
+tap device.
+
+virtio driver on guest doesn't have to use max virt queue pair, it
+could enable any number of virt queue ranging from 1 to max virt
+queue pair.
+
+Signed-off-by: Changchun Ouyang <changchun.ouyang@intel.com>
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Jason Wang <jasowang@redhat.com>
+Tested-by: Marcel Apfelbaum <marcel@redhat.com>
+(cherry picked from commit 7263a0ad7899994b719ebed736a1119cc2e08110)
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/vhost-user.txt         | 12 +++++++++++-
+ hw/net/vhost_net.c                | 18 ++++++++++++++++++
+ hw/net/virtio-net.c               |  8 ++++++++
+ hw/virtio/vhost-user.c            | 19 +++++++++++++++++++
+ include/hw/virtio/vhost-backend.h |  2 ++
+ include/net/vhost_net.h           |  2 ++
+ 6 files changed, 60 insertions(+), 1 deletion(-)
+
+diff --git a/docs/specs/vhost-user.txt b/docs/specs/vhost-user.txt
+index 62f7bcf..4bcd17d 100644
+--- a/docs/specs/vhost-user.txt
++++ b/docs/specs/vhost-user.txt
+@@ -148,7 +148,9 @@ VHOST_USER_GET_PROTOCOL_FEATURES. Master should stop when the number of
+ requested queues is bigger than that.
+ 
+ As all queues share one connection, the master uses a unique index for each
+-queue in the sent message to identify a specified queue.
++queue in the sent message to identify a specified queue. One queue pair
++is enabled initially. More queues are enabled dynamically, by sending
++message VHOST_USER_SET_VRING_ENABLE.
+ 
+ Message types
+ -------------
+@@ -327,3 +329,11 @@ Message types
+       Query how many queues the backend supports. This request should be
+       sent only when VHOST_USER_PROTOCOL_F_MQ is set in quried protocol
+       features by VHOST_USER_GET_PROTOCOL_FEATURES.
++
++ * VHOST_USER_SET_VRING_ENABLE
++
++      Id: 18
++      Equivalent ioctl: N/A
++      Master payload: vring state description
++
++      Signal slave to enable or disable corresponding vring.
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index f40c9d3..95da5f8 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -415,6 +415,19 @@ VHostNetState *get_vhost_net(NetClientState *nc)
+ 
+     return vhost_net;
+ }
++
++int vhost_set_vring_enable(NetClientState *nc, int enable)
++{
++    VHostNetState *net = get_vhost_net(nc);
++    const VhostOps *vhost_ops = net->dev.vhost_ops;
++
++    if (vhost_ops->vhost_backend_set_vring_enable) {
++        return vhost_ops->vhost_backend_set_vring_enable(&net->dev, enable);
++    }
++
++    return 0;
++}
++
+ #else
+ uint64_t vhost_net_get_max_queues(VHostNetState *net)
+ {
+@@ -465,4 +478,9 @@ VHostNetState *get_vhost_net(NetClientState *nc)
+ {
+     return 0;
+ }
++
++int vhost_set_vring_enable(NetClientState *nc, int enable)
++{
++    return 0;
++}
+ #endif
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index c7c1725..bea47ab 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -404,6 +404,10 @@ static int peer_attach(VirtIONet *n, int index)
+         return 0;
+     }
+ 
++    if (nc->peer->info->type == NET_CLIENT_OPTIONS_KIND_VHOST_USER) {
++        vhost_set_vring_enable(nc->peer, 1);
++    }
++
+     if (nc->peer->info->type != NET_CLIENT_OPTIONS_KIND_TAP) {
+         return 0;
+     }
+@@ -419,6 +423,10 @@ static int peer_detach(VirtIONet *n, int index)
+         return 0;
+     }
+ 
++    if (nc->peer->info->type == NET_CLIENT_OPTIONS_KIND_VHOST_USER) {
++        vhost_set_vring_enable(nc->peer, 0);
++    }
++
+     if (nc->peer->info->type !=  NET_CLIENT_OPTIONS_KIND_TAP) {
+         return 0;
+     }
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 0a27b36..4278d54 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -48,6 +48,7 @@ typedef enum VhostUserRequest {
+     VHOST_USER_GET_PROTOCOL_FEATURES = 15,
+     VHOST_USER_SET_PROTOCOL_FEATURES = 16,
+     VHOST_USER_GET_QUEUE_NUM = 17,
++    VHOST_USER_SET_VRING_ENABLE = 18,
+     VHOST_USER_MAX
+ } VhostUserRequest;
+ 
+@@ -290,6 +291,7 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+ 
+     case VHOST_USER_SET_VRING_NUM:
+     case VHOST_USER_SET_VRING_BASE:
++    case VHOST_USER_SET_VRING_ENABLE:
+         memcpy(&msg.state, arg, sizeof(struct vhost_vring_state));
+         msg.size = sizeof(m.state);
+         break;
+@@ -406,6 +408,22 @@ static int vhost_user_init(struct vhost_dev *dev, void *opaque)
+     return 0;
+ }
+ 
++static int vhost_user_set_vring_enable(struct vhost_dev *dev, int enable)
++{
++    struct vhost_vring_state state = {
++        .index = dev->vq_index,
++        .num   = enable,
++    };
++
++    assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_USER);
++
++    if (!(dev->protocol_features & (1ULL << VHOST_USER_PROTOCOL_F_MQ))) {
++        return -1;
++    }
++
++    return vhost_user_call(dev, VHOST_USER_SET_VRING_ENABLE, &state);
++}
++
+ static int vhost_user_cleanup(struct vhost_dev *dev)
+ {
+     assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_USER);
+@@ -428,4 +446,5 @@ const VhostOps user_ops = {
+         .vhost_backend_init = vhost_user_init,
+         .vhost_backend_cleanup = vhost_user_cleanup,
+         .vhost_backend_get_vq_index = vhost_user_get_vq_index,
++        .vhost_backend_set_vring_enable = vhost_user_set_vring_enable,
+ };
+diff --git a/include/hw/virtio/vhost-backend.h b/include/hw/virtio/vhost-backend.h
+index e1dfc6d..3a0f6e2 100644
+--- a/include/hw/virtio/vhost-backend.h
++++ b/include/hw/virtio/vhost-backend.h
+@@ -25,6 +25,7 @@ typedef int (*vhost_call)(struct vhost_dev *dev, unsigned long int request,
+ typedef int (*vhost_backend_init)(struct vhost_dev *dev, void *opaque);
+ typedef int (*vhost_backend_cleanup)(struct vhost_dev *dev);
+ typedef int (*vhost_backend_get_vq_index)(struct vhost_dev *dev, int idx);
++typedef int (*vhost_backend_set_vring_enable)(struct vhost_dev *dev, int enable);
+ 
+ typedef struct VhostOps {
+     VhostBackendType backend_type;
+@@ -32,6 +33,7 @@ typedef struct VhostOps {
+     vhost_backend_init vhost_backend_init;
+     vhost_backend_cleanup vhost_backend_cleanup;
+     vhost_backend_get_vq_index vhost_backend_get_vq_index;
++    vhost_backend_set_vring_enable vhost_backend_set_vring_enable;
+ } VhostOps;
+ 
+ extern const VhostOps user_ops;
+diff --git a/include/net/vhost_net.h b/include/net/vhost_net.h
+index 8db723e..0188c4d 100644
+--- a/include/net/vhost_net.h
++++ b/include/net/vhost_net.h
+@@ -28,4 +28,6 @@ bool vhost_net_virtqueue_pending(VHostNetState *net, int n);
+ void vhost_net_virtqueue_mask(VHostNetState *net, VirtIODevice *dev,
+                               int idx, bool mask);
+ VHostNetState *get_vhost_net(NetClientState *nc);
++
++int vhost_set_vring_enable(NetClientState * nc, int enable);
+ #endif
+-- 
+1.8.3.1
+

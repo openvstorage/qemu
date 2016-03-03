@@ -1,0 +1,196 @@
+From 618b5f871a92b7fbaccce06b633c5b5ca98496a0 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Mon, 10 Aug 2015 05:09:30 +0200
+Subject: [PATCH 09/16] virtio: get_features() can fail
+
+Message-id: <1439183375-4841-10-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67436
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 09/14] virtio: get_features() can fail
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Notes: conflicts since we don't backport virtio-gpu
+
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 9d5b731dd2d64deb3bc798ef4e3c08603d54ae02)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/display/virtio-gpu.c
+---
+ hw/9pfs/virtio-9p-device.c  | 3 ++-
+ hw/block/virtio-blk.c       | 3 ++-
+ hw/char/virtio-serial-bus.c | 3 ++-
+ hw/input/virtio-input.c     | 3 ++-
+ hw/net/virtio-net.c         | 3 ++-
+ hw/scsi/vhost-scsi.c        | 3 ++-
+ hw/scsi/virtio-scsi.c       | 3 ++-
+ hw/virtio/virtio-balloon.c  | 3 ++-
+ hw/virtio/virtio-bus.c      | 3 ++-
+ hw/virtio/virtio-rng.c      | 2 +-
+ include/hw/virtio/virtio.h  | 4 +++-
+ 11 files changed, 22 insertions(+), 11 deletions(-)
+
+diff --git a/hw/9pfs/virtio-9p-device.c b/hw/9pfs/virtio-9p-device.c
+index 3f4c9e7..93a407c 100644
+--- a/hw/9pfs/virtio-9p-device.c
++++ b/hw/9pfs/virtio-9p-device.c
+@@ -21,7 +21,8 @@
+ #include "virtio-9p-coth.h"
+ #include "hw/virtio/virtio-access.h"
+ 
+-static uint64_t virtio_9p_get_features(VirtIODevice *vdev, uint64_t features)
++static uint64_t virtio_9p_get_features(VirtIODevice *vdev, uint64_t features,
++                                       Error **errp)
+ {
+     virtio_add_feature(&features, VIRTIO_9P_MOUNT_TAG);
+     return features;
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index 480e4dc..0e13530 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -718,7 +718,8 @@ static void virtio_blk_set_config(VirtIODevice *vdev, const uint8_t *config)
+     aio_context_release(blk_get_aio_context(s->blk));
+ }
+ 
+-static uint64_t virtio_blk_get_features(VirtIODevice *vdev, uint64_t features)
++static uint64_t virtio_blk_get_features(VirtIODevice *vdev, uint64_t features,
++                                        Error **errp)
+ {
+     VirtIOBlock *s = VIRTIO_BLK(vdev);
+ 
+diff --git a/hw/char/virtio-serial-bus.c b/hw/char/virtio-serial-bus.c
+index fee417d..3a10c71 100644
+--- a/hw/char/virtio-serial-bus.c
++++ b/hw/char/virtio-serial-bus.c
+@@ -499,7 +499,8 @@ static void handle_input(VirtIODevice *vdev, VirtQueue *vq)
+     }
+ }
+ 
+-static uint64_t get_features(VirtIODevice *vdev, uint64_t features)
++static uint64_t get_features(VirtIODevice *vdev, uint64_t features,
++                             Error **errp)
+ {
+     VirtIOSerial *vser;
+ 
+diff --git a/hw/input/virtio-input.c b/hw/input/virtio-input.c
+index 7f5b8d6..7b25d27 100644
+--- a/hw/input/virtio-input.c
++++ b/hw/input/virtio-input.c
+@@ -166,7 +166,8 @@ static void virtio_input_set_config(VirtIODevice *vdev,
+     virtio_notify_config(vdev);
+ }
+ 
+-static uint64_t virtio_input_get_features(VirtIODevice *vdev, uint64_t f)
++static uint64_t virtio_input_get_features(VirtIODevice *vdev, uint64_t f,
++                                          Error **errp)
+ {
+     return f;
+ }
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 1f75c2b..d60ce70 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -448,7 +448,8 @@ static void virtio_net_set_queues(VirtIONet *n)
+ 
+ static void virtio_net_set_multiqueue(VirtIONet *n, int multiqueue);
+ 
+-static uint64_t virtio_net_get_features(VirtIODevice *vdev, uint64_t features)
++static uint64_t virtio_net_get_features(VirtIODevice *vdev, uint64_t features,
++                                        Error **errp)
+ {
+     VirtIONet *n = VIRTIO_NET(vdev);
+     NetClientState *nc = qemu_get_queue(n->nic);
+diff --git a/hw/scsi/vhost-scsi.c b/hw/scsi/vhost-scsi.c
+index 1941aa1..7f184d3 100644
+--- a/hw/scsi/vhost-scsi.c
++++ b/hw/scsi/vhost-scsi.c
+@@ -152,7 +152,8 @@ static void vhost_scsi_stop(VHostSCSI *s)
+ }
+ 
+ static uint64_t vhost_scsi_get_features(VirtIODevice *vdev,
+-                                        uint64_t features)
++                                        uint64_t features,
++                                        Error **errp)
+ {
+     VHostSCSI *s = VHOST_SCSI(vdev);
+ 
+diff --git a/hw/scsi/virtio-scsi.c b/hw/scsi/virtio-scsi.c
+index f7f00e1..a8bb1c6 100644
+--- a/hw/scsi/virtio-scsi.c
++++ b/hw/scsi/virtio-scsi.c
+@@ -634,7 +634,8 @@ static void virtio_scsi_set_config(VirtIODevice *vdev,
+ }
+ 
+ static uint64_t virtio_scsi_get_features(VirtIODevice *vdev,
+-                                         uint64_t requested_features)
++                                         uint64_t requested_features,
++                                         Error **errp)
+ {
+     VirtIOSCSI *s = VIRTIO_SCSI(vdev);
+ 
+diff --git a/hw/virtio/virtio-balloon.c b/hw/virtio/virtio-balloon.c
+index 72745db..c9c3f3e 100644
+--- a/hw/virtio/virtio-balloon.c
++++ b/hw/virtio/virtio-balloon.c
+@@ -310,7 +310,8 @@ static void virtio_balloon_set_config(VirtIODevice *vdev,
+     trace_virtio_balloon_set_config(dev->actual, oldactual);
+ }
+ 
+-static uint64_t virtio_balloon_get_features(VirtIODevice *vdev, uint64_t f)
++static uint64_t virtio_balloon_get_features(VirtIODevice *vdev, uint64_t f,
++                                            Error **errp)
+ {
+     virtio_add_feature(&f, VIRTIO_BALLOON_F_STATS_VQ);
+     return f;
+diff --git a/hw/virtio/virtio-bus.c b/hw/virtio/virtio-bus.c
+index 3926f7e..febda76 100644
+--- a/hw/virtio/virtio-bus.c
++++ b/hw/virtio/virtio-bus.c
+@@ -54,7 +54,8 @@ void virtio_bus_device_plugged(VirtIODevice *vdev, Error **errp)
+ 
+     /* Get the features of the plugged device. */
+     assert(vdc->get_features != NULL);
+-    vdev->host_features = vdc->get_features(vdev, vdev->host_features);
++    vdev->host_features = vdc->get_features(vdev, vdev->host_features,
++                                            errp);
+ }
+ 
+ /* Reset the virtio_bus */
+diff --git a/hw/virtio/virtio-rng.c b/hw/virtio/virtio-rng.c
+index 22b1d87..4fcd5f0 100644
+--- a/hw/virtio/virtio-rng.c
++++ b/hw/virtio/virtio-rng.c
+@@ -99,7 +99,7 @@ static void handle_input(VirtIODevice *vdev, VirtQueue *vq)
+     virtio_rng_process(vrng);
+ }
+ 
+-static uint64_t get_features(VirtIODevice *vdev, uint64_t f)
++static uint64_t get_features(VirtIODevice *vdev, uint64_t f, Error **errp)
+ {
+     return f;
+ }
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 9a396e1..219a18f 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -101,7 +101,9 @@ typedef struct VirtioDeviceClass {
+     /* This is what a VirtioDevice must implement */
+     DeviceRealize realize;
+     DeviceUnrealize unrealize;
+-    uint64_t (*get_features)(VirtIODevice *vdev, uint64_t requested_features);
++    uint64_t (*get_features)(VirtIODevice *vdev,
++                             uint64_t requested_features,
++                             Error **errp);
+     uint64_t (*bad_features)(VirtIODevice *vdev);
+     void (*set_features)(VirtIODevice *vdev, uint64_t val);
+     int (*validate_features)(VirtIODevice *vdev);
+-- 
+1.8.3.1
+

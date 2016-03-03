@@ -1,0 +1,83 @@
+From 2e5c06197012cd8491d3bb09eb8be325706b4efa Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:14 +0200
+Subject: [PATCH 52/58] xics_kvm: Don't enable KVM_CAP_IRQ_XICS if already
+ enabled
+
+Message-id: <1437715580-14817-23-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67139
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 22/28] xics_kvm: Don't enable KVM_CAP_IRQ_XICS if already enabled
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+When supporting CPU hot removal by parking the vCPU fd and reusing
+it during hotplug again, there can be cases where we try to reenable
+KVM_CAP_IRQ_XICS CAP for the vCPU for which it was already enabled.
+Introduce a boolean member in ICPState to track this and don't
+reenable the CAP if it was already enabled earlier.
+
+Re-enabling this CAP should ideally work, but currently it results in
+kernel trying to create and associate ICP with this vCPU and that
+fails since there is already an ICP associated with it. Hence this
+patch is needed to work around this problem in the kernel.
+
+This change allows CPU hot removal to work for sPAPR.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit a45863bda90daa8ec39e5a312b9734fd4665b016)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/intc/xics_kvm.c    | 10 ++++++++++
+ include/hw/ppc/xics.h |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/hw/intc/xics_kvm.c b/hw/intc/xics_kvm.c
+index ea886da..d58729c 100644
+--- a/hw/intc/xics_kvm.c
++++ b/hw/intc/xics_kvm.c
+@@ -331,6 +331,15 @@ static void xics_kvm_cpu_setup(XICSState *icp, PowerPCCPU *cpu)
+         abort();
+     }
+ 
++    /*
++     * If we are reusing a parked vCPU fd corresponding to the CPU
++     * which was hot-removed earlier we don't have to renable
++     * KVM_CAP_IRQ_XICS capability again.
++     */
++    if (ss->cap_irq_xics_enabled) {
++        return;
++    }
++
+     if (icpkvm->kernel_xics_fd != -1) {
+         int ret;
+ 
+@@ -343,6 +352,7 @@ static void xics_kvm_cpu_setup(XICSState *icp, PowerPCCPU *cpu)
+                     kvm_arch_vcpu_id(cs), strerror(errno));
+             exit(1);
+         }
++        ss->cap_irq_xics_enabled = true;
+     }
+ }
+ 
+diff --git a/include/hw/ppc/xics.h b/include/hw/ppc/xics.h
+index a214dd7..355a966 100644
+--- a/include/hw/ppc/xics.h
++++ b/include/hw/ppc/xics.h
+@@ -109,6 +109,7 @@ struct ICPState {
+     uint8_t pending_priority;
+     uint8_t mfrr;
+     qemu_irq output;
++    bool cap_irq_xics_enabled;
+ };
+ 
+ #define TYPE_ICS "ics"
+-- 
+1.8.3.1
+

@@ -1,0 +1,62 @@
+From a3a444cada4a905561ae2de9a7b3f626ba604547 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Thu, 25 Jun 2015 13:44:41 +0200
+Subject: [PATCH 016/100] spapr_pci: emit hotplug add/remove events during
+ hotplug
+
+Message-id: <1435239881-28541-15-git-send-email-lvivier@redhat.com>
+Patchwork-id: 66493
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 14/14] spapr_pci: emit hotplug add/remove events during hotplug
+Bugzilla: 1172478
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Tyrel Datwyler <tyreld@linux.vnet.ibm.com>
+
+This uses extension of existing EPOW interrupt/event mechanism
+to notify userspace tools like librtas/drmgr to handle
+in-guest configuration/cleanup operations in response to
+device_add/device_del.
+
+Userspace tools that don't implement this extension will need
+to be run manually in response/advance of device_add/device_del,
+respectively.
+
+Signed-off-by: Tyrel Datwyler <tyreld@linux.vnet.ibm.com>
+Signed-off-by: Michael Roth <mdroth@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit c5bc152bc399ae7ec8ac5227762e4320d0fd2d1c)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_pci.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/ppc/spapr_pci.c b/hw/ppc/spapr_pci.c
+index c0a34ae..00a87bf 100644
+--- a/hw/ppc/spapr_pci.c
++++ b/hw/ppc/spapr_pci.c
+@@ -1075,6 +1075,9 @@ static void spapr_phb_hot_plug_child(HotplugHandler *plug_handler,
+         error_propagate(errp, local_err);
+         return;
+     }
++    if (plugged_dev->hotplugged) {
++        spapr_hotplug_req_add_event(drc);
++    }
+ }
+ 
+ static void spapr_phb_hot_unplug_child(HotplugHandler *plug_handler,
+@@ -1101,6 +1104,7 @@ static void spapr_phb_hot_unplug_child(HotplugHandler *plug_handler,
+             error_propagate(errp, local_err);
+             return;
+         }
++        spapr_hotplug_req_remove_event(drc);
+     }
+ }
+ 
+-- 
+1.8.3.1
+

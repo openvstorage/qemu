@@ -1,0 +1,1416 @@
+--- a/default-configs/arm-softmmu.mak
++++ b/default-configs/arm-softmmu.mak
+@@ -70,7 +70,6 @@ CONFIG_ARM11SCU=y
+ CONFIG_A9SCU=y
+ CONFIG_DIGIC=y
+ CONFIG_MARVELL_88W8618=y
+-CONFIG_OMAP=y
+ CONFIG_TSC210X=y
+ CONFIG_BLIZZARD=y
+ CONFIG_ONENAND=y
+--- a/default-configs/ppc64-softmmu.mak
++++ b/default-configs/ppc64-softmmu.mak
+@@ -14,7 +14,6 @@ CONFIG_FDC=y
+ CONFIG_I8257=y
+ CONFIG_I82374=y
+ CONFIG_OPENPIC=y
+-CONFIG_PREP_PCI=y
+ CONFIG_I82378=y
+ CONFIG_PC87312=y
+ CONFIG_MACIO=y
+@@ -36,12 +35,8 @@ CONFIG_PFLASH_CFI01=y
+ CONFIG_PFLASH_CFI02=y
+ CONFIG_PTIMER=y
+ CONFIG_I8259=y
+-CONFIG_XILINX=y
+-CONFIG_XILINX_ETHLITE=y
++CONFIG_OPENPIC=y
+ CONFIG_PSERIES=y
+-CONFIG_PREP=y
+-CONFIG_MAC=y
+-CONFIG_E500=y
+ CONFIG_OPENPIC_KVM=$(and $(CONFIG_E500),$(CONFIG_KVM))
+ CONFIG_PLATFORM_BUS=y
+ CONFIG_ETSEC=y
+--- a/hw/acpi/piix4.c
++++ b/hw/acpi/piix4.c
+@@ -275,7 +275,7 @@ static const VMStateDescription vmstate_memhp_state = {
+ static const VMStateDescription vmstate_acpi = {
+     .name = "piix4_pm",
+     .version_id = 3,
+-    .minimum_version_id = 3,
++    .minimum_version_id = 2,
+     .minimum_version_id_old = 1,
+     .load_state_old = acpi_load_old,
+     .post_load = vmstate_acpi_post_load,
+@@ -582,8 +582,8 @@ static void piix4_ospm_status(AcpiDeviceIf *adev, ACPIOSTInfoList ***list)
+ 
+ static Property piix4_pm_properties[] = {
+     DEFINE_PROP_UINT32("smb_io_base", PIIX4PMState, smb_io_base, 0),
+-    DEFINE_PROP_UINT8(ACPI_PM_PROP_S3_DISABLED, PIIX4PMState, disable_s3, 0),
+-    DEFINE_PROP_UINT8(ACPI_PM_PROP_S4_DISABLED, PIIX4PMState, disable_s4, 0),
++    DEFINE_PROP_UINT8(ACPI_PM_PROP_S3_DISABLED, PIIX4PMState, disable_s3, 1),
++    DEFINE_PROP_UINT8(ACPI_PM_PROP_S4_DISABLED, PIIX4PMState, disable_s4, 1),
+     DEFINE_PROP_UINT8(ACPI_PM_PROP_S4_VAL, PIIX4PMState, s4_val, 2),
+     DEFINE_PROP_BOOL("acpi-pci-hotplug-with-bridge-support", PIIX4PMState,
+                      use_acpi_pci_hotplug, true),
+--- a/hw/arm/Makefile.objs
++++ b/hw/arm/Makefile.objs
+@@ -1,12 +1 @@
+-obj-y += boot.o collie.o exynos4_boards.o gumstix.o highbank.o
+-obj-$(CONFIG_DIGIC) += digic_boards.o
+-obj-y += integratorcp.o kzm.o mainstone.o musicpal.o nseries.o
+-obj-y += omap_sx1.o palm.o realview.o spitz.o stellaris.o
+-obj-y += tosa.o versatilepb.o vexpress.o virt.o xilinx_zynq.o z2.o
+-obj-y += netduino2.o
+-
+-obj-y += armv7m.o exynos4210.o pxa2xx.o pxa2xx_gpio.o pxa2xx_pic.o
+-obj-$(CONFIG_DIGIC) += digic.o
+-obj-y += omap1.o omap2.o strongarm.o
+-obj-$(CONFIG_ALLWINNER_A10) += allwinner-a10.o cubieboard.o
+-obj-$(CONFIG_STM32F205_SOC) += stm32f205_soc.o
++obj-y += boot.o virt.o
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -839,6 +839,7 @@ static void machvirt_init(MachineState *machine)
+     arm_load_kernel(ARM_CPU(first_cpu), &vbi->bootinfo);
+ }
+ 
++#if 0 /* Disabled for RHELSA */
+ static bool virt_get_secure(Object *obj, Error **errp)
+ {
+     VirtMachineState *vms = VIRT_MACHINE(obj);
+@@ -866,7 +867,6 @@ static void virt_instance_init(Object *obj)
+                                     "Security Extensions (TrustZone)",
+                                     NULL);
+ }
+-
+ static void virt_class_init(ObjectClass *oc, void *data)
+ {
+     MachineClass *mc = MACHINE_CLASS(oc);
+@@ -892,3 +892,24 @@ static void machvirt_machine_init(void)
+ }
+ 
+ machine_init(machvirt_machine_init);
++#endif /* disabled for RHELSA */
++
++static QEMUMachine aarch64_machine_rhelsa710 = {
++    .family = "virt-rhelsa-Z",
++    .name = "virt-rhelsa7.1",
++    .alias = "virt",
++    .desc = "RHELSA 7.1 ARM Virtual Machine",
++    .init = machvirt_init,
++    .is_default = 1,
++    .max_cpus = 8,
++    .compat_props = (GlobalProperty[]) {
++        { /* end of list */ }
++    },
++};
++
++static void rhelsa_machine_init(void)
++{
++    qemu_register_machine(&aarch64_machine_rhelsa710);
++}
++
++machine_init(rhelsa_machine_init);
+--- a/hw/display/cirrus_vga.c
++++ b/hw/display/cirrus_vga.c
+@@ -2979,7 +2979,7 @@ static void isa_cirrus_vga_realizefn(DeviceState *dev, Error **errp)
+ 
+ static Property isa_cirrus_vga_properties[] = {
+     DEFINE_PROP_UINT32("vgamem_mb", struct ISACirrusVGAState,
+-                       cirrus_vga.vga.vram_size_mb, 8),
++                       cirrus_vga.vga.vram_size_mb, 16),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+@@ -3048,7 +3048,7 @@ static void pci_cirrus_vga_realize(PCIDevice *dev, Error **errp)
+ 
+ static Property pci_vga_cirrus_properties[] = {
+     DEFINE_PROP_UINT32("vgamem_mb", struct PCICirrusVGAState,
+-                       cirrus_vga.vga.vram_size_mb, 8),
++                       cirrus_vga.vga.vram_size_mb, 16),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+--- a/hw/display/vga-isa.c
++++ b/hw/display/vga-isa.c
+@@ -75,7 +75,7 @@ static void vga_isa_realizefn(DeviceState *dev, Error **errp)
+ }
+ 
+ static Property vga_isa_properties[] = {
+-    DEFINE_PROP_UINT32("vgamem_mb", ISAVGAState, state.vram_size_mb, 8),
++    DEFINE_PROP_UINT32("vgamem_mb", ISAVGAState, state.vram_size_mb, 16),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -174,7 +174,7 @@ static void pc_init1(MachineState *machine,
+     if (smbios_defaults) {
+         MachineClass *mc = MACHINE_GET_CLASS(machine);
+         /* These values are guest ABI, do not change */
+-        smbios_set_defaults("QEMU", "Standard PC (i440FX + PIIX, 1996)",
++        smbios_set_defaults("Red Hat", "KVM",
+                             mc->name, smbios_legacy_mode, smbios_uuid_encoded);
+     }
+ 
+@@ -310,6 +310,7 @@ static void pc_init_pci(MachineState *machine)
+     pc_init1(machine, 1, 1);
+ }
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static void pc_compat_2_2(MachineState *machine)
+ {
+     rsdp_in_ram = false;
+@@ -995,3 +996,581 @@ static void pc_machine_init(void)
+ }
+ 
+ machine_init(pc_machine_init);
++
++#endif  /* Disabled for Red Hat Enterprise Linux */
++
++/* Red Hat Enterprise Linux machine types */
++
++static void pc_compat_rhel710(MachineState *machine)
++{
++    /* KVM can't expose RDTSCP on AMD CPUs, so there's no point in enabling it
++     * on AMD CPU models.
++     */
++    x86_cpu_compat_set_features("phenom", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Opteron_G2", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Opteron_G3", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Opteron_G4", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Opteron_G5", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++}
++
++static void pc_init_rhel710(MachineState *machine)
++{
++    pc_compat_rhel710(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel710 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Y",
++    .name = "pc-i440fx-rhel7.1.0",
++    .alias = "pc",
++    .desc = "RHEL 7.1.0 PC (i440FX + PIIX, 1996)",
++    .init = pc_init_rhel710,
++    .is_default = 1,
++    .default_machine_opts = "firmware=bios-256k.bin",
++    .compat_props = (GlobalProperty[]) {
++        { /* end of list */ }
++    },
++};
++
++static void pc_compat_rhel700(MachineState *machine)
++{
++    pc_compat_rhel710(machine);
++
++    /* Upstream enables it for everyone, we're a little more selective */
++    x86_cpu_compat_kvm_no_autoenable(FEAT_1_ECX, CPUID_EXT_X2APIC);
++
++    x86_cpu_compat_set_features("Conroe", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Penryn", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Nehalem", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Westmere", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    /* SandyBridge and Haswell already have x2apic enabled */
++    x86_cpu_compat_set_features("Opteron_G1", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G2", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G3", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G4", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G5", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++
++    legacy_acpi_table_size = 6418; /* see pc_compat_2_0() */
++    smbios_legacy_mode = true;
++    has_reserved_memory = false;
++    migrate_cve_2014_5263_xhci_fields = true;
++}
++
++static void pc_init_rhel700(MachineState *machine)
++{
++    pc_compat_rhel700(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel700 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Y",
++    .name = "pc-i440fx-rhel7.0.0",
++    .desc = "RHEL 7.0.0 PC (i440FX + PIIX, 1996)",
++    .init = pc_init_rhel700,
++    .default_machine_opts = "firmware=bios-256k.bin",
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL7_0_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++#define PC_RHEL6_6_COMPAT \
++    PC_RHEL7_0_COMPAT,\
++    {\
++        .driver   = "scsi-hd",\
++        .property = "discard_granularity",\
++        .value    = stringify(0),\
++    },{\
++        .driver   = "scsi-cd",\
++        .property = "discard_granularity",\
++        .value    = stringify(0),\
++    },{\
++        .driver   = "scsi-disk",\
++        .property = "discard_granularity",\
++        .value    = stringify(0),\
++    },{\
++        .driver   = "ide-hd",\
++        .property = "discard_granularity",\
++        .value    = stringify(0),\
++    },{\
++        .driver   = "ide-cd",\
++        .property = "discard_granularity",\
++        .value    = stringify(0),\
++    },{\
++        .driver   = "ide-drive",\
++        .property = "discard_granularity",\
++        .value    = stringify(0),\
++    },{\
++        .driver   = "virtio-blk-pci",\
++        .property = "discard_granularity",\
++        .value    = stringify(0),\
++    },{\
++        .driver   = "virtio-serial-pci",\
++        .property = "vectors",\
++        /* DEV_NVECTORS_UNSPECIFIED as a uint32_t string */\
++        .value    = stringify(0xFFFFFFFF),\
++    },{\
++        .driver   = "486-" TYPE_X86_CPU,\
++        .property = "model",\
++        .value    = stringify(0),\
++    },{\
++        .driver   = "usb-tablet",\
++        .property = "usb_version",\
++        .value    = stringify(1),\
++    },{\
++        .driver   = "virtio-net-pci",\
++        .property = "mq",\
++        .value    = "off",\
++    },{\
++        .driver   = "VGA",\
++        .property = "mmio",\
++        .value    = "off",\
++    },{\
++        .driver   = "virtio-blk-pci",\
++        .property = "config-wce",\
++        .value    = "off",\
++    },{\
++        .driver   = TYPE_ISA_FDC,\
++        .property = "check_media_rate",\
++        .value    = "off",\
++    },{\
++        .driver   = "virtio-balloon-pci",\
++        .property = "class",\
++        .value    = stringify(PCI_CLASS_MEMORY_RAM),\
++    },{\
++        .driver   = TYPE_PCI_DEVICE,\
++        .property = "command_serr_enable",\
++        .value    = "off",\
++    },{\
++        .driver   = "AC97",\
++        .property = "use_broken_id",\
++        .value    = stringify(1),\
++    },{\
++        .driver   = "intel-hda",\
++        .property = "msi",\
++        .value    = stringify(0),\
++    },{\
++        .driver = "qemu32-" TYPE_X86_CPU,\
++        .property = "xlevel",\
++        .value = stringify(0),\
++    },{\
++        .driver = "486-" TYPE_X86_CPU,\
++        .property = "level",\
++        .value = stringify(0),\
++    },{\
++        .driver   = "qemu32-" TYPE_X86_CPU,\
++        .property = "model",\
++        .value    = stringify(3),\
++    },{\
++        .driver   = "usb-ccid",\
++        .property = "serial",\
++        .value    = "1",\
++    },{\
++        .driver   = "ne2k_pci",\
++        .property = "romfile",\
++        .value    = "rhel6-ne2k_pci.rom",\
++    },{\
++        .driver   = "pcnet",\
++        .property = "romfile",\
++        .value    = "rhel6-pcnet.rom",\
++    },{\
++        .driver   = "rtl8139",\
++        .property = "romfile",\
++        .value    = "rhel6-rtl8139.rom",\
++    },{\
++        .driver   = "e1000",\
++        .property = "romfile",\
++        .value    = "rhel6-e1000.rom",\
++    },{\
++        .driver   = "virtio-net-pci",\
++        .property = "romfile",\
++        .value    = "rhel6-virtio.rom",\
++    },{\
++        .driver   = "virtio-net-pci",\
++        .property = "any_layout",\
++        .value    = "off",\
++    }
++
++static void pc_compat_rhel660(MachineState *machine)
++{
++    pc_compat_rhel700(machine);
++    if (!machine->cpu_model) {
++        machine->cpu_model = "cpu64-rhel6";
++    }
++    x86_cpu_compat_set_features("pentium", FEAT_1_EDX, 0, CPUID_APIC);
++    x86_cpu_compat_set_features("pentium2", FEAT_1_EDX, 0, CPUID_APIC);
++    x86_cpu_compat_set_features("pentium3", FEAT_1_EDX, 0, CPUID_APIC);
++
++    x86_cpu_compat_set_features("Conroe", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Penryn", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Nehalem", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Westmere", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Westmere", FEAT_1_ECX, 0, CPUID_EXT_PCLMULQDQ);
++    x86_cpu_compat_set_features("Westmere", FEAT_8000_0001_EDX,
++             CPUID_EXT2_FXSR | CPUID_EXT2_MMX | CPUID_EXT2_PAT |
++             CPUID_EXT2_CMOV | CPUID_EXT2_PGE | CPUID_EXT2_APIC |
++             CPUID_EXT2_CX8 | CPUID_EXT2_MCE | CPUID_EXT2_PAE | CPUID_EXT2_MSR |
++             CPUID_EXT2_TSC | CPUID_EXT2_PSE | CPUID_EXT2_DE | CPUID_EXT2_FPU,
++             0);
++    x86_cpu_compat_set_features("Broadwell", FEAT_8000_0001_EDX,
++                                0, CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Broadwell", FEAT_7_0_EBX,
++                                0, CPUID_7_0_EBX_SMAP);
++
++    /* RHEL-6 kernel never supported exposing RDTSCP */
++    x86_cpu_compat_set_features(NULL, FEAT_8000_0001_EDX, 0, CPUID_EXT2_RDTSCP);
++
++    x86_cpu_compat_set_features("Opteron_G1", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G2", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G3", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G4", FEAT_1_ECX, 0, CPUID_EXT_X2APIC);
++    x86_cpu_compat_set_features("Opteron_G5", FEAT_1_ECX, 0, CPUID_EXT_X2APIC);
++
++    /* RHEL-6 had 3dnow & 3dnowext unconditionally disabled on all models */
++    x86_cpu_compat_set_features(NULL, FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_3DNOW | CPUID_EXT2_3DNOWEXT);
++
++    x86_cpu_compat_kvm_no_autoenable(FEAT_KVM, KVM_FEATURE_PV_UNHALT);
++
++    rom_file_has_mr = false;
++    has_acpi_build = false;
++    gigabyte_align = false;
++    shadow_bios_after_incoming = true;
++    ich9_uhci123_irqpin_override = true;
++}
++
++static void pc_init_rhel660(MachineState *machine)
++{
++    pc_compat_rhel660(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel660 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Z",
++    .name = "rhel6.6.0",
++    .desc = "RHEL 6.6.0 PC",
++    .init = pc_init_rhel660,
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL6_6_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++#define PC_RHEL6_5_COMPAT \
++    PC_RHEL6_6_COMPAT,\
++    {\
++        .driver   = TYPE_USB_DEVICE,\
++        .property = "msos-desc",\
++        .value    = "no",\
++    }
++
++static void pc_compat_rhel650(MachineState *machine)
++{
++    pc_compat_rhel660(machine);
++}
++
++static void pc_init_rhel650(MachineState *machine)
++{
++    pc_compat_rhel650(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel650 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Z",
++    .name = "rhel6.5.0",
++    .desc = "RHEL 6.5.0 PC",
++    .init = pc_init_rhel650,
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL6_5_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++#define PC_RHEL6_4_COMPAT \
++    PC_RHEL6_5_COMPAT,\
++    {\
++        .driver   = "virtio-scsi-pci",\
++        .property = "vectors",\
++        .value    = stringify(2),\
++    },{\
++        .driver   = "hda-micro",\
++        .property = "mixer",\
++        .value    = "off",\
++    },{\
++        .driver   = "hda-duplex",\
++        .property = "mixer",\
++        .value    = "off",\
++    },{\
++        .driver   = "hda-output",\
++        .property = "mixer",\
++        .value    = "off",\
++    },{\
++        .driver   = "virtio-net-pci",\
++        .property = "ctrl_mac_addr",\
++        .value    = "off",\
++    }
++
++static void pc_compat_rhel640(MachineState *machine)
++{
++    pc_compat_rhel650(machine);
++    x86_cpu_compat_set_features(NULL, FEAT_1_EDX, 0, CPUID_SEP);
++}
++
++static void pc_init_rhel640(MachineState *machine)
++{
++    pc_compat_rhel640(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel640 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Z",
++    .name = "rhel6.4.0",
++    .desc = "RHEL 6.4.0 PC",
++    .init = pc_init_rhel640,
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL6_4_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++#define PC_RHEL6_3_COMPAT \
++    PC_RHEL6_4_COMPAT,\
++    {\
++        .driver   = "Conroe-" TYPE_X86_CPU,\
++        .property = "level",\
++        .value    = stringify(2),\
++    },{\
++        .driver   = "Penryn-" TYPE_X86_CPU,\
++        .property = "level",\
++        .value    = stringify(2),\
++    },{\
++        .driver   = "Nehalem-" TYPE_X86_CPU,\
++        .property = "level",\
++        .value    = stringify(2),\
++    },{\
++        .driver   = "e1000",\
++        .property = "autonegotiation",\
++        .value    = "off",\
++    },{\
++        .driver   = "qxl",\
++        .property = "revision",\
++        .value    = stringify(3),\
++    },{\
++        .driver   = "qxl-vga",\
++        .property = "revision",\
++        .value    = stringify(3),\
++    },{\
++        .driver   = "virtio-scsi-pci",\
++        .property = "hotplug",\
++        .value    = "off",\
++    },{\
++        .driver   = "virtio-scsi-pci",\
++        .property = "param_change",\
++        .value    = "off",\
++    },{\
++        .driver = TYPE_X86_CPU,\
++        .property = "pmu",\
++        .value = "on",\
++    },{\
++        .driver   = "usb-hub",\
++        .property = "serial",\
++        .value    = "314159",\
++    },{\
++        .driver   = "usb-storage",\
++        .property = "serial",\
++        .value    = "1",\
++    }
++
++static void pc_compat_rhel630(MachineState *machine)
++{
++    pc_compat_rhel640(machine);
++    x86_cpu_compat_kvm_no_autoenable(FEAT_KVM, KVM_FEATURE_PV_EOI);
++    enable_compat_apic_id_mode();
++    x86_cpu_compat_set_features("SandyBridge", FEAT_1_ECX,
++                                0, CPUID_EXT_TSC_DEADLINE_TIMER);
++}
++
++static void pc_init_rhel630(MachineState *machine)
++{
++    pc_compat_rhel630(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel630 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Z",
++    .name = "rhel6.3.0",
++    .desc = "RHEL 6.3.0 PC",
++    .init = pc_init_rhel630,
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL6_3_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++#define PC_RHEL6_2_COMPAT \
++    PC_RHEL6_3_COMPAT,\
++    {\
++        .driver = TYPE_X86_CPU,\
++        .property = "pmu",\
++        .value = "off",\
++    }
++
++static void pc_compat_rhel620(MachineState *machine)
++{
++    pc_compat_rhel630(machine);
++}
++
++static void pc_init_rhel620(MachineState *machine)
++{
++    pc_compat_rhel620(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel620 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Z",
++    .name = "rhel6.2.0",
++    .desc = "RHEL 6.2.0 PC",
++    .init = pc_init_rhel620,
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL6_2_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++/*
++ * NOTE: We don't have the event_idx compat entry for the
++ * virtio-balloon-pci driver because RHEL6 doesn't disable
++ * it either due to a bug (see RHBZ 1029539 fo more info)
++ */
++#define PC_RHEL6_1_COMPAT \
++    PC_RHEL6_2_COMPAT,\
++    {\
++        .driver   = "PIIX4_PM",\
++        .property = "disable_s3",\
++        .value    = "0",\
++    },{\
++        .driver   = "PIIX4_PM",\
++        .property = "disable_s4",\
++        .value    = "0",\
++    },{\
++        .driver   = "qxl",\
++        .property = "revision",\
++        .value    = stringify(2),\
++    },{\
++        .driver   = "qxl-vga",\
++        .property = "revision",\
++        .value    = stringify(2),\
++    },{\
++        .driver   = "virtio-blk-pci",\
++        .property = "event_idx",\
++        .value    = "off",\
++    },{\
++        .driver   = "virtio-serial-pci",\
++        .property = "event_idx",\
++        .value    = "off",\
++    },{\
++        .driver   = "virtio-net-pci",\
++        .property = "event_idx",\
++        .value    = "off",\
++    },{\
++        .driver   = "usb-kbd",\
++        .property = "serial",\
++        .value    = "1",\
++    },{\
++        .driver   = "usb-mouse",\
++        .property = "serial",\
++        .value    = "1",\
++    },{\
++        .driver   = "usb-tablet",\
++        .property = "serial",\
++        .value    = "1",\
++    }
++
++static void pc_compat_rhel610(MachineState *machine)
++{
++    pc_compat_rhel620(machine);
++}
++
++static void pc_init_rhel610(MachineState *machine)
++{
++    pc_compat_rhel610(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel610 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Z",
++    .name = "rhel6.1.0",
++    .desc = "RHEL 6.1.0 PC",
++    .init = pc_init_rhel610,
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL6_1_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++#define PC_RHEL6_0_COMPAT \
++    PC_RHEL6_1_COMPAT,\
++    {\
++        .driver   = "qxl",\
++        .property = "revision",\
++        .value    = stringify(1),\
++    },{\
++        .driver   = "qxl-vga",\
++        .property = "revision",\
++        .value    = stringify(1),\
++    },{\
++        .driver   = "VGA",\
++        .property = "rombar",\
++        .value    = stringify(0),\
++    }
++
++static void pc_compat_rhel600(MachineState *machine)
++{
++    pc_compat_rhel610(machine);
++}
++
++static void pc_init_rhel600(MachineState *machine)
++{
++    pc_compat_rhel600(machine);
++    pc_init_pci(machine);
++}
++
++static QEMUMachine pc_machine_rhel600 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_piix_Z",
++    .name = "rhel6.0.0",
++    .desc = "RHEL 6.0.0 PC",
++    .init = pc_init_rhel600,
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL6_0_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++static void rhel_machine_init(void)
++{
++    qemu_register_pc_machine(&pc_machine_rhel710);
++    qemu_register_pc_machine(&pc_machine_rhel700);
++    qemu_register_pc_machine(&pc_machine_rhel660);
++    qemu_register_pc_machine(&pc_machine_rhel650);
++    qemu_register_pc_machine(&pc_machine_rhel640);
++    qemu_register_pc_machine(&pc_machine_rhel630);
++    qemu_register_pc_machine(&pc_machine_rhel620);
++    qemu_register_pc_machine(&pc_machine_rhel610);
++    qemu_register_pc_machine(&pc_machine_rhel600);
++}
++
++machine_init(rhel_machine_init);
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -165,7 +165,7 @@ static void pc_q35_init(MachineState *machine)
+     if (smbios_defaults) {
+         MachineClass *mc = MACHINE_GET_CLASS(machine);
+         /* These values are guest ABI, do not change */
+-        smbios_set_defaults("QEMU", "Standard PC (Q35 + ICH9, 2009)",
++        smbios_set_defaults("Red Hat", "KVM",
+                             mc->name, smbios_legacy_mode, smbios_uuid_encoded);
+     }
+ 
+@@ -289,6 +289,7 @@ static void pc_q35_init(MachineState *machine)
+     }
+ }
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ static void pc_compat_2_2(MachineState *machine)
+ {
+     rsdp_in_ram = false;
+@@ -517,3 +518,93 @@ static void pc_q35_machine_init(void)
+ }
+ 
+ machine_init(pc_q35_machine_init);
++
++#endif  /* Disabled for Red Hat Enterprise Linux */
++
++/* Red Hat Enterprise Linux machine types */
++
++static void pc_q35_compat_rhel710(MachineState *machine)
++{
++    /* KVM can't expose RDTSCP on AMD CPUs, so there's no point in enabling it
++     * on AMD CPU models.
++     */
++    x86_cpu_compat_set_features("phenom", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Opteron_G2", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Opteron_G3", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Opteron_G4", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++    x86_cpu_compat_set_features("Opteron_G5", FEAT_8000_0001_EDX, 0,
++                                CPUID_EXT2_RDTSCP);
++}
++
++static void pc_q35_init_rhel710(MachineState *machine)
++{
++    pc_q35_compat_rhel710(machine);
++    pc_q35_init(machine);
++}
++
++static QEMUMachine pc_q35_machine_rhel710 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_q35_Z",
++    .name = "pc-q35-rhel7.1.0",
++    .alias = "q35",
++    .desc = "RHEL-7.1.0 PC (Q35 + ICH9, 2009)",
++    .init = pc_q35_init_rhel710,
++    .default_machine_opts = "firmware=bios-256k.bin",
++    .compat_props = (GlobalProperty[]) {
++        { /* end of list */ }
++    },
++};
++
++static void pc_q35_compat_rhel700(MachineState *machine)
++{
++    pc_q35_compat_rhel710(machine);
++
++    /* Upstream enables it for everyone, we're a little more selective */
++    x86_cpu_compat_kvm_no_autoenable(FEAT_1_ECX, CPUID_EXT_X2APIC);
++
++    x86_cpu_compat_set_features("Conroe", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Penryn", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Nehalem", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Westmere", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    /* SandyBridge and Haswell already have x2apic enabled */
++    x86_cpu_compat_set_features("Opteron_G1", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G2", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G3", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G4", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++    x86_cpu_compat_set_features("Opteron_G5", FEAT_1_ECX, CPUID_EXT_X2APIC, 0);
++
++    smbios_legacy_mode = true;
++    has_reserved_memory = false;
++    migrate_cve_2014_5263_xhci_fields = true;
++}
++
++static void pc_q35_init_rhel700(MachineState *machine)
++{
++    pc_q35_compat_rhel700(machine);
++    pc_q35_init(machine);
++}
++
++static QEMUMachine pc_q35_machine_rhel700 = {
++    PC_DEFAULT_MACHINE_OPTIONS,
++    .family = "pc_q35_Z",
++    .name = "pc-q35-rhel7.0.0",
++    .desc = "RHEL-7.0.0 PC (Q35 + ICH9, 2009)",
++    .init = pc_q35_init_rhel700,
++    .default_machine_opts = "firmware=bios-256k.bin",
++    .compat_props = (GlobalProperty[]) {
++        PC_RHEL7_0_COMPAT,
++        { /* end of list */ }
++    },
++};
++
++static void rhel_pc_q35_machine_init(void)
++{
++    qemu_register_pc_machine(&pc_q35_machine_rhel710);
++    qemu_register_pc_machine(&pc_q35_machine_rhel700);
++}
++
++machine_init(rhel_pc_q35_machine_init);
+--- a/hw/i386/smbios.c
++++ b/hw/i386/smbios.c
+@@ -795,6 +795,7 @@ void smbios_set_defaults(const char *manufacturer, const char *product,
+     SMBIOS_SET_DEFAULT(type1.manufacturer, manufacturer);
+     SMBIOS_SET_DEFAULT(type1.product, product);
+     SMBIOS_SET_DEFAULT(type1.version, version);
++    SMBIOS_SET_DEFAULT(type1.family, "Red Hat Enterprise Linux");
+     SMBIOS_SET_DEFAULT(type2.manufacturer, manufacturer);
+     SMBIOS_SET_DEFAULT(type2.product, product);
+     SMBIOS_SET_DEFAULT(type2.version, version);
+--- a/hw/net/e1000.c
++++ b/hw/net/e1000.c
+@@ -1551,6 +1551,16 @@ static void pci_e1000_realize(PCIDevice *pci_dev, Error **errp)
+ 
+     pci_conf = pci_dev->config;
+ 
++    if (!(d->compat_flags & E1000_FLAG_AUTONEG)) {
++        /*
++         * We have no capabilities, so capability list bit should normally be 0.
++         * Keep it on for compat machine types to avoid breaking migration.
++         * HACK: abuse E1000_FLAG_AUTONEG, which is off exactly for
++         * the machine types that need this.
++         */
++        pci_set_word(pci_conf + PCI_STATUS, PCI_STATUS_CAP_LIST);
++    }
++
+     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
+     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
+ 
+@@ -1614,7 +1624,7 @@ static void e1000_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = pci_e1000_realize;
+     k->exit = pci_e1000_uninit;
+-    k->romfile = "efi-e1000.rom";
++    k->romfile = "pxe-e1000.rom";
+     k->vendor_id = PCI_VENDOR_ID_INTEL;
+     k->device_id = info->device_id;
+     k->revision = info->revision;
+--- a/hw/net/ne2000.c
++++ b/hw/net/ne2000.c
+@@ -763,7 +763,7 @@ static void ne2000_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = pci_ne2000_realize;
+     k->exit = pci_ne2000_exit;
+-    k->romfile = "efi-ne2k_pci.rom",
++    k->romfile = "pxe-ne2k_pci.rom",
+     k->vendor_id = PCI_VENDOR_ID_REALTEK;
+     k->device_id = PCI_DEVICE_ID_REALTEK_8029;
+     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
+--- a/hw/net/pcnet-pci.c
++++ b/hw/net/pcnet-pci.c
+@@ -348,7 +348,7 @@ static void pcnet_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = pci_pcnet_realize;
+     k->exit = pci_pcnet_uninit;
+-    k->romfile = "efi-pcnet.rom",
++    k->romfile = "pxe-pcnet.rom",
+     k->vendor_id = PCI_VENDOR_ID_AMD;
+     k->device_id = PCI_DEVICE_ID_AMD_LANCE;
+     k->revision = 0x10;
+--- a/hw/net/rtl8139.c
++++ b/hw/net/rtl8139.c
+@@ -3519,7 +3519,7 @@ static void rtl8139_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = pci_rtl8139_realize;
+     k->exit = pci_rtl8139_uninit;
+-    k->romfile = "efi-rtl8139.rom";
++    k->romfile = "pxe-rtl8139.rom";
+     k->vendor_id = PCI_VENDOR_ID_REALTEK;
+     k->device_id = PCI_DEVICE_ID_REALTEK_8139;
+     k->revision = RTL8139_PCI_REVID; /* >=0x20 is for 8139C+ */
+--- a/hw/ppc/Makefile.objs
++++ b/hw/ppc/Makefile.objs
+@@ -8,7 +8,7 @@ ifeq ($(CONFIG_PCI)$(CONFIG_PSERIES)$(CONFIG_LINUX), yyy)
+ obj-y += spapr_pci_vfio.o
+ endif
+ # PowerPC 4xx boards
+-obj-y += ppc405_boards.o ppc4xx_devs.o ppc405_uc.o ppc440_bamboo.o
++obj-y += ppc4xx_devs.o ppc405_uc.o
+ obj-y += ppc4xx_pci.o
+ # PReP
+ obj-$(CONFIG_PREP) += prep.o
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1815,6 +1815,7 @@ static const TypeInfo spapr_machine_info = {
+     },
+ };
+ 
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+ #define SPAPR_COMPAT_2_2 \
+         {\
+             .driver   = TYPE_SPAPR_PCI_HOST_BRIDGE,\
+@@ -1879,13 +1880,33 @@ static const TypeInfo spapr_machine_2_3_info = {
+     .parent        = TYPE_SPAPR_MACHINE,
+     .class_init    = spapr_machine_2_3_class_init,
+ };
++#endif
++static void spapr_machine_rhel710_class_init(ObjectClass *oc, void *data)
++{
++    MachineClass *mc = MACHINE_CLASS(oc);
++
++    mc->name = "pseries-rhel7.1.0";
++    mc->desc = "RHEL 7.1.0 pSeries Logical Partition (PAPR compliant)";
++    mc->alias = "pseries";
++    mc->is_default = 1;
++}
++
++
++static const TypeInfo spapr_machine_rhel710_info = {
++    .name          = TYPE_SPAPR_MACHINE "RHEL7.1.0",
++    .parent        = TYPE_SPAPR_MACHINE,
++    .class_init    = spapr_machine_rhel710_class_init,
++};
+ 
+ static void spapr_machine_register_types(void)
+ {
+     type_register_static(&spapr_machine_info);
++/*
+     type_register_static(&spapr_machine_2_1_info);
+     type_register_static(&spapr_machine_2_2_info);
+     type_register_static(&spapr_machine_2_3_info);
++*/
++    type_register_static(&spapr_machine_rhel710_info);
+ }
+ 
+ type_init(spapr_machine_register_types)
+--- a/hw/timer/i8254_common.c
++++ b/hw/timer/i8254_common.c
+@@ -266,7 +266,7 @@ static const VMStateDescription vmstate_pit_common = {
+     .pre_save = pit_dispatch_pre_save,
+     .post_load = pit_dispatch_post_load,
+     .fields = (VMStateField[]) {
+-        VMSTATE_UINT32_V(channels[0].irq_disabled, PITCommonState, 3),
++        VMSTATE_UINT32(channels[0].irq_disabled, PITCommonState), /* qemu-kvm's v2 had 'flags' here */
+         VMSTATE_STRUCT_ARRAY(channels, PITCommonState, 3, 2,
+                              vmstate_pit_channel, PITChannelState),
+         VMSTATE_INT64(channels[0].next_transition_time,
+--- a/hw/usb/hcd-uhci.c
++++ b/hw/usb/hcd-uhci.c
+@@ -150,6 +150,8 @@ typedef struct UHCI_QH {
+     uint32_t el_link;
+ } UHCI_QH;
+ 
++bool ich9_uhci123_irqpin_override;
++
+ static void uhci_async_cancel(UHCIAsync *async);
+ static void uhci_queue_fill(UHCIQueue *q, UHCI_TD *td);
+ static void uhci_resume(void *opaque);
+@@ -1199,12 +1201,23 @@ static void usb_uhci_common_realize(PCIDevice *dev, Error **errp)
+     UHCIState *s = DO_UPCAST(UHCIState, dev, dev);
+     uint8_t *pci_conf = s->dev.config;
+     int i;
++    int irq_pin;
+ 
+     pci_conf[PCI_CLASS_PROG] = 0x00;
+     /* TODO: reset value should be 0. */
+     pci_conf[USB_SBRN] = USB_RELEASE_1; // release number
+ 
+-    pci_config_set_interrupt_pin(pci_conf, u->info.irq_pin + 1);
++    if (ich9_uhci123_irqpin_override &&
++        u->info.vendor_id == PCI_VENDOR_ID_INTEL &&
++        (u->info.device_id == PCI_DEVICE_ID_INTEL_82801I_UHCI1 ||
++         u->info.device_id == PCI_DEVICE_ID_INTEL_82801I_UHCI2 ||
++         u->info.device_id == PCI_DEVICE_ID_INTEL_82801I_UHCI3)) {
++        fprintf(stderr, "RHEL-6 compat: %s: irq_pin = 3\n", u->info.name);
++        irq_pin = 3;
++    } else {
++        irq_pin = u->info.irq_pin;
++    }
++    pci_config_set_interrupt_pin(pci_conf, irq_pin + 1);
+ 
+     if (s->masterbus) {
+         USBPort *ports[NB_PORTS];
+--- a/hw/usb/hcd-xhci.c
++++ b/hw/usb/hcd-xhci.c
+@@ -418,6 +418,8 @@ typedef struct XHCIEvent {
+     uint32_t flags;
+     uint8_t slotid;
+     uint8_t epid;
++    uint8_t cve_2014_5263_a;
++    uint8_t cve_2014_5263_b;
+ } XHCIEvent;
+ 
+ typedef struct XHCIInterrupter {
+@@ -3782,9 +3784,25 @@ static const VMStateDescription vmstate_xhci_slot = {
+     }
+ };
+ 
++static void xhci_event_pre_save(void *opaque)
++{
++    XHCIEvent *s = opaque;
++
++    s->cve_2014_5263_a = ((uint8_t *)&s->type)[0];
++    s->cve_2014_5263_b = ((uint8_t *)&s->type)[1];
++}
++
++bool migrate_cve_2014_5263_xhci_fields;
++
++static bool xhci_event_cve_2014_5263(void *opaque, int version_id)
++{
++    return migrate_cve_2014_5263_xhci_fields;
++}
++
+ static const VMStateDescription vmstate_xhci_event = {
+     .name = "xhci-event",
+     .version_id = 1,
++    .pre_save = xhci_event_pre_save,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT32(type,   XHCIEvent),
+         VMSTATE_UINT32(ccode,  XHCIEvent),
+@@ -3793,6 +3811,8 @@ static const VMStateDescription vmstate_xhci_event = {
+         VMSTATE_UINT32(flags,  XHCIEvent),
+         VMSTATE_UINT8(slotid,  XHCIEvent),
+         VMSTATE_UINT8(epid,    XHCIEvent),
++        VMSTATE_UINT8_TEST(cve_2014_5263_a, XHCIEvent, xhci_event_cve_2014_5263),
++        VMSTATE_UINT8_TEST(cve_2014_5263_b, XHCIEvent, xhci_event_cve_2014_5263),
+         VMSTATE_END_OF_LIST()
+     }
+ };
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1383,7 +1383,7 @@ static void virtio_net_pci_class_init(ObjectClass *klass, void *data)
+     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+     VirtioPCIClass *vpciklass = VIRTIO_PCI_CLASS(klass);
+ 
+-    k->romfile = "efi-virtio.rom";
++    k->romfile = "pxe-virtio.rom";
+     k->vendor_id = PCI_VENDOR_ID_REDHAT_QUMRANET;
+     k->device_id = PCI_DEVICE_ID_VIRTIO_NET;
+     k->revision = VIRTIO_PCI_ABI_VERSION;
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -512,6 +512,76 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
+ #define PC_DEFAULT_MACHINE_OPTIONS \
+     PC_COMMON_MACHINE_OPTIONS, \
+     .hot_add_cpu = pc_hot_add_cpu, \
+-    .max_cpus = 255
++    .max_cpus = 240
++
++/*
++ * The PC_RHEL_*_COMPAT serve the same purpose for RHEL-7 machine
++ * types as the PC_COMPAT_* do for upstream types.
++ * PC_RHEL_7_*_COMPAT apply both to i440fx and q35 types.
++ * PC_RHEL6_*_COMPAT apply to i440fx types only, and therefore live
++ * in pc_piix.c.
++ */
++
++/*
++ * RHEL-7 is based on QEMU 1.5.3, so this needs the PC_COMPAT_*
++ * between our base and 1.5, less stuff backported to RHEL-7.0
++ * (usb-device.msos-desc), less stuff for devices we changed
++ * (qemu64-x86_64-cpu) or don't support (hpet, pci-serial-2x,
++ * pci-serial-4x) in 7.0.
++ */
++#define PC_RHEL7_0_COMPAT \
++        {\
++            .driver   = "virtio-scsi-pci",\
++            .property = "any_layout",\
++            .value    = "off",\
++        },{\
++            .driver   = "PIIX4_PM",\
++            .property = "memory-hotplug-support",\
++            .value    = "off",\
++        },{\
++            .driver   = "apic",\
++            .property = "version",\
++            .value    = stringify(0x11),\
++        },{\
++            .driver   = "nec-usb-xhci",\
++            .property = "superspeed-ports-first",\
++            .value    = "off",\
++        },{\
++            .driver   = "nec-usb-xhci",\
++            .property = "force-pcie-endcap",\
++            .value    = "on",\
++        },{\
++            .driver   = "pci-serial",\
++            .property = "prog_if",\
++            .value    = stringify(0),\
++        },{\
++            .driver   = "virtio-net-pci",\
++            .property = "guest_announce",\
++            .value    = "off",\
++        },{\
++            .driver   = "ICH9-LPC",\
++            .property = "memory-hotplug-support",\
++            .value    = "off",\
++        },{\
++            .driver   = "xio3130-downstream",\
++            .property = COMPAT_PROP_PCP,\
++            .value    = "off",\
++        },{\
++            .driver   = "ioh3420",\
++            .property = COMPAT_PROP_PCP,\
++            .value    = "off",\
++        },{\
++            .driver   = "PIIX4_PM",\
++            .property = "acpi-pci-hotplug-with-bridge-support",\
++            .value    = "off",\
++        },{\
++            .driver   = "e1000",\
++            .property = "mitigation",\
++            .value    = "off",\
++        },{ \
++            .driver   = "virtio-net-pci", \
++            .property = "ctrl_guest_offloads", \
++            .value    = "off", \
++        }
+ 
+ #endif
+--- a/include/hw/usb.h
++++ b/include/hw/usb.h
+@@ -613,4 +613,11 @@ int usb_get_quirks(uint16_t vendor_id, uint16_t product_id,
+                    uint8_t interface_class, uint8_t interface_subclass,
+                    uint8_t interface_protocol);
+ 
++
++/* hcd-uhci.c -- RHEL-6 machine type compatibility */
++extern bool ich9_uhci123_irqpin_override;
++
++/* hcd-xhci.c -- rhel7.0.0 machine type compatibility */
++extern bool migrate_cve_2014_5263_xhci_fields;
++
+ #endif
+--- a/include/sysemu/sysemu.h
++++ b/include/sysemu/sysemu.h
+@@ -89,6 +89,7 @@ void qemu_savevm_state_complete(QEMUFile *f);
+ void qemu_savevm_state_cancel(void);
+ uint64_t qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size);
+ int qemu_loadvm_state(QEMUFile *f);
++extern bool shadow_bios_after_incoming;
+ 
+ typedef enum DisplayType
+ {
+--- a/savevm.c
++++ b/savevm.c
+@@ -35,6 +35,7 @@
+ #include "migration/migration.h"
+ #include "qemu/sockets.h"
+ #include "qemu/queue.h"
++#include "qemu/rcu_queue.h"
+ #include "sysemu/cpus.h"
+ #include "exec/memory.h"
+ #include "qmp-commands.h"
+@@ -51,6 +52,8 @@
+ #define ARP_PTYPE_IP 0x0800
+ #define ARP_OP_REQUEST_REV 0x3
+ 
++bool shadow_bios_after_incoming;
++
+ static int announce_self_create(uint8_t *buf,
+                                 uint8_t *mac_addr)
+ {
+@@ -929,6 +932,65 @@ typedef struct LoadStateEntry {
+     int version_id;
+ } LoadStateEntry;
+ 
++static void shadow_bios(void)
++{
++    RAMBlock *block, *ram, *oprom, *bios;
++    size_t one_meg, oprom_size, bios_size;
++    uint8_t *cd_seg_host, *ef_seg_host;
++
++    ram = NULL;
++    oprom = NULL;
++    bios = NULL;
++    rcu_read_lock();
++    QLIST_FOREACH_RCU(block, &ram_list.blocks, next) {
++        if (strcmp("pc.ram", block->idstr) == 0) {
++            assert(ram == NULL);
++            ram = block;
++        } else if (strcmp("pc.rom", block->idstr) == 0) {
++            assert(oprom == NULL);
++            oprom = block;
++        } else if (strcmp("pc.bios", block->idstr) == 0) {
++            assert(bios == NULL);
++            bios = block;
++        }
++    }
++    assert(ram != NULL);
++    assert(oprom != NULL);
++    assert(bios != NULL);
++    assert(memory_region_is_ram(ram->mr));
++    assert(memory_region_is_ram(oprom->mr));
++    assert(memory_region_is_ram(bios->mr));
++    assert(int128_eq(ram->mr->size, int128_make64(ram->used_length)));
++    assert(int128_eq(oprom->mr->size, int128_make64(oprom->used_length)));
++    assert(int128_eq(bios->mr->size, int128_make64(bios->used_length)));
++
++    one_meg = 1024 * 1024;
++    oprom_size = 128 * 1024;
++    bios_size = 128 * 1024;
++    assert(ram->used_length >= one_meg);
++    assert(oprom->used_length == oprom_size);
++    assert(bios->used_length == bios_size);
++
++    ef_seg_host = memory_region_get_ram_ptr(ram->mr) + (one_meg - bios_size);
++    cd_seg_host = ef_seg_host - oprom_size;
++
++    /* This is a crude hack, but we must distinguish a rhel6.x.0 machtype guest
++     * coming in from a RHEL-6 emulator (where shadowing has had no effect on
++     * "pc.ram") from a similar guest coming in from a RHEL-7 emulator (where
++     * shadowing has worked). In the latter case we must not trample the live
++     * SeaBIOS variables in "pc.ram".
++     */
++    if (buffer_is_zero(ef_seg_host, bios_size)) {
++        fprintf(stderr, "copying E and F segments from pc.bios to pc.ram\n");
++        memcpy(ef_seg_host, memory_region_get_ram_ptr(bios->mr), bios_size);
++    }
++    if (buffer_is_zero(cd_seg_host, oprom_size)) {
++        fprintf(stderr, "copying C and D segments from pc.rom to pc.ram\n");
++        memcpy(cd_seg_host, memory_region_get_ram_ptr(oprom->mr), oprom_size);
++    }
++    rcu_read_unlock();
++}
++
+ int qemu_loadvm_state(QEMUFile *f)
+ {
+     QLIST_HEAD(, LoadStateEntry) loadvm_handlers =
+@@ -1061,6 +1123,13 @@ int qemu_loadvm_state(QEMUFile *f)
+         g_free(buf);
+     }
+ 
++    /* Supplement SeaBIOS's shadowing now, because it was useless when the
++     * incoming VM started on the RHEL-6 emulator.
++     */
++    if (shadow_bios_after_incoming) {
++        shadow_bios();
++    }
++
+     cpu_synchronize_all_post_init();
+ 
+     ret = 0;
+--- a/target-i386/cpu.c
++++ b/target-i386/cpu.c
+@@ -469,6 +469,7 @@ static uint32_t kvm_default_features[FEATURE_WORDS] = {
+         (1 << KVM_FEATURE_ASYNC_PF) |
+         (1 << KVM_FEATURE_STEAL_TIME) |
+         (1 << KVM_FEATURE_PV_EOI) |
++        (1 << KVM_FEATURE_PV_UNHALT) |
+         (1 << KVM_FEATURE_CLOCKSOURCE_STABLE_BIT),
+     [FEAT_1_ECX] = CPUID_EXT_X2APIC,
+ };
+@@ -675,24 +676,31 @@ struct X86CPUDefinition {
+ 
+ static X86CPUDefinition builtin_x86_defs[] = {
+     {
++        /* qemu64 is the default CPU model for all *-rhel7.* machine-types.
++         * The default on RHEL-6 was cpu64-rhel6.
++         * libvirt assumes that qemu64 is the default for _all_ machine-types,
++         * so we should try to keep qemu64 and cpu64-rhel6 as similar as
++         * possible.
++         */
+         .name = "qemu64",
+         .level = 4,
+         .vendor = CPUID_VENDOR_AMD,
+         .family = 6,
+-        .model = 6,
++        .model = 13,
+         .stepping = 3,
+-        .features[FEAT_1_EDX] =
+-            PPRO_FEATURES |
+-            CPUID_MTRR | CPUID_CLFLUSH | CPUID_MCA |
+-            CPUID_PSE36,
+-        .features[FEAT_1_ECX] =
+-            CPUID_EXT_SSE3 | CPUID_EXT_CX16 | CPUID_EXT_POPCNT,
+-        .features[FEAT_8000_0001_EDX] =
+-            (PPRO_FEATURES & CPUID_EXT2_AMD_ALIASES) |
+-            CPUID_EXT2_LM | CPUID_EXT2_SYSCALL | CPUID_EXT2_NX,
+-        .features[FEAT_8000_0001_ECX] =
+-            CPUID_EXT3_LAHF_LM | CPUID_EXT3_SVM |
+-            CPUID_EXT3_ABM | CPUID_EXT3_SSE4A,
++        .features[FEAT_1_EDX] = CPUID_SSE2 | CPUID_SSE | CPUID_FXSR |
++             CPUID_MMX | CPUID_CLFLUSH | CPUID_PSE36 | CPUID_PAT | CPUID_CMOV |
++             CPUID_MCA | CPUID_PGE | CPUID_MTRR | CPUID_SEP | CPUID_APIC |
++             CPUID_CX8 | CPUID_MCE | CPUID_PAE | CPUID_MSR | CPUID_TSC |
++             CPUID_PSE | CPUID_DE | CPUID_FP87,
++        .features[FEAT_1_ECX] = CPUID_EXT_CX16 | CPUID_EXT_SSE3,
++        .features[FEAT_8000_0001_EDX] = CPUID_EXT2_LM | CPUID_EXT2_FXSR |
++             CPUID_EXT2_MMX | CPUID_EXT2_NX | CPUID_EXT2_PAT | CPUID_EXT2_CMOV |
++             CPUID_EXT2_PGE | CPUID_EXT2_SYSCALL | CPUID_EXT2_APIC |
++             CPUID_EXT2_CX8 | CPUID_EXT2_MCE | CPUID_EXT2_PAE | CPUID_EXT2_MSR | CPUID_EXT2_TSC |
++             CPUID_EXT2_PSE | CPUID_EXT2_DE | CPUID_EXT2_FPU,
++        .features[FEAT_8000_0001_ECX] = CPUID_EXT3_SSE4A | CPUID_EXT3_ABM |
++             CPUID_EXT3_SVM | CPUID_EXT3_LAHF_LM,
+         .xlevel = 0x8000000A,
+     },
+     {
+@@ -920,6 +928,29 @@ static X86CPUDefinition builtin_x86_defs[] = {
+         .model_id = "Intel(R) Atom(TM) CPU N270   @ 1.60GHz",
+     },
+     {
++        .name = "cpu64-rhel6",
++        .level = 4,
++        .vendor = CPUID_VENDOR_AMD,
++        .family = 6,
++        .model = 13,
++        .stepping = 3,
++        .features[FEAT_1_EDX] = CPUID_SSE2 | CPUID_SSE | CPUID_FXSR |
++             CPUID_MMX | CPUID_CLFLUSH | CPUID_PSE36 | CPUID_PAT | CPUID_CMOV |
++             CPUID_MCA | CPUID_PGE | CPUID_MTRR | CPUID_SEP | CPUID_APIC |
++             CPUID_CX8 | CPUID_MCE | CPUID_PAE | CPUID_MSR | CPUID_TSC |
++             CPUID_PSE | CPUID_DE | CPUID_FP87,
++        .features[FEAT_1_ECX] = CPUID_EXT_CX16 | CPUID_EXT_SSE3,
++        .features[FEAT_8000_0001_EDX] = CPUID_EXT2_LM | CPUID_EXT2_FXSR |
++             CPUID_EXT2_MMX | CPUID_EXT2_NX | CPUID_EXT2_PAT | CPUID_EXT2_CMOV |
++             CPUID_EXT2_PGE | CPUID_EXT2_SYSCALL | CPUID_EXT2_APIC |
++             CPUID_EXT2_CX8 | CPUID_EXT2_MCE | CPUID_EXT2_PAE | CPUID_EXT2_MSR | CPUID_EXT2_TSC |
++             CPUID_EXT2_PSE | CPUID_EXT2_DE | CPUID_EXT2_FPU,
++        .features[FEAT_8000_0001_ECX] = CPUID_EXT3_SSE4A | CPUID_EXT3_ABM |
++             CPUID_EXT3_SVM | CPUID_EXT3_LAHF_LM,
++        .xlevel = 0x8000000A,
++        .model_id = "QEMU Virtual CPU version (cpu64-rhel6)",
++    },
++    {
+         .name = "Conroe",
+         .level = 4,
+         .vendor = CPUID_VENDOR_INTEL,
+--- a/target-i386/machine.c
++++ b/target-i386/machine.c
+@@ -708,6 +708,25 @@ static const VMStateDescription vmstate_xss = {
+     }
+ };
+ 
++static bool vmstate_xsave_needed(void *opaque)
++{
++    /* The xsave state is already on the main "cpu" section */
++    return false;
++}
++
++static const VMStateDescription vmstate_xsave ={
++    .name = "cpu/xsave",
++    .version_id = 1,
++    .minimum_version_id = 1,
++    .minimum_version_id_old = 1,
++    .fields      = (VMStateField []) {
++    VMSTATE_UINT64_V(env.xcr0, X86CPU, 1),
++    VMSTATE_UINT64_V(env.xstate_bv, X86CPU, 1),
++    VMSTATE_YMMH_REGS_VARS(env.xmm_regs, X86CPU, CPU_NB_REGS, 1),
++    VMSTATE_END_OF_LIST()
++    }
++};
++
+ VMStateDescription vmstate_x86_cpu = {
+     .name = "cpu",
+     .version_id = 12,
+@@ -857,6 +876,9 @@ VMStateDescription vmstate_x86_cpu = {
+             .vmsd = &vmstate_xss,
+             .needed = xss_needed,
+         } , {
++            .vmsd = &vmstate_xsave,
++            .needed = vmstate_xsave_needed,
++        }, {
+             /* empty */
+         }
+     }

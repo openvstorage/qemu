@@ -1,0 +1,63 @@
+From bf7a6c3f00c8c52332e81ad06c312eb252843205 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Fri, 7 Aug 2015 20:50:25 +0200
+Subject: [PATCH 1/3] ppc: add helpful message when KVM fails to start VCPU
+
+Message-id: <1438980625-21187-2-git-send-email-lvivier@redhat.com>
+Patchwork-id: 67401
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 1/1] ppc: add helpful message when KVM fails to start VCPU
+Bugzilla: 1215618
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Jeff Nelson <jenelson@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+On POWER8 systems, KVM checks if VCPU is running on primary threads,
+and that secondary threads are offline. If this is not the case,
+ioctl() fails with errno set to EBUSY.
+
+QEMU aborts with a non explicit error message:
+$ ./qemu-system-ppc64 --nographic -machine pseries,accel=kvm
+error: kvm run failed Device or resource busy
+
+To help user to diagnose the problem, this patch adds an informative
+error message.
+
+There is no easy way to check if SMT is enabled before starting the VCPU,
+and as this case is the only one setting errno to EBUSY, we just check
+the errno value to display a message.
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Message-Id: <1431976007-20503-1-git-send-email-lvivier@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit dae02ba55a66cb3194a2410c7725734e5bc6166f)
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1215618
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ kvm-all.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/kvm-all.c b/kvm-all.c
+index de763de..dc71496 100644
+--- a/kvm-all.c
++++ b/kvm-all.c
+@@ -1820,6 +1820,14 @@ int kvm_cpu_exec(CPUState *cpu)
+             }
+             fprintf(stderr, "error: kvm run failed %s\n",
+                     strerror(-run_ret));
++#ifdef TARGET_PPC
++            if (run_ret == -EBUSY) {
++                fprintf(stderr,
++                        "This is probably because your SMT is enabled.\n"
++                        "VCPU can only run on primary threads with all "
++                        "secondary threads offline.\n");
++            }
++#endif
+             ret = -1;
+             break;
+         }
+-- 
+1.8.3.1
+

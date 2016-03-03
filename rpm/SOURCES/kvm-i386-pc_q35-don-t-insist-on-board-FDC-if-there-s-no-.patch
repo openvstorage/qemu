@@ -1,0 +1,87 @@
+From 6f9b0865ff214f2dae362625a0b3db39d4fdefa9 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Wed, 8 Jul 2015 19:41:20 +0200
+Subject: [PATCH 06/23] i386/pc_q35: don't insist on board FDC if there's no
+ default floppy
+
+Message-id: <1436384484-21640-4-git-send-email-lersek@redhat.com>
+Patchwork-id: 66874
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 3/7] i386/pc_q35: don't insist on board FDC if there's no default floppy
+Bugzilla: 1227282
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: John Snow <jsnow@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+The "no_floppy = 1" machine class setting causes "default_floppy" in
+main() to become zero. Consequently, default_drive() will not call
+drive_add() and drive_new() for IF_FLOPPY, index=0, meaning that no
+default floppy drive will be created for the virtual machine. In that
+case, board code should also not insist on the creation of the
+board-default FDC.
+
+The board-default FDC will still be created if the user requests a floppy
+drive with "-drive if=floppy".
+
+Additionally, separate FDCs can be specified manually with "-device
+isa-fdc". They allow the
+
+  -device isa-fdc,driveA=...
+
+syntax that is more flexible than the one required by the board-default
+FDC:
+
+  -global isa-fdc.driveA=...
+
+This patch doesn't change the behavior observably, as all Q35 machine
+types have "no_floppy = 0".
+
+Cc: Markus Armbruster <armbru@redhat.com>
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Cc: Gerd Hoffmann <kraxel@redhat.com>
+Cc: John Snow <jsnow@redhat.com>
+Cc: "Gabriel L. Somlo" <gsomlo@gmail.com>
+Cc: "Michael S. Tsirkin" <mst@redhat.com>
+Cc: Kevin Wolf <kwolf@redhat.com>
+Cc: qemu-block@nongnu.org
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Markus Armbruster <armbru@redhat.com>
+(cherry picked from commit 6cd2234ccbacf2825372142a2658bf318ce2f848)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc_q35.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index e754bf5..ddc6741 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -89,6 +89,7 @@ static void pc_q35_init(MachineState *machine)
+     PcGuestInfo *guest_info;
+     ram_addr_t lowmem;
+     DriveInfo *hd[MAX_SATA_PORTS];
++    MachineClass *mc = MACHINE_GET_CLASS(machine);
+ 
+     /* Check whether RAM fits below 4G (leaving 1/2 GByte for IO memory
+      * and 256 Mbytes for PCI Express Enhanced Configuration Access Mapping
+@@ -163,7 +164,6 @@ static void pc_q35_init(MachineState *machine)
+     guest_info->legacy_acpi_table_size = 0;
+ 
+     if (smbios_defaults) {
+-        MachineClass *mc = MACHINE_GET_CLASS(machine);
+         /* These values are guest ABI, do not change */
+         smbios_set_defaults("Red Hat", "KVM",
+                             mc->name, smbios_legacy_mode, smbios_uuid_encoded);
+@@ -250,7 +250,7 @@ static void pc_q35_init(MachineState *machine)
+     }
+ 
+     /* init basic PC hardware */
+-    pc_basic_device_init(isa_bus, gsi, &rtc_state, true, &floppy,
++    pc_basic_device_init(isa_bus, gsi, &rtc_state, !mc->no_floppy, &floppy,
+                          (pc_machine->vmport != ON_OFF_AUTO_ON), 0xff0104);
+ 
+     /* connect pm stuff to lpc */
+-- 
+1.8.3.1
+

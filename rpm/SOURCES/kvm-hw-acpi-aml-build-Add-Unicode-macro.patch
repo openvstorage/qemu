@@ -1,0 +1,73 @@
+From 3bf62445cdfba5a07bdc14dbb6795ece2a541d93 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:38 +0200
+Subject: [PATCH 34/44] hw/acpi/aml-build: Add Unicode macro
+
+Message-id: <1434455325-23399-27-git-send-email-drjones@redhat.com>
+Patchwork-id: 66259
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 26/33] hw/acpi/aml-build: Add Unicode macro
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-22-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit e1f776c434f8f18079b82d8121c166fb53a63451)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 17 +++++++++++++++++
+ include/hw/acpi/aml-build.h |  1 +
+ 2 files changed, 18 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 439c24e..9efef70 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -1070,6 +1070,23 @@ Aml *aml_touuid(const char *uuid)
+     return var;
+ }
+ 
++/*
++ * ACPI 2.0b: 16.2.3.6.4.3  Unicode Macro (Convert Ascii String To Unicode)
++ */
++Aml *aml_unicode(const char *str)
++{
++    int i = 0;
++    Aml *var = aml_bundle(0x11 /* BufferOp */, AML_BUFFER);
++
++    do {
++        build_append_byte(var->buf, str[i]);
++        build_append_byte(var->buf, 0);
++        i++;
++    } while (i <= strlen(str));
++
++    return var;
++}
++
+ void
+ build_header(GArray *linker, GArray *table_data,
+              AcpiTableHeader *h, const char *sig, int len, uint8_t rev)
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 5fce62c..82242ec 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -267,6 +267,7 @@ Aml *aml_field(const char *name, AmlAccessType type, AmlUpdateRule rule);
+ Aml *aml_create_dword_field(Aml *srcbuf, Aml *index, const char *name);
+ Aml *aml_varpackage(uint32_t num_elements);
+ Aml *aml_touuid(const char *uuid);
++Aml *aml_unicode(const char *str);
+ 
+ void
+ build_header(GArray *linker, GArray *table_data,
+-- 
+1.8.3.1
+

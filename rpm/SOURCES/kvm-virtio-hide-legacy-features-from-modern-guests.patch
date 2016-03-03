@@ -1,0 +1,60 @@
+From 88bd0e34db0df23164ca5b34e461cdfd646d1e39 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Mon, 10 Aug 2015 05:09:25 +0200
+Subject: [PATCH 04/16] virtio: hide legacy features from modern guests
+
+Message-id: <1439183375-4841-5-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67431
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 04/14] virtio: hide legacy features from modern guests
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+NOTIFY_ON_EMPTY, ANY_LAYOUT and BAD are only valid on the legacy
+interface.
+
+Hide them from modern guests.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 5f456073aa9ba54e421aa82dd38e4d40d0a0af85)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c     | 3 ++-
+ include/hw/virtio/virtio.h | 4 ++++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index e2e1eb5..c8bf6b9 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -970,7 +970,8 @@ static uint64_t virtio_pci_common_read(void *opaque, hwaddr addr,
+         break;
+     case VIRTIO_PCI_COMMON_DF:
+         if (proxy->dfselect <= 1) {
+-            val = vdev->host_features >> (32 * proxy->dfselect);
++            val = (vdev->host_features & ~VIRTIO_LEGACY_FEATURES) >>
++                (32 * proxy->dfselect);
+         }
+         break;
+     case VIRTIO_PCI_COMMON_GFSELECT:
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 2bf9cc1..48f0377 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -25,6 +25,10 @@
+ /* A guest should never accept this.  It implies negotiation is broken. */
+ #define VIRTIO_F_BAD_FEATURE		30
+ 
++#define VIRTIO_LEGACY_FEATURES ((0x1ULL << VIRTIO_F_BAD_FEATURE) | \
++                                (0x1ULL << VIRTIO_F_NOTIFY_ON_EMPTY) | \
++                                (0x1ULL << VIRTIO_F_ANY_LAYOUT))
++
+ struct VirtQueue;
+ 
+ static inline hwaddr vring_align(hwaddr addr,
+-- 
+1.8.3.1
+

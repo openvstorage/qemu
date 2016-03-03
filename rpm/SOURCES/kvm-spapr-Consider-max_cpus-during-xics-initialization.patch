@@ -1,0 +1,53 @@
+From 42f50a2a32336559fc75538aabda82b1e1194961 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:08 +0200
+Subject: [PATCH 46/58] spapr: Consider max_cpus during xics initialization
+
+Message-id: <1437715580-14817-17-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67133
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 16/28] spapr: Consider max_cpus during xics initialization
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Use max_cpus instead of smp_cpus when intializating xics system. Also
+report max_cpus in ibm,interrupt-server-ranges device tree property of
+interrupt controller node.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 9e734e3deefd460188ea9bd107b65a528ccb7255)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index e5f1d39..b16443f 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -308,7 +308,7 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
+     GString *hypertas = g_string_sized_new(256);
+     GString *qemu_hypertas = g_string_sized_new(256);
+     uint32_t refpoints[] = {cpu_to_be32(0x4), cpu_to_be32(0x4)};
+-    uint32_t interrupt_server_ranges_prop[] = {0, cpu_to_be32(smp_cpus)};
++    uint32_t interrupt_server_ranges_prop[] = {0, cpu_to_be32(max_cpus)};
+     int smt = kvmppc_smt_threads();
+     unsigned char vec5[] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x80};
+     QemuOpts *opts = qemu_opts_find(qemu_find_opts("smp-opts"), NULL);
+@@ -1454,7 +1454,7 @@ static void ppc_spapr_init(MachineState *machine)
+ 
+     /* Set up Interrupt Controller before we create the VCPUs */
+     spapr->icp = xics_system_init(machine,
+-                                  DIV_ROUND_UP(smp_cpus * kvmppc_smt_threads(),
++                                  DIV_ROUND_UP(max_cpus * kvmppc_smt_threads(),
+                                                smp_threads),
+                                   XICS_IRQS);
+ 
+-- 
+1.8.3.1
+

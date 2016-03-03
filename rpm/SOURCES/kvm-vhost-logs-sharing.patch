@@ -1,0 +1,228 @@
+From bd292123ad4ecbd54074922ef05560e04590c134 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:16 +0100
+Subject: [PATCH 15/44] vhost: logs sharing
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-9-git-send-email-mst@redhat.com>
+Patchwork-id: 68370
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 08/36] vhost: logs sharing
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Jason Wang <jasowang@redhat.com>
+
+Currently we allocate one vhost log per vhost device. This is sub
+optimal when:
+
+- Guest has several device with vhost as backend
+- Guest has multiqueue devices
+
+In the above cases, we can avoid the memory allocation by sharing a
+single vhost log among all the vhost devices. This is done through:
+
+- Introducing a new vhost_log structure with refcnt inside.
+- Using a global pointer to vhost_log structure that will be used. And
+  introduce helper to get the log with expected log size and helper to
+- drop the refcnt to the old log.
+- Each vhost device still keep track of a pointer to the log that was
+  used.
+
+With above, if no resize happens, all vhost device will share a single
+vhost log. During resize, a new vhost_log structure will be allocated
+and made for the global pointer. And each vhost devices will drop the
+refcnt to the old log.
+
+Tested by doing scp during migration for a 2 queues virtio-net-pci.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 309750fad51f17d1ec6195c5d8ad7d741596ddb6)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost.c         | 77 ++++++++++++++++++++++++++++++++++++-----------
+ include/hw/virtio/vhost.h |  8 ++++-
+ 2 files changed, 66 insertions(+), 19 deletions(-)
+
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index 5df6a54..aa636f9 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -24,15 +24,19 @@
+ #include "hw/virtio/virtio-access.h"
+ #include "migration/migration.h"
+ 
++static struct vhost_log *vhost_log;
++
+ static void vhost_dev_sync_region(struct vhost_dev *dev,
+                                   MemoryRegionSection *section,
+                                   uint64_t mfirst, uint64_t mlast,
+                                   uint64_t rfirst, uint64_t rlast)
+ {
++    vhost_log_chunk_t *log = dev->log->log;
++
+     uint64_t start = MAX(mfirst, rfirst);
+     uint64_t end = MIN(mlast, rlast);
+-    vhost_log_chunk_t *from = dev->log + start / VHOST_LOG_CHUNK;
+-    vhost_log_chunk_t *to = dev->log + end / VHOST_LOG_CHUNK + 1;
++    vhost_log_chunk_t *from = log + start / VHOST_LOG_CHUNK;
++    vhost_log_chunk_t *to = log + end / VHOST_LOG_CHUNK + 1;
+     uint64_t addr = (start / VHOST_LOG_CHUNK) * VHOST_LOG_CHUNK;
+ 
+     if (end < start) {
+@@ -282,22 +286,57 @@ static uint64_t vhost_get_log_size(struct vhost_dev *dev)
+     }
+     return log_size;
+ }
++static struct vhost_log *vhost_log_alloc(uint64_t size)
++{
++    struct vhost_log *log = g_malloc0(sizeof *log + size * sizeof(*(log->log)));
++
++    log->size = size;
++    log->refcnt = 1;
++
++    return log;
++}
++
++static struct vhost_log *vhost_log_get(uint64_t size)
++{
++    if (!vhost_log || vhost_log->size != size) {
++        vhost_log = vhost_log_alloc(size);
++    } else {
++        ++vhost_log->refcnt;
++    }
++
++    return vhost_log;
++}
++
++static void vhost_log_put(struct vhost_dev *dev, bool sync)
++{
++    struct vhost_log *log = dev->log;
++
++    if (!log) {
++        return;
++    }
++
++    --log->refcnt;
++    if (log->refcnt == 0) {
++        /* Sync only the range covered by the old log */
++        if (dev->log_size && sync) {
++            vhost_log_sync_range(dev, 0, dev->log_size * VHOST_LOG_CHUNK - 1);
++        }
++        if (vhost_log == log) {
++            vhost_log = NULL;
++        }
++        g_free(log);
++    }
++}
+ 
+ static inline void vhost_dev_log_resize(struct vhost_dev* dev, uint64_t size)
+ {
+-    vhost_log_chunk_t *log;
+-    uint64_t log_base;
++    struct vhost_log *log = vhost_log_get(size);
++    uint64_t log_base = (uintptr_t)log->log;
+     int r;
+ 
+-    log = g_malloc0(size * sizeof *log);
+-    log_base = (uintptr_t)log;
+     r = dev->vhost_ops->vhost_call(dev, VHOST_SET_LOG_BASE, &log_base);
+     assert(r >= 0);
+-    /* Sync only the range covered by the old log */
+-    if (dev->log_size) {
+-        vhost_log_sync_range(dev, 0, dev->log_size * VHOST_LOG_CHUNK - 1);
+-    }
+-    g_free(dev->log);
++    vhost_log_put(dev, true);
+     dev->log = log;
+     dev->log_size = size;
+ }
+@@ -603,7 +642,7 @@ static int vhost_migration_log(MemoryListener *listener, int enable)
+         if (r < 0) {
+             return r;
+         }
+-        g_free(dev->log);
++        vhost_log_put(dev, false);
+         dev->log = NULL;
+         dev->log_size = 0;
+     } else {
+@@ -1094,10 +1133,10 @@ int vhost_dev_start(struct vhost_dev *hdev, VirtIODevice *vdev)
+         uint64_t log_base;
+ 
+         hdev->log_size = vhost_get_log_size(hdev);
+-        hdev->log = hdev->log_size ?
+-            g_malloc0(hdev->log_size * sizeof *hdev->log) : NULL;
+-        log_base = (uintptr_t)hdev->log;
+-        r = hdev->vhost_ops->vhost_call(hdev, VHOST_SET_LOG_BASE, &log_base);
++        hdev->log = vhost_log_get(hdev->log_size);
++        log_base = (uintptr_t)hdev->log->log;
++        r = hdev->vhost_ops->vhost_call(hdev, VHOST_SET_LOG_BASE,
++                                        hdev->log_size ? &log_base : NULL);
+         if (r < 0) {
+             r = -errno;
+             goto fail_log;
+@@ -1106,6 +1145,9 @@ int vhost_dev_start(struct vhost_dev *hdev, VirtIODevice *vdev)
+ 
+     return 0;
+ fail_log:
++    if (hdev->log_size) {
++        vhost_log_put(hdev, false);
++    }
+ fail_vq:
+     while (--i >= 0) {
+         vhost_virtqueue_stop(hdev,
+@@ -1132,10 +1174,9 @@ void vhost_dev_stop(struct vhost_dev *hdev, VirtIODevice *vdev)
+                              hdev->vqs + i,
+                              hdev->vq_index + i);
+     }
+-    vhost_log_sync_range(hdev, 0, ~0x0ull);
+ 
++    vhost_log_put(hdev, true);
+     hdev->started = false;
+-    g_free(hdev->log);
+     hdev->log = NULL;
+     hdev->log_size = 0;
+ }
+diff --git a/include/hw/virtio/vhost.h b/include/hw/virtio/vhost.h
+index 9593f63..c3758f3 100644
+--- a/include/hw/virtio/vhost.h
++++ b/include/hw/virtio/vhost.h
+@@ -28,6 +28,12 @@ typedef unsigned long vhost_log_chunk_t;
+ #define VHOST_LOG_CHUNK (VHOST_LOG_PAGE * VHOST_LOG_BITS)
+ #define VHOST_INVALID_FEATURE_BIT   (0xff)
+ 
++struct vhost_log {
++    unsigned long long size;
++    int refcnt;
++    vhost_log_chunk_t log[0];
++};
++
+ struct vhost_memory;
+ struct vhost_dev {
+     MemoryListener memory_listener;
+@@ -45,7 +51,6 @@ struct vhost_dev {
+     unsigned long long max_queues;
+     bool started;
+     bool log_enabled;
+-    vhost_log_chunk_t *log;
+     unsigned long long log_size;
+     Error *migration_blocker;
+     bool memory_changed;
+@@ -53,6 +58,7 @@ struct vhost_dev {
+     hwaddr mem_changed_end_addr;
+     const VhostOps *vhost_ops;
+     void *opaque;
++    struct vhost_log *log;
+ };
+ 
+ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
+-- 
+1.8.3.1
+

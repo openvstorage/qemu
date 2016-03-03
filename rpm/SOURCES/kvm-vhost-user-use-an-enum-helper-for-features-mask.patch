@@ -1,0 +1,62 @@
+From c39c6506f7e2360d39f300bc7f48b45bf25b4662 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:48 +0100
+Subject: [PATCH 26/44] vhost-user: use an enum helper for features mask
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-20-git-send-email-mst@redhat.com>
+Patchwork-id: 68363
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 19/36] vhost-user: use an enum helper for features mask
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Thibaut Collet <thibaut.collet@6wind.com>
+
+The VHOST_USER_PROTOCOL_FEATURE_MASK will be automatically updated when
+adding new features to the enum.
+
+Signed-off-by: Thibaut Collet <thibaut.collet@6wind.com>
+[Adapted from mailing list discussion - Marc-André]
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+
+(cherry picked from commit de1372d466fb4a7bed13f64f50bff14aaa4a5931)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost-user.c | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index be8fe58..69cf1bf 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -28,10 +28,15 @@
+ #define VHOST_MEMORY_MAX_NREGIONS    8
+ #define VHOST_USER_F_PROTOCOL_FEATURES 30
+ 
+-#define VHOST_USER_PROTOCOL_FEATURE_MASK 0x7ULL
+-#define VHOST_USER_PROTOCOL_F_MQ         0
+-#define VHOST_USER_PROTOCOL_F_LOG_SHMFD  1
+-#define VHOST_USER_PROTOCOL_F_RARP       2
++enum VhostUserProtocolFeature {
++    VHOST_USER_PROTOCOL_F_MQ = 0,
++    VHOST_USER_PROTOCOL_F_LOG_SHMFD = 1,
++    VHOST_USER_PROTOCOL_F_RARP = 2,
++
++    VHOST_USER_PROTOCOL_F_MAX
++};
++
++#define VHOST_USER_PROTOCOL_FEATURE_MASK ((1 << VHOST_USER_PROTOCOL_F_MAX) - 1)
+ 
+ typedef enum VhostUserRequest {
+     VHOST_USER_NONE = 0,
+-- 
+1.8.3.1
+

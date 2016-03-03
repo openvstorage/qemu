@@ -1,0 +1,45 @@
+From 52ddb950e7d40e6788e6e4bd64cb545c481633a4 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:29 +0200
+Subject: [PATCH 20/31] hw/pci: removed 'rootbus nr is 0' assumption from
+ qmp_pci_query
+
+Message-id: <1435154016-26233-37-git-send-email-marcel@redhat.com>
+Patchwork-id: 66465
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 36/43] hw/pci: removed 'rootbus nr is 0' assumption from qmp_pci_query
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+From: Marcel Apfelbaum <marcel.a@redhat.com>
+
+Use the newer pci_bus_num to correctly get the root bus number.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit cb2ed8b3c66284f226c523231e2c09e60bbb34bb)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci/pci.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index 38a9cb4..a5598fa 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -1594,7 +1594,8 @@ PciInfoList *qmp_query_pci(Error **errp)
+ 
+     QLIST_FOREACH(host_bridge, &pci_host_bridges, next) {
+         info = g_malloc0(sizeof(*info));
+-        info->value = qmp_query_pci_bus(host_bridge->bus, 0);
++        info->value = qmp_query_pci_bus(host_bridge->bus,
++                                        pci_bus_num(host_bridge->bus));
+ 
+         /* XXX: waiting for the qapi to support GSList */
+         if (!cur_item) {
+-- 
+1.8.3.1
+

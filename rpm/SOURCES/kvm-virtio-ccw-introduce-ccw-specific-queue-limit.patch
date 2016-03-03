@@ -1,0 +1,129 @@
+From f1b2487d167d3605f6d1bdf1cfa573a1e72121de Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:50 +0200
+Subject: [PATCH 14/20] virtio-ccw: introduce ccw specific queue limit
+
+Message-id: <1434607916-15166-15-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66312
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 14/20] virtio-ccw: introduce ccw specific queue limit
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Notes: conflicts since 42874d3a8c6267ff7789a0396843c884b1d0933a
+       ("Switch non-CPU callers from ld/st*_phys to
+       address_space_ld/st*") was not backported.
+
+Cc: Alexander Graf <agraf@suse.de>
+Cc: Cornelia Huck <cornelia.huck@de.ibm.com>
+Cc: Christian Borntraeger <borntraeger@de.ibm.com>
+Cc: Richard Henderson <rth@twiddle.net>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 8dfbaa6ac450c4ec2646b1ca08a4017052a90c1d)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/s390x/virtio-ccw.c
+---
+ hw/s390x/s390-virtio-ccw.c   |  2 +-
+ hw/s390x/virtio-ccw.c        | 12 ++++++------
+ include/hw/s390x/s390_flic.h |  5 ++++-
+ 3 files changed, 11 insertions(+), 8 deletions(-)
+
+diff --git a/hw/s390x/s390-virtio-ccw.c b/hw/s390x/s390-virtio-ccw.c
+index afb539a..8a565f6 100644
+--- a/hw/s390x/s390-virtio-ccw.c
++++ b/hw/s390x/s390-virtio-ccw.c
+@@ -67,7 +67,7 @@ static int virtio_ccw_hcall_notify(const uint64_t *args)
+     if (!sch || !css_subch_visible(sch)) {
+         return -EINVAL;
+     }
+-    if (queue >= VIRTIO_PCI_QUEUE_MAX) {
++    if (queue >= VIRTIO_CCW_QUEUE_MAX) {
+         return -EINVAL;
+     }
+     virtio_queue_notify(virtio_ccw_get_vdev(sch), queue);
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index 28d2879..4ee38a3 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -170,7 +170,7 @@ static void virtio_ccw_start_ioeventfd(VirtioCcwDevice *dev)
+         return;
+     }
+     vdev = virtio_bus_get_device(&dev->bus);
+-    for (n = 0; n < VIRTIO_PCI_QUEUE_MAX; n++) {
++    for (n = 0; n < VIRTIO_CCW_QUEUE_MAX; n++) {
+         if (!virtio_queue_get_num(vdev, n)) {
+             continue;
+         }
+@@ -205,7 +205,7 @@ static void virtio_ccw_stop_ioeventfd(VirtioCcwDevice *dev)
+         return;
+     }
+     vdev = virtio_bus_get_device(&dev->bus);
+-    for (n = 0; n < VIRTIO_PCI_QUEUE_MAX; n++) {
++    for (n = 0; n < VIRTIO_CCW_QUEUE_MAX; n++) {
+         if (!virtio_queue_get_num(vdev, n)) {
+             continue;
+         }
+@@ -266,7 +266,7 @@ static int virtio_ccw_set_vqs(SubchDev *sch, uint64_t addr, uint32_t align,
+ {
+     VirtIODevice *vdev = virtio_ccw_get_vdev(sch);
+ 
+-    if (index >= VIRTIO_PCI_QUEUE_MAX) {
++    if (index >= VIRTIO_CCW_QUEUE_MAX) {
+         return -EINVAL;
+     }
+ 
+@@ -291,7 +291,7 @@ static int virtio_ccw_set_vqs(SubchDev *sch, uint64_t addr, uint32_t align,
+         virtio_queue_set_vector(vdev, index, index);
+     }
+     /* tell notify handler in case of config change */
+-    vdev->config_vector = VIRTIO_PCI_QUEUE_MAX;
++    vdev->config_vector = VIRTIO_CCW_QUEUE_MAX;
+     return 0;
+ }
+ 
+@@ -549,7 +549,7 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+             ret = -EFAULT;
+         } else {
+             vq_config.index = lduw_be_phys(&address_space_memory, ccw.cda);
+-            if (vq_config.index >= VIRTIO_PCI_QUEUE_MAX) {
++            if (vq_config.index >= VIRTIO_CCW_QUEUE_MAX) {
+                 ret = -EINVAL;
+                 break;
+             }
+@@ -1026,7 +1026,7 @@ static void virtio_ccw_notify(DeviceState *d, uint16_t vector)
+         return;
+     }
+ 
+-    if (vector < VIRTIO_PCI_QUEUE_MAX) {
++    if (vector < VIRTIO_CCW_QUEUE_MAX) {
+         if (!dev->indicators) {
+             return;
+         }
+diff --git a/include/hw/s390x/s390_flic.h b/include/hw/s390x/s390_flic.h
+index 489d73b..200e7e9 100644
+--- a/include/hw/s390x/s390_flic.h
++++ b/include/hw/s390x/s390_flic.h
+@@ -17,10 +17,13 @@
+ #include "hw/s390x/adapter.h"
+ #include "hw/virtio/virtio.h"
+ 
++#define ADAPTER_ROUTES_MAX_GSI 64
++#define VIRTIO_CCW_QUEUE_MAX ADAPTER_ROUTES_MAX_GSI
++
+ typedef struct AdapterRoutes {
+     AdapterInfo adapter;
+     int num_routes;
+-    int gsi[VIRTIO_PCI_QUEUE_MAX];
++    int gsi[ADAPTER_ROUTES_MAX_GSI];
+ } AdapterRoutes;
+ 
+ #define TYPE_S390_FLIC_COMMON "s390-flic"
+-- 
+1.8.3.1
+

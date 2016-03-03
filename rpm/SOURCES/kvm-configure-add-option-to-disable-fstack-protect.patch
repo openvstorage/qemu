@@ -1,0 +1,77 @@
+From 4d3e13ce3849bc1c5e9ce3b4ab6f40f0b37f2bfe Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Wed, 5 Feb 2014 15:02:19 +0100
+Subject: configure: add option to disable -fstack-protect
+
+RH-Author: Miroslav Rezanina <mrezanin@redhat.com>
+Message-id: <fbd17542d86a4fd4beb4d9c672df14f237b51a62.1391612088.git.mrezanin@redhat.com>
+Patchwork-id: 57118
+O-Subject: [RHEL7 qemu-kvm PATCH 1/2] configure: add option to disable -fstack-protect
+Bugzilla: 1044182
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel.a@redhat.com>
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+
+From: Miroslav Rezanina <mrezanin@redhat.com>
+
+upstream: submitted
+(Do not wait for apply to get to RHEL 7.0 before Snapshot 8)
+
+The -fstack-protector flag family is useful for ensuring safety and for
+debugging, but has a performance impact. Here are some boot time comparisons
+of the various versions of -fstack-protector using qemu-system-arm on an
+x86_64 host:
+    # -fstack-protector-all
+    Startup finished in 1.810s (kernel) + 12.331s (initrd) + 49.016s
+(userspace) = 1min 3.159s
+    Startup finished in 1.801s (kernel) + 12.287s (initrd) + 47.925s
+(userspace) = 1min 2.013s
+    Startup finished in 1.812s (kernel) + 12.302s (initrd) + 47.995s
+(userspace) = 1min 2.111s
+
+    # -fstack-protector-strong
+    Startup finished in 1.744s (kernel) + 11.223s (initrd) + 44.688s
+(userspace) = 57.657s
+    Startup finished in 1.721s (kernel) + 11.222s (initrd) + 44.194s
+(userspace) = 57.138s
+    Startup finished in 1.693s (kernel) + 11.250s (initrd) + 44.426s
+(userspace) = 57.370s
+
+    # -fstack-protector
+    Startup finished in 1.705s (kernel) + 11.409s (initrd) + 43.563s
+(userspace) = 56.677s
+    Startup finished in 1.877s (kernel) + 11.137s (initrd) + 43.719s
+(userspace) = 56.734s
+    Startup finished in 1.708s (kernel) + 11.141s (initrd) + 43.628s
+(userspace) = 56.478s
+
+    # no stack protector
+    Startup finished in 1.743s (kernel) + 11.190s (initrd) + 43.709s
+(userspace) = 56.643s
+    Startup finished in 1.763s (kernel) + 11.216s (initrd) + 43.767s
+(userspace) = 56.747s
+    Startup finished in 1.711s (kernel) + 11.283s (initrd) + 43.878s
+(userspace) = 56.873s
+
+This patch introduces a configure option to disable the stack protector
+entirely, and conditional stack protector flag selection (in order, based on
+availability): -fstack-protector-strong, -fstack-protector, no stack protector.
+
+Signed-off-by: Steven Noonan <address@hidden>
+Cc: Anthony Liguori <address@hidden>
+Reviewed-by: Stefan Weil <address@hidden>
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+diff --git a/configure b/configure
+index 3cb1298..bebae4c 100755
+--- a/configure
++++ b/configure
+@@ -1281,6 +1281,7 @@ Advanced options (experts only):
+   --disable-strip          disable stripping binaries
+   --disable-werror         disable compilation abort on warning
+   --disable-stack-protector disable compiler-provided stack protection
++  --enable-stack-protector enable compiler-provided stack protection
+   --disable-sdl            disable SDL
+   --enable-sdl             enable SDL
+   --with-sdlabi            select preferred SDL ABI 1.2 or 2.0

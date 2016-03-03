@@ -1,0 +1,39 @@
+From 91c76c59273095b1738b53bf36303153dd1cf703 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Thu, 24 Sep 2015 06:28:37 +0200
+Subject: [PATCH 3/5] Remove intel-iommu device
+
+Message-id: <6221600c689f74a51172cfb1f219472f5d32b9fa.1443075059.git.mrezanin@redhat.com>
+Patchwork-id: 67918
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCHv2 3/3] Remove intel-iommu device
+Bugzilla: 1224542
+RH-Acked-by: Jeff Nelson <jenelson@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+
+From: Miroslav Rezanina <mrezanin@redhat.com>
+
+We do not want to support intel-iommu device for now. Disabling.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/Makefile.objs | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/i386/Makefile.objs b/hw/i386/Makefile.objs
+index e058a39..4840498 100644
+--- a/hw/i386/Makefile.objs
++++ b/hw/i386/Makefile.objs
+@@ -2,7 +2,8 @@ obj-$(CONFIG_KVM) += kvm/
+ obj-y += multiboot.o smbios.o
+ obj-y += pc.o pc_piix.o pc_q35.o
+ obj-y += pc_sysfw.o
+-obj-y += intel_iommu.o
++# Disabled for Red Hat Enterprise Linux 7
++# obj-y += intel_iommu.o
+ obj-$(CONFIG_XEN) += ../xenpv/ xen/
+ 
+ obj-y += kvmvapic.o
+-- 
+1.8.3.1
+

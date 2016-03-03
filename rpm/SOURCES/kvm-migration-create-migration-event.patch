@@ -1,0 +1,97 @@
+From 2fbb6570e075a99b3b25b4f557bae51b2cc0ee7b Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:04 +0200
+Subject: [PATCH 19/28] migration: create migration event
+
+Message-id: <1438098431-30847-20-git-send-email-quintela@redhat.com>
+Patchwork-id: 67177
+O-Subject: [RHEL-7 qemu-kvm PATCH 19/26] migration: create migration event
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+We have one argument that tells us what event has happened.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit 598cd2bda0845096d2f06500e45b4d0d399b384a)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/qmp/qmp-events.txt | 14 ++++++++++++++
+ migration/migration.c   |  2 ++
+ qapi/event.json         | 12 ++++++++++++
+ 3 files changed, 28 insertions(+)
+
+diff --git a/docs/qmp/qmp-events.txt b/docs/qmp/qmp-events.txt
+index a579253..5fedfe8 100644
+--- a/docs/qmp/qmp-events.txt
++++ b/docs/qmp/qmp-events.txt
+@@ -474,6 +474,20 @@ Example:
+ { "timestamp": {"seconds": 1290688046, "microseconds": 417172},
+   "event": "SPICE_MIGRATE_COMPLETED" }
+ 
++MIGRATION
++---------
++
++Emitted when a migration event happens
++
++Data: None.
++
++ - "status": migration status
++     See MigrationStatus in ~/qapi-schema.json for possible values
++
++Example:
++
++{"timestamp": {"seconds": 1432121972, "microseconds": 744001},
++ "event": "MIGRATION", "data": {"status": "completed"}}
+ 
+ STOP
+ ----
+diff --git a/migration/migration.c b/migration/migration.c
+index be81af9..d7f81d7 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -26,6 +26,7 @@
+ #include "qmp-commands.h"
+ #include "trace.h"
+ #include "qapi/util.h"
++#include "qapi-event.h"
+ 
+ #define MAX_THROTTLE  (32 << 20)      /* Migration speed throttling */
+ 
+@@ -406,6 +407,7 @@ void qmp_migrate_set_capabilities(MigrationCapabilityStatusList *params,
+ static void migrate_set_state(MigrationState *s, int old_state, int new_state)
+ {
+     if (atomic_cmpxchg(&s->state, old_state, new_state) == old_state) {
++        qapi_event_send_migration(new_state, &error_abort);
+         trace_migrate_set_state(new_state);
+     }
+ }
+diff --git a/qapi/event.json b/qapi/event.json
+index 378dda5..f0cef01 100644
+--- a/qapi/event.json
++++ b/qapi/event.json
+@@ -243,6 +243,18 @@
+ { 'event': 'SPICE_MIGRATE_COMPLETED' }
+ 
+ ##
++# @MIGRATION
++#
++# Emitted when a migration event happens
++#
++# @status: @MigrationStatus describing the current migration status.
++#
++# Since: 2.4
++##
++{ 'event': 'MIGRATION',
++  'data': {'status': 'MigrationStatus'}}
++
++##
+ # @ACPI_DEVICE_OST
+ #
+ # Emitted when guest executes ACPI _OST method.
+-- 
+1.8.3.1
+

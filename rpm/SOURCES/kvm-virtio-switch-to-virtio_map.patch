@@ -1,0 +1,42 @@
+From d9360f8f7041a531e68620e6afe2e2addea62f51 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 20 Nov 2015 10:44:35 +0100
+Subject: [PATCH 2/9] virtio: switch to virtio_map
+
+Message-id: <1448016282-257478-3-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68407
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 2/9] virtio: switch to virtio_map
+Bugzilla: 1288096
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Michael S. Tsirkin <mst@redhat.com>
+
+Drop use of the deprecated virtio_map_sg in virtio core.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+(cherry picked from commit 13972ac5e263a7319609253edac5754129489132)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 3fe6a8b..4ab0014 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -555,8 +555,7 @@ int virtqueue_pop(VirtQueue *vq, VirtQueueElement *elem)
+     } while ((i = virtqueue_next_desc(vdev, desc_pa, i, max)) != max);
+ 
+     /* Now map what we have collected */
+-    virtqueue_map_sg(elem->in_sg, elem->in_addr, elem->in_num, 1);
+-    virtqueue_map_sg(elem->out_sg, elem->out_addr, elem->out_num, 0);
++    virtqueue_map(elem);
+ 
+     elem->index = head;
+ 
+-- 
+1.8.3.1
+

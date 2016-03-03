@@ -1,0 +1,84 @@
+From ed275b39ddd8b7eac66071aa651e6bff677a6d65 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:01 +0200
+Subject: [PATCH 087/100] virtio-scsi: move qdev properties into virtio-scsi.c
+
+Message-id: <1436260751-25015-59-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66834
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 58/68] virtio-scsi: move qdev properties into virtio-scsi.c
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Shannon Zhao <shannon.zhao@linaro.org>
+
+As only one place in virtio-scsi.c uses DEFINE_VIRTIO_SCSI_PROPERTIES
+and DEFINE_VIRTIO_SCSI_FEATURES, there is no need to expose them. Inline
+them into virtio-scsi.c to avoid wrongly use.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Acked-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 0c63237a90f37fffe8a8016f24f61bb228653e86)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/scsi/virtio-scsi.c           | 13 +++++++++++--
+ include/hw/virtio/virtio-scsi.h | 13 -------------
+ 2 files changed, 11 insertions(+), 15 deletions(-)
+
+diff --git a/hw/scsi/virtio-scsi.c b/hw/scsi/virtio-scsi.c
+index b0dee29..f7d3c7c 100644
+--- a/hw/scsi/virtio-scsi.c
++++ b/hw/scsi/virtio-scsi.c
+@@ -948,8 +948,17 @@ static void virtio_scsi_device_unrealize(DeviceState *dev, Error **errp)
+ }
+ 
+ static Property virtio_scsi_properties[] = {
+-    DEFINE_VIRTIO_SCSI_PROPERTIES(VirtIOSCSI, parent_obj.conf),
+-    DEFINE_VIRTIO_SCSI_FEATURES(VirtIOSCSI, host_features),
++    DEFINE_PROP_UINT32("num_queues", VirtIOSCSI, parent_obj.conf.num_queues, 1),
++    DEFINE_PROP_UINT32("max_sectors", VirtIOSCSI, parent_obj.conf.max_sectors,
++                                                  0xFFFF),
++    DEFINE_PROP_UINT32("cmd_per_lun", VirtIOSCSI, parent_obj.conf.cmd_per_lun,
++                                                  128),
++    DEFINE_PROP_BIT("any_layout", VirtIOSCSI, host_features,
++                                              VIRTIO_F_ANY_LAYOUT, true),
++    DEFINE_PROP_BIT("hotplug", VirtIOSCSI, host_features,
++                                           VIRTIO_SCSI_F_HOTPLUG, true),
++    DEFINE_PROP_BIT("param_change", VirtIOSCSI, host_features,
++                                                VIRTIO_SCSI_F_CHANGE, true),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/include/hw/virtio/virtio-scsi.h b/include/hw/virtio/virtio-scsi.h
+index b42e7f1..088fe9f 100644
+--- a/include/hw/virtio/virtio-scsi.h
++++ b/include/hw/virtio/virtio-scsi.h
+@@ -141,19 +141,6 @@ typedef struct VirtIOSCSIReq {
+     } req;
+ } VirtIOSCSIReq;
+ 
+-#define DEFINE_VIRTIO_SCSI_PROPERTIES(_state, _conf_field)                     \
+-    DEFINE_PROP_UINT32("num_queues", _state, _conf_field.num_queues, 1),       \
+-    DEFINE_PROP_UINT32("max_sectors", _state, _conf_field.max_sectors, 0xFFFF),\
+-    DEFINE_PROP_UINT32("cmd_per_lun", _state, _conf_field.cmd_per_lun, 128)
+-
+-#define DEFINE_VIRTIO_SCSI_FEATURES(_state, _feature_field)                    \
+-    DEFINE_PROP_BIT("any_layout", _state, _feature_field,                      \
+-                    VIRTIO_F_ANY_LAYOUT, true),                                \
+-    DEFINE_PROP_BIT("hotplug", _state, _feature_field, VIRTIO_SCSI_F_HOTPLUG,  \
+-                                                       true),                  \
+-    DEFINE_PROP_BIT("param_change", _state, _feature_field,                    \
+-                                            VIRTIO_SCSI_F_CHANGE, true)
+-
+ typedef void (*HandleOutput)(VirtIODevice *, VirtQueue *);
+ 
+ void virtio_scsi_common_realize(DeviceState *dev, Error **errp,
+-- 
+1.8.3.1
+

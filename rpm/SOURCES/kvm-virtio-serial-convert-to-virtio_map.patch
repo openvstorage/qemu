@@ -1,0 +1,47 @@
+From f5a9e5266a7ae657bd4275725a28ebd69467670e Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 20 Nov 2015 10:44:37 +0100
+Subject: [PATCH 4/9] virtio-serial: convert to virtio_map
+
+Message-id: <1448016282-257478-5-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68409
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 4/9] virtio-serial: convert to virtio_map
+Bugzilla: 1288096
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Michael S. Tsirkin <mst@redhat.com>
+
+This also fixes a minor bug:
+-                virtqueue_map_sg(port->elem.out_sg, port->elem.out_addr,
+-                                 port->elem.out_num, 1);
+is wrong: out_sg is not written so should not be marked dirty.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+(cherry picked from commit bff712dc223f685c684f9caf960e6460e84a96f0)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/char/virtio-serial-bus.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/hw/char/virtio-serial-bus.c b/hw/char/virtio-serial-bus.c
+index 61e6f18..fa82c87 100644
+--- a/hw/char/virtio-serial-bus.c
++++ b/hw/char/virtio-serial-bus.c
+@@ -704,10 +704,7 @@ static int fetch_active_ports_list(QEMUFile *f, int version_id,
+ 
+                 qemu_get_buffer(f, (unsigned char *)&port->elem,
+                                 sizeof(port->elem));
+-                virtqueue_map_sg(port->elem.in_sg, port->elem.in_addr,
+-                                 port->elem.in_num, 1);
+-                virtqueue_map_sg(port->elem.out_sg, port->elem.out_addr,
+-                                 port->elem.out_num, 1);
++                virtqueue_map(&port->elem);
+ 
+                 /*
+                  *  Port was throttled on source machine.  Let's
+-- 
+1.8.3.1
+

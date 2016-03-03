@@ -1,0 +1,56 @@
+From d3695811a19bef754e77bf0bf290aa1e98c5d039 Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Wed, 12 Aug 2015 15:22:01 +0200
+Subject: [PATCH 16/16] qcow2: Flush pending discards before allocating cluster
+
+Message-id: <1439392921-2301-2-git-send-email-kwolf@redhat.com>
+Patchwork-id: 67521
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 1/1] qcow2: Flush pending discards before allocating cluster
+Bugzilla: 1226297
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Max Reitz <mreitz@redhat.com>
+
+Before a freed cluster can be reused, pending discards for this cluster
+must be processed.
+
+The original assumption was that this was not a problem because discards
+are only cached during discard/write zeroes operations, which are
+synchronous so that no concurrent write requests can cause cluster
+allocations.
+
+However, the discard/write zeroes operation itself can allocate a new L2
+table (and it has to in order to put zero flags there), so make sure we
+can cope with the situation.
+
+This fixes https://bugs.launchpad.net/bugs/1349972.
+
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Max Reitz <mreitz@redhat.com>
+(cherry picked from commit ecbda7a22576591a84f44de1be0150faf6001f1c)
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block/qcow2-refcount.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/block/qcow2-refcount.c b/block/qcow2-refcount.c
+index 6cbae1d..63c0085 100644
+--- a/block/qcow2-refcount.c
++++ b/block/qcow2-refcount.c
+@@ -833,6 +833,11 @@ static int64_t alloc_clusters_noref(BlockDriverState *bs, uint64_t size)
+     uint64_t i, nb_clusters, refcount;
+     int ret;
+ 
++    /* We can't allocate clusters if they may still be queued for discard. */
++    if (s->cache_discards) {
++        qcow2_process_discards(bs, 0);
++    }
++
+     nb_clusters = size_to_clusters(s, size);
+ retry:
+     for(i = 0; i < nb_clusters; i++) {
+-- 
+1.8.3.1
+

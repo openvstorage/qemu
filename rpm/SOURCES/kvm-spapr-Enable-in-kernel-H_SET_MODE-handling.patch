@@ -1,0 +1,95 @@
+From 6aedf3f37cdb5bf56276a01b03c651ccd426e7a8 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Tue, 27 Oct 2015 14:23:45 +0100
+Subject: [PATCH 02/44] spapr: Enable in-kernel H_SET_MODE handling
+
+Message-id: <1445955825-17081-1-git-send-email-lvivier@redhat.com>
+Patchwork-id: 68244
+O-Subject: [RHEL-7.2.z qemu-kvm-rhev PATCH] spapr: Enable in-kernel H_SET_MODE handling
+Bugzilla: 1283073
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Alexey Kardashevskiy <aik@ozlabs.ru>
+
+For setting debug watchpoints, sPAPR guests use H_SET_MODE hypercall.
+The existing QEMU H_SET_MODE handler does not support this but
+the KVM handler in HV KVM does. However it is not enabled.
+
+This enables the in-kernel H_SET_MODE handler which handles:
+- Completed Instruction Address Breakpoint Register
+- Watch point 0 registers.
+
+The rest is still handled in QEMU.
+
+Reported-by: Anton Blanchard <anton@samba.org>
+Signed-off-by: Alexey Kardashevskiy <aik@ozlabs.ru>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit ef9971dd69bdd84b0987b0e1e4f421223b080afd)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1260763
+BREW: https://brewweb.devel.redhat.com/taskinfo?taskID=10022490
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c       | 1 +
+ target-ppc/kvm.c     | 5 +++++
+ target-ppc/kvm_ppc.h | 5 +++++
+ 3 files changed, 11 insertions(+)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 6e98371..e85ed24 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1747,6 +1747,7 @@ static void ppc_spapr_init(MachineState *machine)
+     if (kvm_enabled()) {
+         /* Enable H_LOGICAL_CI_* so SLOF can talk to in-kernel devices */
+         kvmppc_enable_logical_ci_hcalls();
++        kvmppc_enable_set_mode_hcall();
+     }
+ 
+     /* allocate RAM */
+diff --git a/target-ppc/kvm.c b/target-ppc/kvm.c
+index 5dcde8c..b076d2e 100644
+--- a/target-ppc/kvm.c
++++ b/target-ppc/kvm.c
+@@ -1944,6 +1944,11 @@ void kvmppc_enable_logical_ci_hcalls(void)
+     kvmppc_enable_hcall(kvm_state, H_LOGICAL_CI_STORE);
+ }
+ 
++void kvmppc_enable_set_mode_hcall(void)
++{
++    kvmppc_enable_hcall(kvm_state, H_SET_MODE);
++}
++
+ void kvmppc_set_papr(PowerPCCPU *cpu)
+ {
+     CPUState *cs = CPU(cpu);
+diff --git a/target-ppc/kvm_ppc.h b/target-ppc/kvm_ppc.h
+index 1d17130..8b69e73 100644
+--- a/target-ppc/kvm_ppc.h
++++ b/target-ppc/kvm_ppc.h
+@@ -25,6 +25,7 @@ int kvmppc_get_hasidle(CPUPPCState *env);
+ int kvmppc_get_hypercall(CPUPPCState *env, uint8_t *buf, int buf_len);
+ int kvmppc_set_interrupt(PowerPCCPU *cpu, int irq, int level);
+ void kvmppc_enable_logical_ci_hcalls(void);
++void kvmppc_enable_set_mode_hcall(void);
+ void kvmppc_set_papr(PowerPCCPU *cpu);
+ int kvmppc_set_compat(PowerPCCPU *cpu, uint32_t cpu_version);
+ void kvmppc_set_mpic_proxy(PowerPCCPU *cpu, int mpic_proxy);
+@@ -112,6 +113,10 @@ static inline void kvmppc_enable_logical_ci_hcalls(void)
+ {
+ }
+ 
++static inline void kvmppc_enable_set_mode_hcall(void)
++{
++}
++
+ static inline void kvmppc_set_papr(PowerPCCPU *cpu)
+ {
+ }
+-- 
+1.8.3.1
+

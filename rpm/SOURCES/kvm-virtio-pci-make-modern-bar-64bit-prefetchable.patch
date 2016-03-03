@@ -1,0 +1,45 @@
+From c01c9f2b938814ea7fef3d4e5bd56567a4a26924 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:45 +0200
+Subject: [PATCH 071/100] virtio-pci: make modern bar 64bit + prefetchable
+
+Message-id: <1436260751-25015-43-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66817
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 42/68] virtio-pci: make modern bar 64bit + prefetchable
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 4e93a68eb369b2f7adbef7a4f6afd7a30a0ed927)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 1d6c10b..4d80716 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1344,7 +1344,9 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+                               VIRTIO_QUEUE_MAX);
+         memory_region_add_subregion(&proxy->modern_bar, 0x3000, &proxy->notify);
+         pci_register_bar(&proxy->pci_dev, modern_mem_bar,
+-                         PCI_BASE_ADDRESS_SPACE_MEMORY,
++                         PCI_BASE_ADDRESS_SPACE_MEMORY |
++                         PCI_BASE_ADDRESS_MEM_PREFETCH |
++                         PCI_BASE_ADDRESS_MEM_TYPE_64,
+                          &proxy->modern_bar);
+     }
+ 
+-- 
+1.8.3.1
+

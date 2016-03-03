@@ -1,0 +1,67 @@
+From f7b018c2857702ae0244ffaee84baf3dd0db3173 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:35 +0200
+Subject: [PATCH 31/44] hw/acpi/aml-build: Add aml_else() term
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-24-git-send-email-drjones@redhat.com>
+Patchwork-id: 66253
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 23/33] hw/acpi/aml-build: Add aml_else() term
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-19-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 467b07dfae6087381d0993ab910253a6c1850457)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 7 +++++++
+ include/hw/acpi/aml-build.h | 1 +
+ 2 files changed, 8 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index e925fd9..3b06349 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -633,6 +633,13 @@ Aml *aml_if(Aml *predicate)
+     return var;
+ }
+ 
++/* ACPI 1.0b: 16.2.5.3 Type 1 Opcodes Encoding: DefElse */
++Aml *aml_else(void)
++{
++    Aml *var = aml_bundle(0xA1 /* ElseOp */, AML_PACKAGE);
++    return var;
++}
++
+ /* ACPI 1.0b: 16.2.5.2 Named Objects Encoding: DefMethod */
+ Aml *aml_method(const char *name, int arg_count)
+ {
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index fdc5f4a..356484a 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -254,6 +254,7 @@ Aml *aml_scope(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
+ Aml *aml_device(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
+ Aml *aml_method(const char *name, int arg_count);
+ Aml *aml_if(Aml *predicate);
++Aml *aml_else(void);
+ Aml *aml_package(uint8_t num_elements);
+ Aml *aml_buffer(int buffer_size, uint8_t *byte_list);
+ Aml *aml_resource_template(void);
+-- 
+1.8.3.1
+

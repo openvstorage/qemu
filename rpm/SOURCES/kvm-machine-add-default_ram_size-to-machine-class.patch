@@ -1,0 +1,184 @@
+From 54e356019b3893f7c1e366821dee9a4b86a42040 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:00 +0200
+Subject: [PATCH 38/58] machine: add default_ram_size to machine class
+
+Message-id: <1437715580-14817-9-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67125
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 08/28] machine: add default_ram_size to machine class
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Machines types can have different requirement for default ram
+size. Introduce a member in the machine class and set the current
+default_ram_size to 128MB.
+
+For QEMUMachine types override the value during the registration of
+the machine and for MachineClass introduce the generic class init
+setting the default_ram_size.
+
+Add helpers [K,M,G,T,P,E]_BYTE for better readability and easy usage
+
+Signed-off-by: Nikunj A Dadhania <nikunj@linux.vnet.ibm.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 076b35b5a56bca57c4aa41044ed304fe9c45d6c5)
+
+Downstream note: We actually only need the extra defines in qemu-common.h
+as a prerequisite here.  The rest is unneeded but harmless, since we only
+support running qemu via libvirt, which will always override qemu's
+internal defaults for ram size.
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/core/machine.c     |  9 +++++++++
+ include/hw/boards.h   |  1 +
+ include/qemu-common.h |  6 ++++++
+ vl.c                  | 30 ++++++++++++++++--------------
+ 4 files changed, 32 insertions(+), 14 deletions(-)
+
+diff --git a/hw/core/machine.c b/hw/core/machine.c
+index 25c45e6..ac4654e 100644
+--- a/hw/core/machine.c
++++ b/hw/core/machine.c
+@@ -294,6 +294,14 @@ static void machine_init_notify(Notifier *notifier, void *data)
+     foreach_dynamic_sysbus_device(error_on_sysbus_device, NULL);
+ }
+ 
++static void machine_class_init(ObjectClass *oc, void *data)
++{
++    MachineClass *mc = MACHINE_CLASS(oc);
++
++    /* Default 128 MB as guest ram size */
++    mc->default_ram_size = 128 * M_BYTE;
++}
++
+ static void machine_initfn(Object *obj)
+ {
+     MachineState *ms = MACHINE(obj);
+@@ -463,6 +471,7 @@ static const TypeInfo machine_info = {
+     .parent = TYPE_OBJECT,
+     .abstract = true,
+     .class_size = sizeof(MachineClass),
++    .class_init    = machine_class_init,
+     .instance_size = sizeof(MachineState),
+     .instance_init = machine_initfn,
+     .instance_finalize = machine_finalize,
+diff --git a/include/hw/boards.h b/include/hw/boards.h
+index 1f11881..48a604b 100644
+--- a/include/hw/boards.h
++++ b/include/hw/boards.h
+@@ -119,6 +119,7 @@ struct MachineClass {
+     const char *default_display;
+     GlobalProperty *compat_props;
+     const char *hw_version;
++    ram_addr_t default_ram_size;
+ 
+     HotplugHandler *(*get_hotplug_handler)(MachineState *machine,
+                                            DeviceState *dev);
+diff --git a/include/qemu-common.h b/include/qemu-common.h
+index 1b5cffb..b8eb7cb 100644
+--- a/include/qemu-common.h
++++ b/include/qemu-common.h
+@@ -186,6 +186,12 @@ int64_t strtosz(const char *nptr, char **end);
+ int64_t strtosz_suffix(const char *nptr, char **end, const char default_suffix);
+ int64_t strtosz_suffix_unit(const char *nptr, char **end,
+                             const char default_suffix, int64_t unit);
++#define K_BYTE     (1ULL << 10)
++#define M_BYTE     (1ULL << 20)
++#define G_BYTE     (1ULL << 30)
++#define T_BYTE     (1ULL << 40)
++#define P_BYTE     (1ULL << 50)
++#define E_BYTE     (1ULL << 60)
+ 
+ /* used to print char* safely */
+ #define STR_OR_NULL(str) ((str) ? (str) : "null")
+diff --git a/vl.c b/vl.c
+index 30631ac..0444b6f 100644
+--- a/vl.c
++++ b/vl.c
+@@ -120,8 +120,6 @@ int main(int argc, char **argv)
+ #include "qom/object_interfaces.h"
+ #include "qapi-event.h"
+ 
+-#define DEFAULT_RAM_SIZE 128
+-
+ #define MAX_VIRTIO_CONSOLES 1
+ #define MAX_SCLP_CONSOLES 1
+ 
+@@ -1309,7 +1307,11 @@ void hmp_usb_del(Monitor *mon, const QDict *qdict)
+ 
+ MachineState *current_machine;
+ 
+-static void machine_class_init(ObjectClass *oc, void *data)
++/*
++ * Transitional class registration/init used for converting from
++ * legacy QEMUMachine to MachineClass.
++ */
++static void qemu_machine_class_init(ObjectClass *oc, void *data)
+ {
+     MachineClass *mc = MACHINE_CLASS(oc);
+     QEMUMachine *qm = data;
+@@ -1347,7 +1349,7 @@ int qemu_register_machine(QEMUMachine *m)
+     TypeInfo ti = {
+         .name       = name,
+         .parent     = TYPE_MACHINE,
+-        .class_init = machine_class_init,
++        .class_init = qemu_machine_class_init,
+         .class_data = (void *)m,
+     };
+ 
+@@ -2652,13 +2654,13 @@ out:
+     return 0;
+ }
+ 
+-static void set_memory_options(uint64_t *ram_slots, ram_addr_t *maxram_size)
++static void set_memory_options(uint64_t *ram_slots, ram_addr_t *maxram_size,
++                               MachineClass *mc)
+ {
+     uint64_t sz;
+     const char *mem_str;
+     const char *maxmem_str, *slots_str;
+-    const ram_addr_t default_ram_size = (ram_addr_t)DEFAULT_RAM_SIZE *
+-                                        1024 * 1024;
++    const ram_addr_t default_ram_size = mc->default_ram_size;
+     QemuOpts *opts = qemu_find_opts_singleton("memory");
+ 
+     sz = 0;
+@@ -3776,7 +3778,13 @@ int main(int argc, char **argv, char **envp)
+         machine_class = machine_parse(optarg);
+     }
+ 
+-    set_memory_options(&ram_slots, &maxram_size);
++    if (machine_class == NULL) {
++        fprintf(stderr, "No machine specified, and there is no default.\n"
++                "Use -machine help to list supported machines!\n");
++        exit(1);
++    }
++
++    set_memory_options(&ram_slots, &maxram_size, machine_class);
+ 
+     loc_set_none();
+ 
+@@ -3805,12 +3813,6 @@ int main(int argc, char **argv, char **envp)
+     }
+ #endif
+ 
+-    if (machine_class == NULL) {
+-        fprintf(stderr, "No machine specified, and there is no default.\n"
+-                "Use -machine help to list supported machines!\n");
+-        exit(1);
+-    }
+-
+     current_machine = MACHINE(object_new(object_class_get_name(
+                           OBJECT_CLASS(machine_class))));
+     if (machine_help_func(qemu_get_machine_opts(), current_machine)) {
+-- 
+1.8.3.1
+

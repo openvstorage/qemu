@@ -1,0 +1,43 @@
+From 2455aaf75afeb5f4802fd4137e0186030aaa17cc Mon Sep 17 00:00:00 2001
+From: John Snow <jsnow@redhat.com>
+Date: Thu, 21 Jan 2016 17:23:21 +0100
+Subject: [PATCH 2/2] ahci: clean up ncq_tfs->used on error
+
+Message-id: <1453397001-14853-1-git-send-email-jsnow@redhat.com>
+Patchwork-id: 68837
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH] ahci: clean up ncq_tfs->used on error
+Bugzilla: 1297292
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: P J P <ppandit@redhat.com>
+
+This is a fix for CVE-2016-1568.
+
+Upstream fix was 4ab0359a8ae182a7ac5c99609667273167703fab, but that
+does not apply to 2.3.0. The equivalent fix is adding ncq_tfs->used = 0
+in the case we received an NCQ command that we do not support.
+
+See BZ comment #1 for why the -ECANCELED pathway does not also need to
+be fixed.
+
+Signed-off-by: John Snow <jsnow@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ide/ahci.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/ide/ahci.c b/hw/ide/ahci.c
+index 24fe3ea..5ad9970 100644
+--- a/hw/ide/ahci.c
++++ b/hw/ide/ahci.c
+@@ -986,6 +986,7 @@ static void process_ncq_command(AHCIState *s, int port, uint8_t *cmd_fis,
+                         "error: tried to process non-NCQ command as NCQ\n");
+             }
+             qemu_sglist_destroy(&ncq_tfs->sglist);
++            ncq_tfs->used = 0;
+     }
+ }
+ 
+-- 
+1.8.3.1
+

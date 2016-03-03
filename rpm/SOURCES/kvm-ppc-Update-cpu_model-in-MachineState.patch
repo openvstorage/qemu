@@ -1,0 +1,211 @@
+From a708d3ae23c910331724f805e956192d738f93f7 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:13 +0200
+Subject: [PATCH 51/58] ppc: Update cpu_model in MachineState
+
+Message-id: <1437715580-14817-22-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67138
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 21/28] ppc: Update cpu_model in MachineState
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Keep cpu_model field in MachineState uptodate so that it can be used
+from the CPU hotplug path.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 19fb2c36e2475a2c68e7287e0e089d858dd7cc50)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1211117
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+---
+ hw/ppc/mac_newworld.c  | 10 +++++-----
+ hw/ppc/mac_oldworld.c  |  7 +++----
+ hw/ppc/ppc440_bamboo.c |  7 +++----
+ hw/ppc/prep.c          |  7 +++----
+ hw/ppc/spapr.c         |  7 +++----
+ hw/ppc/virtex_ml507.c  |  7 +++----
+ 6 files changed, 20 insertions(+), 25 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/mac_newworld.c  | 10 +++++-----
+ hw/ppc/mac_oldworld.c  |  7 +++----
+ hw/ppc/ppc440_bamboo.c |  7 +++----
+ hw/ppc/prep.c          |  7 +++----
+ hw/ppc/spapr.c         |  7 +++----
+ hw/ppc/virtex_ml507.c  |  7 +++----
+ 6 files changed, 20 insertions(+), 25 deletions(-)
+
+diff --git a/hw/ppc/mac_newworld.c b/hw/ppc/mac_newworld.c
+index a365bf9..c35cb14 100644
+--- a/hw/ppc/mac_newworld.c
++++ b/hw/ppc/mac_newworld.c
+@@ -145,7 +145,6 @@ static void ppc_core99_reset(void *opaque)
+ static void ppc_core99_init(MachineState *machine)
+ {
+     ram_addr_t ram_size = machine->ram_size;
+-    const char *cpu_model = machine->cpu_model;
+     const char *kernel_filename = machine->kernel_filename;
+     const char *kernel_cmdline = machine->kernel_cmdline;
+     const char *initrd_filename = machine->initrd_filename;
+@@ -182,14 +181,15 @@ static void ppc_core99_init(MachineState *machine)
+     linux_boot = (kernel_filename != NULL);
+ 
+     /* init CPUs */
+-    if (cpu_model == NULL)
++    if (machine->cpu_model == NULL) {
+ #ifdef TARGET_PPC64
+-        cpu_model = "970fx";
++        machine->cpu_model = "970fx";
+ #else
+-        cpu_model = "G4";
++        machine->cpu_model = "G4";
+ #endif
++    }
+     for (i = 0; i < smp_cpus; i++) {
+-        cpu = cpu_ppc_init(cpu_model);
++        cpu = cpu_ppc_init(machine->cpu_model);
+         if (cpu == NULL) {
+             fprintf(stderr, "Unable to find PowerPC CPU definition\n");
+             exit(1);
+diff --git a/hw/ppc/mac_oldworld.c b/hw/ppc/mac_oldworld.c
+index f26133d..1f7841e 100644
+--- a/hw/ppc/mac_oldworld.c
++++ b/hw/ppc/mac_oldworld.c
+@@ -75,7 +75,6 @@ static void ppc_heathrow_reset(void *opaque)
+ static void ppc_heathrow_init(MachineState *machine)
+ {
+     ram_addr_t ram_size = machine->ram_size;
+-    const char *cpu_model = machine->cpu_model;
+     const char *kernel_filename = machine->kernel_filename;
+     const char *kernel_cmdline = machine->kernel_cmdline;
+     const char *initrd_filename = machine->initrd_filename;
+@@ -107,10 +106,10 @@ static void ppc_heathrow_init(MachineState *machine)
+     linux_boot = (kernel_filename != NULL);
+ 
+     /* init CPUs */
+-    if (cpu_model == NULL)
+-        cpu_model = "G3";
++    if (machine->cpu_model == NULL)
++        machine->cpu_model = "G3";
+     for (i = 0; i < smp_cpus; i++) {
+-        cpu = cpu_ppc_init(cpu_model);
++        cpu = cpu_ppc_init(machine->cpu_model);
+         if (cpu == NULL) {
+             fprintf(stderr, "Unable to find PowerPC CPU definition\n");
+             exit(1);
+diff --git a/hw/ppc/ppc440_bamboo.c b/hw/ppc/ppc440_bamboo.c
+index 778970a..032fa80 100644
+--- a/hw/ppc/ppc440_bamboo.c
++++ b/hw/ppc/ppc440_bamboo.c
+@@ -159,7 +159,6 @@ static void main_cpu_reset(void *opaque)
+ static void bamboo_init(MachineState *machine)
+ {
+     ram_addr_t ram_size = machine->ram_size;
+-    const char *cpu_model = machine->cpu_model;
+     const char *kernel_filename = machine->kernel_filename;
+     const char *kernel_cmdline = machine->kernel_cmdline;
+     const char *initrd_filename = machine->initrd_filename;
+@@ -184,10 +183,10 @@ static void bamboo_init(MachineState *machine)
+     int i;
+ 
+     /* Setup CPU. */
+-    if (cpu_model == NULL) {
+-        cpu_model = "440EP";
++    if (machine->cpu_model == NULL) {
++        machine->cpu_model = "440EP";
+     }
+-    cpu = cpu_ppc_init(cpu_model);
++    cpu = cpu_ppc_init(machine->cpu_model);
+     if (cpu == NULL) {
+         fprintf(stderr, "Unable to initialize CPU!\n");
+         exit(1);
+diff --git a/hw/ppc/prep.c b/hw/ppc/prep.c
+index 7f52662..ea3c67d 100644
+--- a/hw/ppc/prep.c
++++ b/hw/ppc/prep.c
+@@ -506,7 +506,6 @@ static int PPC_NVRAM_set_params (Nvram *nvram, uint16_t NVRAM_size,
+ static void ppc_prep_init(MachineState *machine)
+ {
+     ram_addr_t ram_size = machine->ram_size;
+-    const char *cpu_model = machine->cpu_model;
+     const char *kernel_filename = machine->kernel_filename;
+     const char *kernel_cmdline = machine->kernel_cmdline;
+     const char *initrd_filename = machine->initrd_filename;
+@@ -537,10 +536,10 @@ static void ppc_prep_init(MachineState *machine)
+     linux_boot = (kernel_filename != NULL);
+ 
+     /* init CPUs */
+-    if (cpu_model == NULL)
+-        cpu_model = "602";
++    if (machine->cpu_model == NULL)
++        machine->cpu_model = "602";
+     for (i = 0; i < smp_cpus; i++) {
+-        cpu = cpu_ppc_init(cpu_model);
++        cpu = cpu_ppc_init(machine->cpu_model);
+         if (cpu == NULL) {
+             fprintf(stderr, "Unable to find PowerPC CPU definition\n");
+             exit(1);
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index d9c9301..956f80f 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1440,7 +1440,6 @@ static void spapr_cpu_init(sPAPRMachineState *spapr, PowerPCCPU *cpu)
+ static void ppc_spapr_init(MachineState *machine)
+ {
+     sPAPRMachineState *spapr = SPAPR_MACHINE(machine);
+-    const char *cpu_model = machine->cpu_model;
+     const char *kernel_filename = machine->kernel_filename;
+     const char *kernel_cmdline = machine->kernel_cmdline;
+     const char *initrd_filename = machine->initrd_filename;
+@@ -1520,11 +1519,11 @@ static void ppc_spapr_init(MachineState *machine)
+                                   XICS_IRQS);
+ 
+     /* init CPUs */
+-    if (cpu_model == NULL) {
+-        cpu_model = kvm_enabled() ? "host" : "POWER7";
++    if (machine->cpu_model == NULL) {
++        machine->cpu_model = kvm_enabled() ? "host" : "POWER7";
+     }
+     for (i = 0; i < smp_cpus; i++) {
+-        cpu = cpu_ppc_init(cpu_model);
++        cpu = cpu_ppc_init(machine->cpu_model);
+         if (cpu == NULL) {
+             fprintf(stderr, "Unable to find PowerPC CPU definition\n");
+             exit(1);
+diff --git a/hw/ppc/virtex_ml507.c b/hw/ppc/virtex_ml507.c
+index 6ebd5be..f33d398 100644
+--- a/hw/ppc/virtex_ml507.c
++++ b/hw/ppc/virtex_ml507.c
+@@ -197,7 +197,6 @@ static int xilinx_load_device_tree(hwaddr addr,
+ static void virtex_init(MachineState *machine)
+ {
+     ram_addr_t ram_size = machine->ram_size;
+-    const char *cpu_model = machine->cpu_model;
+     const char *kernel_filename = machine->kernel_filename;
+     const char *kernel_cmdline = machine->kernel_cmdline;
+     hwaddr initrd_base = 0;
+@@ -214,11 +213,11 @@ static void virtex_init(MachineState *machine)
+     int i;
+ 
+     /* init CPUs */
+-    if (cpu_model == NULL) {
+-        cpu_model = "440-Xilinx";
++    if (machine->cpu_model == NULL) {
++        machine->cpu_model = "440-Xilinx";
+     }
+ 
+-    cpu = ppc440_init_xilinx(&ram_size, 1, cpu_model, 400000000);
++    cpu = ppc440_init_xilinx(&ram_size, 1, machine->cpu_model, 400000000);
+     env = &cpu->env;
+     qemu_register_reset(main_cpu_reset, cpu);
+ 
+-- 
+1.8.3.1
+

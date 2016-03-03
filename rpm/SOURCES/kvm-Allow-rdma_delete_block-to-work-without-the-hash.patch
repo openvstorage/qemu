@@ -1,0 +1,122 @@
+From 836a7ec1ea145d18ad718c9215404f92bf48dc5f Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:42:00 +0200
+Subject: [PATCH 20/58] Allow rdma_delete_block to work without the hash
+
+Message-id: <1436794926-1598-12-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66980
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 11/17] Allow rdma_delete_block to work without the hash
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+In the next patch we remove the hash on the destination,
+rdma_delete_block does two things with the hash which can be avoided:
+  a) The caller passes the offset and rdma_delete_block looks it up
+     in the hash; fixed by getting the caller to pass the block
+  b) The hash gets recreated after deletion; fixed by making that
+     conditional on the hash being initialised.
+
+While this function is currently only used during cleanup, Michael
+asked that we keep it general for future dynamic block registration
+work.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 03fcab38617ac9bcd6ed28cb1b6a0ecd8fb3bc82)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/rdma.c | 27 ++++++++++++++++-----------
+ trace-events     |  2 +-
+ 2 files changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/migration/rdma.c b/migration/rdma.c
+index 9259865..9784d64 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -617,16 +617,19 @@ static int qemu_rdma_init_ram_blocks(RDMAContext *rdma)
+     return 0;
+ }
+ 
+-static int rdma_delete_block(RDMAContext *rdma, ram_addr_t block_offset)
++/*
++ * Note: If used outside of cleanup, the caller must ensure that the destination
++ * block structures are also updated
++ */
++static int rdma_delete_block(RDMAContext *rdma, RDMALocalBlock *block)
+ {
+     RDMALocalBlocks *local = &rdma->local_ram_blocks;
+-    RDMALocalBlock *block = g_hash_table_lookup(rdma->blockmap,
+-        (void *) block_offset);
+     RDMALocalBlock *old = local->block;
+     int x;
+ 
+-    assert(block);
+-
++    if (rdma->blockmap) {
++        g_hash_table_remove(rdma->blockmap, (void *)(uintptr_t)block->offset);
++    }
+     if (block->pmr) {
+         int j;
+ 
+@@ -659,8 +662,11 @@ static int rdma_delete_block(RDMAContext *rdma, ram_addr_t block_offset)
+     g_free(block->block_name);
+     block->block_name = NULL;
+ 
+-    for (x = 0; x < local->nb_blocks; x++) {
+-        g_hash_table_remove(rdma->blockmap, (void *)(uintptr_t)old[x].offset);
++    if (rdma->blockmap) {
++        for (x = 0; x < local->nb_blocks; x++) {
++            g_hash_table_remove(rdma->blockmap,
++                                (void *)(uintptr_t)old[x].offset);
++        }
+     }
+ 
+     if (local->nb_blocks > 1) {
+@@ -682,8 +688,7 @@ static int rdma_delete_block(RDMAContext *rdma, ram_addr_t block_offset)
+         local->block = NULL;
+     }
+ 
+-    trace_rdma_delete_block(local->nb_blocks,
+-                           (uintptr_t)block->local_host_addr,
++    trace_rdma_delete_block(block, (uintptr_t)block->local_host_addr,
+                            block->offset, block->length,
+                             (uintptr_t)(block->local_host_addr + block->length),
+                            BITS_TO_LONGS(block->nb_chunks) *
+@@ -693,7 +698,7 @@ static int rdma_delete_block(RDMAContext *rdma, ram_addr_t block_offset)
+ 
+     local->nb_blocks--;
+ 
+-    if (local->nb_blocks) {
++    if (local->nb_blocks && rdma->blockmap) {
+         for (x = 0; x < local->nb_blocks; x++) {
+             g_hash_table_insert(rdma->blockmap,
+                                 (void *)(uintptr_t)local->block[x].offset,
+@@ -2221,7 +2226,7 @@ static void qemu_rdma_cleanup(RDMAContext *rdma)
+ 
+     if (rdma->local_ram_blocks.block) {
+         while (rdma->local_ram_blocks.nb_blocks) {
+-            rdma_delete_block(rdma, rdma->local_ram_blocks.block->offset);
++            rdma_delete_block(rdma, &rdma->local_ram_blocks.block[0]);
+         }
+     }
+ 
+diff --git a/trace-events b/trace-events
+index 5a29d0a..abb0318 100644
+--- a/trace-events
++++ b/trace-events
+@@ -1436,7 +1436,7 @@ qemu_rdma_write_one_sendreg(uint64_t chunk, int len, int index, int64_t offset)
+ qemu_rdma_write_one_top(uint64_t chunks, uint64_t size) "Writing %" PRIu64 " chunks, (%" PRIu64 " MB)"
+ qemu_rdma_write_one_zero(uint64_t chunk, int len, int index, int64_t offset) "Entire chunk is zero, sending compress: %" PRIu64 " for %d bytes, index: %d, offset: %" PRId64
+ rdma_add_block(const char *block_name, int block, uint64_t addr, uint64_t offset, uint64_t len, uint64_t end, uint64_t bits, int chunks) "Added Block: '%s':%d, addr: %" PRIu64 ", offset: %" PRIu64 " length: %" PRIu64 " end: %" PRIu64 " bits %" PRIu64 " chunks %d"
+-rdma_delete_block(int block, uint64_t addr, uint64_t offset, uint64_t len, uint64_t end, uint64_t bits, int chunks) "Deleted Block: %d, addr: %" PRIu64 ", offset: %" PRIu64 " length: %" PRIu64 " end: %" PRIu64 " bits %" PRIu64 " chunks %d"
++rdma_delete_block(void *block, uint64_t addr, uint64_t offset, uint64_t len, uint64_t end, uint64_t bits, int chunks) "Deleted Block: %p, addr: %" PRIu64 ", offset: %" PRIu64 " length: %" PRIu64 " end: %" PRIu64 " bits %" PRIu64 " chunks %d"
+ rdma_start_incoming_migration(void) ""
+ rdma_start_incoming_migration_after_dest_init(void) ""
+ rdma_start_incoming_migration_after_rdma_listen(void) ""
+-- 
+1.8.3.1
+

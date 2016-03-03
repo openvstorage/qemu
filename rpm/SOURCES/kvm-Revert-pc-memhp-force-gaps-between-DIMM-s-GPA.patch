@@ -1,0 +1,107 @@
+From decc3bf62bbb465c39ca726752b4d7232572e789 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 6 Nov 2015 15:25:17 +0100
+Subject: [PATCH 10/11] Revert "pc: memhp: force gaps between DIMM's GPA"
+
+Message-id: <1446823518-162714-2-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68301
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 1/2] Revert "pc: memhp: force gaps between DIMM's GPA"
+Bugzilla: 1278282
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Radim Krcmar <rkrcmar@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+This reverts RHEL commit dd68c78e38f16fe4342fbb6977e6a41349c468fd
+Upstream commit message:
+    This reverts commit aa8580cddf011e8cedcf87f7a0fdea7549fc4704.
+
+    As described in
+    http://article.gmane.org/gmane.comp.emulators.qemu/371432
+    that commit causes linux guests to crash on memory hot-unplug.
+
+    The original problem it's trying to solve has now
+    been addressed within virtio.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+
+cherry-picked from commit: 340065e5a11a515382c8b1112424c97e86ad2a3f
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c         | 6 ++----
+ hw/i386/pc_piix.c    | 1 -
+ hw/i386/pc_q35.c     | 1 -
+ include/hw/i386/pc.h | 1 -
+ 4 files changed, 2 insertions(+), 7 deletions(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index a60bcb5..8477b5e 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1686,7 +1686,6 @@ static void pc_dimm_plug(HotplugHandler *hotplug_dev,
+     HotplugHandlerClass *hhc;
+     Error *local_err = NULL;
+     PCMachineState *pcms = PC_MACHINE(hotplug_dev);
+-    PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
+     PCDIMMDevice *dimm = PC_DIMM(dev);
+     PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
+     MemoryRegion *mr = ddc->get_memory_region(dimm);
+@@ -1702,8 +1701,8 @@ static void pc_dimm_plug(HotplugHandler *hotplug_dev,
+         goto out;
+     }
+ 
+-    pc_dimm_memory_plug(dev, &pcms->hotplug_memory, mr, align,
+-                        pcmc->inter_dimm_gap, &local_err);
++    pc_dimm_memory_plug(dev, &pcms->hotplug_memory, mr, align, false,
++                        &local_err);
+     if (local_err) {
+         goto out;
+     }
+@@ -1953,7 +1952,6 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
+     PCMachineClass *pcmc = PC_MACHINE_CLASS(oc);
+     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
+ 
+-    pcmc->inter_dimm_gap = true;
+     pcmc->get_hotplug_handler = mc->get_hotplug_handler;
+     mc->get_hotplug_handler = pc_get_hotpug_handler;
+     mc->cpu_index_to_socket_id = pc_cpu_index_to_socket_id;
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 4efd8c7..61669bf 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -1082,7 +1082,6 @@ static void pc_compat_rhel710(MachineState *machine)
+ 
+     /* From pc_i440fx_2_4_machine_options */
+     pcmc->broken_reserved_end = true;
+-    pcmc->inter_dimm_gap = false;
+ }
+ 
+ static void pc_init_rhel710(MachineState *machine)
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index c2c2e9f..1ad706d 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -600,7 +600,6 @@ static void pc_q35_compat_rhel710(MachineState *machine)
+ 
+     /* From pc_q35_2_4_machine_options */
+     pcmc->broken_reserved_end = true;
+-    pcmc->inter_dimm_gap = false;
+ }
+ 
+ static void pc_q35_init_rhel710(MachineState *machine)
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index 8482c3a..e7361ba 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -56,7 +56,6 @@ struct PCMachineClass {
+ 
+     /*< public >*/
+     bool broken_reserved_end;
+-    bool inter_dimm_gap;
+     HotplugHandler *(*get_hotplug_handler)(MachineState *machine,
+                                            DeviceState *dev);
+ };
+-- 
+1.8.3.1
+

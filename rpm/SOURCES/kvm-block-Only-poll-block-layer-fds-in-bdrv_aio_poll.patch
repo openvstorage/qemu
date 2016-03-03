@@ -1,0 +1,40 @@
+From 537caef4272d75b6fa5f873b7e18471237ec3b57 Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:11 +0200
+Subject: [PATCH 22/22] block: Only poll block layer fds in bdrv_aio_poll
+
+Message-id: <1442456951-3827-13-git-send-email-famz@redhat.com>
+Patchwork-id: 67803
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 12/12] block: Only poll block layer fds in bdrv_aio_poll
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+So that external events are not processed in nested event loops.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+---
+ block.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/block.c b/block.c
+index 461cd1f..7e5763b 100644
+--- a/block.c
++++ b/block.c
+@@ -6367,5 +6367,6 @@ BlockAcctStats *bdrv_get_stats(BlockDriverState *bs)
+ 
+ bool bdrv_aio_poll(AioContext *ctx, bool blocking)
+ {
+-    return aio_poll(ctx, blocking);
++    return aio_poll_clients(ctx, blocking,
++                            AIO_CLIENT_PROTOCOL | AIO_CLIENT_CONTEXT);
+ }
+-- 
+1.8.3.1
+

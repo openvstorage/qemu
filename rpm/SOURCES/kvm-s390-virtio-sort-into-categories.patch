@@ -1,0 +1,97 @@
+From b3527d15b78d4a235036171ae650d2ef5d4b6798 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:18 +0200
+Subject: [PATCH 044/100] s390-virtio: sort into categories
+
+Message-id: <1436260751-25015-16-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66789
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 15/68] s390-virtio: sort into categories
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+Sort the various s390-virtio devices into the same categories as their
+virtio-pci counterparts.
+
+Reviewed-by: David Hildenbrand <dahi@linux.vnet.ibm.com>
+Acked-by: Christian Borntraeger <borntraeger@de.ibm.com>
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+(cherry picked from commit 4d1866de9422c4b359f61819ee01efc9b988187b)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/s390x/s390-virtio-bus.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/hw/s390x/s390-virtio-bus.c b/hw/s390x/s390-virtio-bus.c
+index 5a96ecc..bb25487 100644
+--- a/hw/s390x/s390-virtio-bus.c
++++ b/hw/s390x/s390-virtio-bus.c
+@@ -555,6 +555,7 @@ static void s390_virtio_net_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = s390_virtio_net_realize;
+     dc->props = s390_virtio_net_properties;
++    set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
+ }
+ 
+ static const TypeInfo s390_virtio_net = {
+@@ -568,8 +569,10 @@ static const TypeInfo s390_virtio_net = {
+ static void s390_virtio_blk_class_init(ObjectClass *klass, void *data)
+ {
+     VirtIOS390DeviceClass *k = VIRTIO_S390_DEVICE_CLASS(klass);
++    DeviceClass *dc = DEVICE_CLASS(klass);
+ 
+     k->realize = s390_virtio_blk_realize;
++    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+ static const TypeInfo s390_virtio_blk = {
+@@ -591,6 +594,7 @@ static void s390_virtio_serial_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = s390_virtio_serial_realize;
+     dc->props = s390_virtio_serial_properties;
++    set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
+ }
+ 
+ static const TypeInfo s390_virtio_serial = {
+@@ -613,6 +617,7 @@ static void s390_virtio_rng_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = s390_virtio_rng_realize;
+     dc->props = s390_virtio_rng_properties;
++    set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+ }
+ 
+ static const TypeInfo s390_virtio_rng = {
+@@ -670,6 +675,7 @@ static void s390_virtio_scsi_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = s390_virtio_scsi_realize;
+     dc->props = s390_virtio_scsi_properties;
++    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+ static const TypeInfo s390_virtio_scsi = {
+@@ -693,6 +699,7 @@ static void s390_vhost_scsi_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = s390_vhost_scsi_realize;
+     dc->props = s390_vhost_scsi_properties;
++    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+ static const TypeInfo s390_vhost_scsi = {
+@@ -716,8 +723,10 @@ static int s390_virtio_bridge_init(SysBusDevice *dev)
+ static void s390_virtio_bridge_class_init(ObjectClass *klass, void *data)
+ {
+     SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
++    DeviceClass *dc = DEVICE_CLASS(klass);
+ 
+     k->init = s390_virtio_bridge_init;
++    set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
+ }
+ 
+ static const TypeInfo s390_virtio_bridge_info = {
+-- 
+1.8.3.1
+

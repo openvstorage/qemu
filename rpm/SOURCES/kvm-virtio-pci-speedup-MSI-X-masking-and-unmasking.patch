@@ -1,0 +1,114 @@
+From 9dbf3178a75fc8089b32c379eb7b168b9e058363 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:45 +0200
+Subject: [PATCH 09/20] virtio-pci: speedup MSI-X masking and unmasking
+
+Message-id: <1434607916-15166-10-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66307
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 09/20] virtio-pci: speedup MSI-X masking and unmasking
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+This patch tries to speed up the MSI-X masking and unmasking through
+the mapping between vector and queues. With this patch it will there's
+no need to go through all possible virtqueues, which may help to
+reduce the time spent when doing MSI-X masking/unmasking a single
+vector when more than hundreds or even thousands of virtqueues were
+supported.
+
+Tested with 80 queue pairs virito-net-pci by changing the smp affinity
+in the background and doing netperf in the same time:
+
+Before the patch:
+5711.70 Gbits/sec
+After the patch:
+6830.98 Gbits/sec
+
+About 19.6% improvements in throughput.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 851c2a75a6e80c8aa5e713864d98cfb512e7229b)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 40 +++++++++++++++++++++-------------------
+ 1 file changed, 21 insertions(+), 19 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 6b064b9..b91e799 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -630,28 +630,30 @@ static int virtio_pci_vector_unmask(PCIDevice *dev, unsigned vector,
+ {
+     VirtIOPCIProxy *proxy = container_of(dev, VirtIOPCIProxy, pci_dev);
+     VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
+-    int ret, queue_no;
++    VirtQueue *vq = virtio_vector_first_queue(vdev, vector);
++    int ret, index, unmasked = 0;
+ 
+-    for (queue_no = 0; queue_no < proxy->nvqs_with_notifiers; queue_no++) {
+-        if (!virtio_queue_get_num(vdev, queue_no)) {
++    while (vq) {
++        index = virtio_get_queue_index(vq);
++        if (!virtio_queue_get_num(vdev, index)) {
+             break;
+         }
+-        if (virtio_queue_vector(vdev, queue_no) != vector) {
+-            continue;
+-        }
+-        ret = virtio_pci_vq_vector_unmask(proxy, queue_no, vector, msg);
++        ret = virtio_pci_vq_vector_unmask(proxy, index, vector, msg);
+         if (ret < 0) {
+             goto undo;
+         }
++        vq = virtio_vector_next_queue(vq);
++        ++unmasked;
+     }
++
+     return 0;
+ 
+ undo:
+-    while (--queue_no >= 0) {
+-        if (virtio_queue_vector(vdev, queue_no) != vector) {
+-            continue;
+-        }
+-        virtio_pci_vq_vector_mask(proxy, queue_no, vector);
++    vq = virtio_vector_first_queue(vdev, vector);
++    while (vq && --unmasked >= 0) {
++        index = virtio_get_queue_index(vq);
++        virtio_pci_vq_vector_mask(proxy, index, vector);
++        vq = virtio_vector_next_queue(vq);
+     }
+     return ret;
+ }
+@@ -660,16 +662,16 @@ static void virtio_pci_vector_mask(PCIDevice *dev, unsigned vector)
+ {
+     VirtIOPCIProxy *proxy = container_of(dev, VirtIOPCIProxy, pci_dev);
+     VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
+-    int queue_no;
++    VirtQueue *vq = virtio_vector_first_queue(vdev, vector);
++    int index;
+ 
+-    for (queue_no = 0; queue_no < proxy->nvqs_with_notifiers; queue_no++) {
+-        if (!virtio_queue_get_num(vdev, queue_no)) {
++    while (vq) {
++        index = virtio_get_queue_index(vq);
++        if (!virtio_queue_get_num(vdev, index)) {
+             break;
+         }
+-        if (virtio_queue_vector(vdev, queue_no) != vector) {
+-            continue;
+-        }
+-        virtio_pci_vq_vector_mask(proxy, queue_no, vector);
++        virtio_pci_vq_vector_mask(proxy, index, vector);
++        vq = virtio_vector_next_queue(vq);
+     }
+ }
+ 
+-- 
+1.8.3.1
+

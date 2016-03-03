@@ -1,0 +1,53 @@
+From a22fb2489bb1ce60e3c2c9efb2d75f9ef711a7d7 Mon Sep 17 00:00:00 2001
+From: Radim Krcmar <rkrcmar@redhat.com>
+Date: Tue, 4 Aug 2015 20:27:16 +0200
+Subject: [PATCH 4/4] target-i386: fix IvyBridge xlevel in PC_COMPAT_2_3
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1438720036-24588-3-git-send-email-rkrcmar@redhat.com>
+Patchwork-id: 67311
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 2/2] target-i386: fix IvyBridge xlevel in PC_COMPAT_2_3
+Bugzilla: 1223317
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Yan Vugenfirer <yvugenfi@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Bandan Das <bsd@redhat.com>
+
+Previous patch changed xlevel and missed the compatibility code.
+
+Fixes: 3046bb5debc8 ("target-i386: emulate CPUID level of real hardware")
+Signed-off-by: Radim Krčmář <rkrcmar@redhat.com>
+Reviewed-by: Andreas Färber <afaerber@suse.de>
+Reviewed-by: Eduardo Habkost <ehabkost@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+(cherry picked from commit 27751aabd1e0359d84314bc230beccdef2168d1f)
+
+Subject talks about non-existing define, the patch modifies
+PC_RHEL7_1_COMPAT.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/i386/pc.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index eb911f6..4318baf 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -574,6 +574,10 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
+             .property = "xlevel",\
+             .value    = stringify(0x8000000a),\
+         },{\
++            .driver   = "IvyBridge" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
+             .driver   = "Haswell" "-" TYPE_X86_CPU,\
+             .property = "xlevel",\
+             .value    = stringify(0x8000000a),\
+-- 
+1.8.3.1
+

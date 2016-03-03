@@ -1,0 +1,64 @@
+From 9524df7825fb4129ced104f1615281634936ee96 Mon Sep 17 00:00:00 2001
+From: Max Reitz <mreitz@redhat.com>
+Date: Fri, 18 Sep 2015 14:19:08 +0200
+Subject: [PATCH 01/10] block-backend: Expose bdrv_write_zeroes()
+
+Message-id: <1442585950-6502-2-git-send-email-mreitz@redhat.com>
+Patchwork-id: 67831
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 1/3] block-backend: Expose bdrv_write_zeroes()
+Bugzilla: 1256541
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+
+From: Kevin Wolf <kwolf@redhat.com>
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Reviewed-by: Max Reitz <mreitz@redhat.com>
+(cherry picked from commit 0df89e8e6f62aea32a7302e73a86b7bfe5821018)
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block/block-backend.c          | 11 +++++++++++
+ include/sysemu/block-backend.h |  2 ++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/block/block-backend.c b/block/block-backend.c
+index 48b6e4c..93e46f3 100644
+--- a/block/block-backend.c
++++ b/block/block-backend.c
+@@ -515,6 +515,17 @@ int blk_write(BlockBackend *blk, int64_t sector_num, const uint8_t *buf,
+     return bdrv_write(blk->bs, sector_num, buf, nb_sectors);
+ }
+ 
++int blk_write_zeroes(BlockBackend *blk, int64_t sector_num,
++                     int nb_sectors, BdrvRequestFlags flags)
++{
++    int ret = blk_check_request(blk, sector_num, nb_sectors);
++    if (ret < 0) {
++        return ret;
++    }
++
++    return bdrv_write_zeroes(blk->bs, sector_num, nb_sectors, flags);
++}
++
+ static void error_callback_bh(void *opaque)
+ {
+     struct BlockBackendAIOCB *acb = opaque;
+diff --git a/include/sysemu/block-backend.h b/include/sysemu/block-backend.h
+index 77e9b9c..b4a4d5e 100644
+--- a/include/sysemu/block-backend.h
++++ b/include/sysemu/block-backend.h
+@@ -87,6 +87,8 @@ int blk_read_unthrottled(BlockBackend *blk, int64_t sector_num, uint8_t *buf,
+                          int nb_sectors);
+ int blk_write(BlockBackend *blk, int64_t sector_num, const uint8_t *buf,
+               int nb_sectors);
++int blk_write_zeroes(BlockBackend *blk, int64_t sector_num,
++                     int nb_sectors, BdrvRequestFlags flags);
+ BlockAIOCB *blk_aio_write_zeroes(BlockBackend *blk, int64_t sector_num,
+                                  int nb_sectors, BdrvRequestFlags flags,
+                                  BlockCompletionFunc *cb, void *opaque);
+-- 
+1.8.3.1
+

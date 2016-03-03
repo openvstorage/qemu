@@ -1,0 +1,54 @@
+From ddc364ab05f8ff07e21bd557ac0070b6bc114185 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Wed, 8 Jul 2015 19:41:19 +0200
+Subject: [PATCH 05/23] i386/pc: '-drive if=floppy' should imply a
+ board-default FDC
+
+Message-id: <1436384484-21640-3-git-send-email-lersek@redhat.com>
+Patchwork-id: 66873
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 2/7] i386/pc: '-drive if=floppy' should imply a board-default FDC
+Bugzilla: 1227282
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: John Snow <jsnow@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Even if board code decides not to request the creation of the FDC (keyed
+off board-level factors, to be determined later), we should create the FDC
+nevertheless if the user passes '-drive if=floppy' on the command line.
+
+Otherwise '-drive if=floppy' would break without explicit '-device
+isa-fdc' on such boards.
+
+Cc: Markus Armbruster <armbru@redhat.com>
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Cc: Gerd Hoffmann <kraxel@redhat.com>
+Cc: John Snow <jsnow@redhat.com>
+Cc: "Gabriel L. Somlo" <gsomlo@gmail.com>
+Cc: "Michael S. Tsirkin" <mst@redhat.com>
+Cc: Kevin Wolf <kwolf@redhat.com>
+Cc: qemu-block@nongnu.org
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Markus Armbruster <armbru@redhat.com>
+(cherry picked from commit 936a7c1cf7410a3bab97c98301054921d47a8918)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index a3a0ac2..2c71f85 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1512,6 +1512,7 @@ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+ 
+     for(i = 0; i < MAX_FD; i++) {
+         fd[i] = drive_get(IF_FLOPPY, 0, i);
++        create_fdctrl |= !!fd[i];
+     }
+     *floppy = create_fdctrl ? fdctrl_init_isa(isa_bus, fd) : NULL;
+ }
+-- 
+1.8.3.1
+

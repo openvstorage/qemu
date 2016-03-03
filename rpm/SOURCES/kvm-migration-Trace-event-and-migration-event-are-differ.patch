@@ -1,0 +1,49 @@
+From 571d8629db7521e39926e75fb672458cac66ece8 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:08 +0200
+Subject: [PATCH 23/28] migration: Trace event and migration event are
+ different things
+
+Message-id: <1438098431-30847-24-git-send-email-quintela@redhat.com>
+Patchwork-id: 67178
+O-Subject: [RHEL-7 qemu-kvm PATCH 23/26] migration: Trace event and migration event are different things
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+We can want the trace event even without migration events enabled.
+
+Reported-by:  Wen Congyang <ghostwcy@gmail.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 4ba4bc5e9bfab457a96ac56dc470730a330aded8)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/migration.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 8f880b1..3edf1fb 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -177,7 +177,6 @@ static void migrate_generate_event(int new_state)
+ {
+     if (migrate_use_events()) {
+         qapi_event_send_migration(new_state, &error_abort);
+-        trace_migrate_set_state(new_state);
+     }
+ }
+ 
+@@ -425,6 +424,7 @@ void qmp_migrate_set_capabilities(MigrationCapabilityStatusList *params,
+ static void migrate_set_state(MigrationState *s, int old_state, int new_state)
+ {
+     if (atomic_cmpxchg(&s->state, old_state, new_state) == old_state) {
++        trace_migrate_set_state(new_state);
+         migrate_generate_event(new_state);
+     }
+ }
+-- 
+1.8.3.1
+

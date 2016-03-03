@@ -1,0 +1,43 @@
+From 88bdb3f62e87e44de0e53096fb8319fbef18f9c3 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Tue, 22 Sep 2015 14:48:04 +0200
+Subject: [PATCH 09/10] scripts/dump-guest-memory.py: fix after RAMBlock change
+
+Message-id: <1442933164-12489-1-git-send-email-mst@redhat.com>
+Patchwork-id: 67866
+O-Subject: [PATCH qemu-kvm-rhev RHEL-7.2] scripts/dump-guest-memory.py: fix after RAMBlock change
+Bugzilla: 1234802
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+commit 9b8424d5735278ca382f11adc7c63072b632ab83
+    "exec: split length -> used_length/max_length"
+changed field names in struct RAMBlock
+
+It turns out that scripts/dump-guest-memory.py was
+poking at this field, update it accordingly.
+
+Upstream: 0c71d41e2aa3c7356500ae624166f3bb8c201aee
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ scripts/dump-guest-memory.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/dump-guest-memory.py b/scripts/dump-guest-memory.py
+index dc8e44a..08796ff 100644
+--- a/scripts/dump-guest-memory.py
++++ b/scripts/dump-guest-memory.py
+@@ -118,7 +118,7 @@ shape and this command should mostly work."""
+     def qemu_get_ram_block(self, ram_addr):
+         ram_blocks = gdb.parse_and_eval("ram_list.blocks")
+         for block in self.qlist_foreach(ram_blocks, "next"):
+-            if (ram_addr - block["offset"] < block["length"]):
++            if (ram_addr - block["offset"] < block["used_length"]):
+                 return block
+         raise gdb.GdbError("Bad ram offset %x" % ram_addr)
+ 
+-- 
+1.8.3.1
+

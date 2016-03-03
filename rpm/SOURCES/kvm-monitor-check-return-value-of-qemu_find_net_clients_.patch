@@ -1,0 +1,74 @@
+From a053b71cde416a8d0560fac0b164368d09ab6c79 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:43 +0200
+Subject: [PATCH 07/20] monitor: check return value of
+ qemu_find_net_clients_except()
+
+Message-id: <1434607916-15166-8-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66305
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 07/20] monitor: check return value of qemu_find_net_clients_except()
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+qemu_find_net_clients_except() may return a value which is greater
+than the size of array we provided. So we should check this value
+before using it, otherwise this may cause unexpected memory access.
+
+This patch fixes the net related command completion when we have a
+virtio-net nic with more than 255 queues.
+
+Cc: Luiz Capitulino <lcapitulino@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit bcfa4d60144fb879f0ffef0a6d174faa37b2df82)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ monitor.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/monitor.c b/monitor.c
+index a039edf..2b5643d 100644
+--- a/monitor.c
++++ b/monitor.c
+@@ -4477,7 +4477,7 @@ void set_link_completion(ReadLineState *rs, int nb_args, const char *str)
+         count = qemu_find_net_clients_except(NULL, ncs,
+                                              NET_CLIENT_OPTIONS_KIND_NONE,
+                                              MAX_QUEUE_NUM);
+-        for (i = 0; i < count; i++) {
++        for (i = 0; i < MIN(count, MAX_QUEUE_NUM); i++) {
+             const char *name = ncs[i]->name;
+             if (!strncmp(str, name, len)) {
+                 readline_add_completion(rs, name);
+@@ -4502,7 +4502,7 @@ void netdev_del_completion(ReadLineState *rs, int nb_args, const char *str)
+     readline_set_completion_index(rs, len);
+     count = qemu_find_net_clients_except(NULL, ncs, NET_CLIENT_OPTIONS_KIND_NIC,
+                                          MAX_QUEUE_NUM);
+-    for (i = 0; i < count; i++) {
++    for (i = 0; i < MIN(count, MAX_QUEUE_NUM); i++) {
+         QemuOpts *opts;
+         const char *name = ncs[i]->name;
+         if (strncmp(str, name, len)) {
+@@ -4576,7 +4576,7 @@ void host_net_remove_completion(ReadLineState *rs, int nb_args, const char *str)
+         count = qemu_find_net_clients_except(NULL, ncs,
+                                              NET_CLIENT_OPTIONS_KIND_NONE,
+                                              MAX_QUEUE_NUM);
+-        for (i = 0; i < count; i++) {
++        for (i = 0; i < MIN(count, MAX_QUEUE_NUM); i++) {
+             int id;
+             char name[16];
+ 
+@@ -4593,7 +4593,7 @@ void host_net_remove_completion(ReadLineState *rs, int nb_args, const char *str)
+         count = qemu_find_net_clients_except(NULL, ncs,
+                                              NET_CLIENT_OPTIONS_KIND_NIC,
+                                              MAX_QUEUE_NUM);
+-        for (i = 0; i < count; i++) {
++        for (i = 0; i < MIN(count, MAX_QUEUE_NUM); i++) {
+             int id;
+             const char *name;
+ 
+-- 
+1.8.3.1
+

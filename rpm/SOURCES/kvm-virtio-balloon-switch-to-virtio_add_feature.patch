@@ -1,0 +1,45 @@
+From 0738047f4eb83928cd8d93a91b1fcf77b9bda319 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:48 +0200
+Subject: [PATCH 074/100] virtio-balloon: switch to virtio_add_feature
+
+Message-id: <1436260751-25015-46-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66820
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 45/68] virtio-balloon: switch to virtio_add_feature
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+This was missed during the conversion of feature bit manipulation.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 40de55affda76392627e68d3b1ba5a6a11c492bc)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-balloon.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/virtio/virtio-balloon.c b/hw/virtio/virtio-balloon.c
+index 734f35b..72745db 100644
+--- a/hw/virtio/virtio-balloon.c
++++ b/hw/virtio/virtio-balloon.c
+@@ -312,7 +312,7 @@ static void virtio_balloon_set_config(VirtIODevice *vdev,
+ 
+ static uint64_t virtio_balloon_get_features(VirtIODevice *vdev, uint64_t f)
+ {
+-    f |= (1 << VIRTIO_BALLOON_F_STATS_VQ);
++    virtio_add_feature(&f, VIRTIO_BALLOON_F_STATS_VQ);
+     return f;
+ }
+ 
+-- 
+1.8.3.1
+

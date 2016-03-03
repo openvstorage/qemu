@@ -1,0 +1,42 @@
+From d85d7e804d9ad05817af77bcb775bdd546ecc0a3 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:55 +0200
+Subject: [PATCH 19/20] virtio: increase the queue limit to 1024
+
+Message-id: <1434607916-15166-20-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66318
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 19/20] virtio: increase the queue limit to 1024
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Increase the queue limit to 1024. But virtio-ccw and s390-virtio won't
+support this, this is done through failing device_plugged() for those
+two transports if the number of virtqueues is greater than 64.
+
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit b829c2a98f1f67308eb02fcddb52d8fa67775f18)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/virtio/virtio.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index a9e22af..fc0aeaa 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -48,7 +48,7 @@ typedef struct VirtQueueElement
+     struct iovec out_sg[VIRTQUEUE_MAX_SIZE];
+ } VirtQueueElement;
+ 
+-#define VIRTIO_QUEUE_MAX 64
++#define VIRTIO_QUEUE_MAX 1024
+ 
+ #define VIRTIO_NO_VECTOR 0xffff
+ 
+-- 
+1.8.3.1
+

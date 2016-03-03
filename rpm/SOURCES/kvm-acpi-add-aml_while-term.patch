@@ -1,0 +1,41 @@
+From c51dc184281dd5938aa208e87086426737887806 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:18 +0200
+Subject: [PATCH 10/31] acpi: add aml_while() term
+
+Message-id: <1435154016-26233-26-git-send-email-marcel@redhat.com>
+Patchwork-id: 66452
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 25/43] acpi: add aml_while() term
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Add encoding for ACPI DefWhile Opcode.
+
+Reviewed-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 68e6b0af784dda4efd9d4e2e9d3b03a31ca1408c)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/acpi/aml-build.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 1a891a2..e3afa13 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -266,6 +266,7 @@ Aml *aml_device(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
+ Aml *aml_method(const char *name, int arg_count);
+ Aml *aml_if(Aml *predicate);
+ Aml *aml_else(void);
++Aml *aml_while(Aml *predicate);
+ Aml *aml_package(uint8_t num_elements);
+ Aml *aml_buffer(int buffer_size, uint8_t *byte_list);
+ Aml *aml_resource_template(void);
+-- 
+1.8.3.1
+

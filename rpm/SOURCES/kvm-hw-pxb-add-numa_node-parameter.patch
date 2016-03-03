@@ -1,0 +1,116 @@
+From 4dc23c12827cd5d0e283e1c8a8eee7273e9c0df9 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:34 +0200
+Subject: [PATCH 25/31] hw/pxb: add numa_node parameter
+
+Message-id: <1435154016-26233-42-git-send-email-marcel@redhat.com>
+Patchwork-id: 66469
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 41/43] hw/pxb: add numa_node parameter
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+The pxb can be attach to and existing numa node by specifying
+numa_node option that equals the desired numa nodeid.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 0e79e51a7dcbd4fde5738d713b60f0fb0321f1af)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c                |  6 ++++++
+ hw/pci-bridge/pci_expander_bridge.c | 17 +++++++++++++++++
+ 2 files changed, 23 insertions(+)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index de2aea0..dbd0d8d 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -900,6 +900,7 @@ build_ssdt(GArray *table_data, GArray *linker,
+     if (bus) {
+         QLIST_FOREACH(bus, &bus->child, sibling) {
+             uint8_t bus_num = pci_bus_num(bus);
++            uint8_t numa_node = pci_bus_numa_node(bus);
+ 
+             /* look only for expander root buses */
+             if (!pci_bus_is_root(bus)) {
+@@ -916,6 +917,11 @@ build_ssdt(GArray *table_data, GArray *linker,
+                        aml_name_decl("_UID", aml_string("PC%.02X", bus_num)));
+             aml_append(dev, aml_name_decl("_HID", aml_string("PNP0A03")));
+             aml_append(dev, aml_name_decl("_BBN", aml_int(bus_num)));
++
++            if (numa_node != NUMA_NODE_UNASSIGNED) {
++                aml_append(dev, aml_name_decl("_PXM", aml_int(numa_node)));
++            }
++
+             aml_append(dev, build_prt());
+             crs = build_crs(PCI_HOST_BRIDGE(BUS(bus)->parent),
+                             io_ranges, mem_ranges);
+diff --git a/hw/pci-bridge/pci_expander_bridge.c b/hw/pci-bridge/pci_expander_bridge.c
+index 8660a00..ec2bb45 100644
+--- a/hw/pci-bridge/pci_expander_bridge.c
++++ b/hw/pci-bridge/pci_expander_bridge.c
+@@ -17,6 +17,7 @@
+ #include "hw/i386/pc.h"
+ #include "qemu/range.h"
+ #include "qemu/error-report.h"
++#include "sysemu/numa.h"
+ 
+ #define TYPE_PXB_BUS "pxb-bus"
+ #define PXB_BUS(obj) OBJECT_CHECK(PXBBus, (obj), TYPE_PXB_BUS)
+@@ -38,6 +39,7 @@ typedef struct PXBDev {
+     /*< public >*/
+ 
+     uint8_t bus_nr;
++    uint16_t numa_node;
+ } PXBDev;
+ 
+ #define TYPE_PXB_HOST "pxb-host"
+@@ -54,12 +56,20 @@ static bool pxb_is_root(PCIBus *bus)
+     return true; /* by definition */
+ }
+ 
++static uint16_t pxb_bus_numa_node(PCIBus *bus)
++{
++    PXBDev *pxb = PXB_DEV(bus->parent_dev);
++
++    return pxb->numa_node;
++}
++
+ static void pxb_bus_class_init(ObjectClass *class, void *data)
+ {
+     PCIBusClass *pbc = PCI_BUS_CLASS(class);
+ 
+     pbc->bus_num = pxb_bus_num;
+     pbc->is_root = pxb_is_root;
++    pbc->numa_node = pxb_bus_numa_node;
+ }
+ 
+ static const TypeInfo pxb_bus_info = {
+@@ -145,6 +155,12 @@ static int pxb_dev_initfn(PCIDevice *dev)
+     PCIBus *bus;
+     const char *dev_name = NULL;
+ 
++    if (pxb->numa_node != NUMA_NODE_UNASSIGNED &&
++        pxb->numa_node >= nb_numa_nodes) {
++        error_report("Illegal numa node %d.", pxb->numa_node);
++        return -EINVAL;
++    }
++
+     if (dev->qdev.id && *dev->qdev.id) {
+         dev_name = dev->qdev.id;
+     }
+@@ -180,6 +196,7 @@ static int pxb_dev_initfn(PCIDevice *dev)
+ static Property pxb_dev_properties[] = {
+     /* Note: 0 is not a legal a PXB bus number. */
+     DEFINE_PROP_UINT8("bus_nr", PXBDev, bus_nr, 0),
++    DEFINE_PROP_UINT16("numa_node", PXBDev, numa_node, NUMA_NODE_UNASSIGNED),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+-- 
+1.8.3.1
+

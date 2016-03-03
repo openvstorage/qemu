@@ -1,0 +1,34 @@
+From fa4fd10f9e37d9ca4c9be9e9a801f1644a15f978 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:45 +0200
+Subject: [PATCH 40/44] AArch64: Enable ACPI
+
+Message-id: <1434455325-23399-34-git-send-email-drjones@redhat.com>
+Patchwork-id: 66266
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 33/33] AArch64: Enable ACPI
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+RHELSA Only. Add ACPI to the RHELSA config.
+
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ default-configs/aarch64-softmmu.mak | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/default-configs/aarch64-softmmu.mak b/default-configs/aarch64-softmmu.mak
+index eeccc6d..fc73c84 100644
+--- a/default-configs/aarch64-softmmu.mak
++++ b/default-configs/aarch64-softmmu.mak
+@@ -9,3 +9,4 @@ CONFIG_PL011=y
+ CONFIG_PL031=y
+ CONFIG_PFLASH_CFI01=y
+ CONFIG_PCI_GENERIC=y
++CONFIG_ACPI=y
+-- 
+1.8.3.1
+

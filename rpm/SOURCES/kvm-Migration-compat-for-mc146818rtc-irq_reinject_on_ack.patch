@@ -1,0 +1,88 @@
+From 3799a5762c20da6d46f43840b28f6d2daff0e876 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Wed, 24 Jun 2015 18:59:00 +0200
+Subject: [PATCH 5/5] Migration compat for
+ mc146818rtc/irq_reinject_on_ack_count subsection
+
+Message-id: <1435172340-659-2-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66473
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 1/1] Migration compat for mc146818rtc/irq_reinject_on_ack_count subsection
+Bugzilla: 1215088
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+2.2 added a subsection to migrate the 'irq_reinject_on_ack_count'
+value in the rtc which was previously missing, this breaks backwards
+migration.
+
+Short story; this makes backwards migration compatible and makes
+it no worse than forward migration; and anyway I don't think it can
+ever hit any real bad case.
+
+Longer story:
+
+The story of this field is long and tortured, in no way reflects
+state on real hardware, but starts it's life in commit ba32edab
+in 2009 from Gleb.
+
+If the RTC is running a periodic timer interrupt at a rate faster
+than we can issue interrupts (Win 7 runs it at 1kHz) we increment
+a counter of lost interrupts (s->irq_coalesced that is migrated)
+to keep a count of the number that we somehow need to make up for.
+
+Then whenever the guest clears the interrupt, if our counter is
+positive then we inject another one.   This process is rate limited
+to RTC_REINJECT_ON_ACK_COUNT reinjects per periodic cycle (?).
+The 'irq_reinject_on_ack_count' is the counter of how many we've
+injected in this cycle to see if we hit this limit.
+
+If we don't migrate the field (which we haven't been doing)
+then the worst case is we'd inject 2*RTC_REINJECT_ON_ACK_COUNT
+(if we already had a reason to inject them) in one time period
+rather than rate limit to RTC_REINJECT_ON_ACK_COUNT.  It shouldn't
+lose or gain any interrupts; just affect the rate at which we
+fix it up.
+
+RTC_REINJECT_ON_ACK_COUNT was originally set to the arbitrary
+value of 1000 but then Gleb changed this to the smaller arbitrary
+value of 20 (see dd17765b).  The commit message of that
+explains that Win7 BSODs if it gets a run of ~100 RTC interrupts
+in fast succession.  Since the worst case here is 2*20 and it's
+still well under the 100, it shouldn't cause any problem.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/timer/mc146818rtc.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hw/timer/mc146818rtc.c b/hw/timer/mc146818rtc.c
+index f2b77fa..00986a2 100644
+--- a/hw/timer/mc146818rtc.c
++++ b/hw/timer/mc146818rtc.c
+@@ -28,6 +28,7 @@
+ #include "qapi/visitor.h"
+ #include "qapi-event.h"
+ #include "qmp-commands.h"
++#include "migration/migration.h"
+ 
+ #ifdef TARGET_I386
+ #include "hw/i386/apic.h"
+@@ -746,6 +747,11 @@ static const VMStateDescription vmstate_rtc_irq_reinject_on_ack_count = {
+ static bool rtc_irq_reinject_on_ack_count_needed(void *opaque)
+ {
+     RTCState *s = (RTCState *)opaque;
++
++    if (migrate_pre_2_2) {
++        return false;
++    }
++
+     return s->irq_reinject_on_ack_count != 0;
+ }
+ 
+-- 
+1.8.3.1
+

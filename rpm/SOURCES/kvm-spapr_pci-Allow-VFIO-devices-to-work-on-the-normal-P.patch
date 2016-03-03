@@ -1,0 +1,60 @@
+From f53aa98744d24b0fd40fe27c622f60f3eca668ae Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 30 Sep 2015 06:43:18 +0200
+Subject: [PATCH 10/10] spapr_pci: Allow VFIO devices to work on the normal PCI
+ host bridge
+
+Message-id: <1443595398-20898-11-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67994
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv4 10/10] spapr_pci: Allow VFIO devices to work on the normal PCI host bridge
+Bugzilla: 1259556
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+The core VFIO infrastructure more or less allows VFIO devices to work
+on any normal guest PCI host bridge (PHB) without extra logic.
+However, the "spapr-pci-host-bridge" device (as opposed to the special
+"spapr-pci-vfio-host-bridge" device) breaks this by using a partially
+KVM accelerated implementation of the guest kernel IOMMU which won't
+work with VFIO devices, without additional kernel support.
+
+This patch allows VFIO devices to work on the spapr-pci-host-bridge,
+by having it switch off KVM TCE acceleration when a VFIO device is
+added to the PHB (either on startup, or by hotplug).
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1259556
+Upstream: Posted, revised, not merged
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+---
+ hw/ppc/spapr_pci.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_pci.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hw/ppc/spapr_pci.c b/hw/ppc/spapr_pci.c
+index 9577cd2..9f53b96 100644
+--- a/hw/ppc/spapr_pci.c
++++ b/hw/ppc/spapr_pci.c
+@@ -1070,6 +1070,12 @@ static void spapr_phb_add_pci_device(sPAPRDRConnector *drc,
+     void *fdt = NULL;
+     int fdt_start_offset = 0, fdt_size;
+ 
++    if (object_dynamic_cast(OBJECT(pdev), "vfio-pci")) {
++        sPAPRTCETable *tcet = spapr_tce_find_by_liobn(phb->dma_liobn);
++
++        spapr_tce_set_need_vfio(tcet, true);
++    }
++
+     if (dev->hotplugged) {
+         fdt = create_device_tree(&fdt_size);
+         fdt_start_offset = spapr_create_pci_child_dt(phb, pdev,
+-- 
+1.8.3.1
+

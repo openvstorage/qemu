@@ -1,0 +1,128 @@
+From 2aa106718b30852980ae11486284cac350d18c8d Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:23 +0200
+Subject: [PATCH 049/100] qdev: add 64bit properties
+
+Message-id: <1436260751-25015-21-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66795
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 20/68] qdev: add 64bit properties
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Needed for virtio features which go from 32bit to 64bit with virtio 1.0
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit fdba6d967e00864edd21275a6ee1d23a383510e8)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/core/qdev-properties.c    | 58 ++++++++++++++++++++++++++++++++++++++++++++
+ include/hw/qdev-properties.h | 10 ++++++++
+ 2 files changed, 68 insertions(+)
+
+diff --git a/hw/core/qdev-properties.c b/hw/core/qdev-properties.c
+index 570d5f0..a1606de 100644
+--- a/hw/core/qdev-properties.c
++++ b/hw/core/qdev-properties.c
+@@ -125,6 +125,64 @@ PropertyInfo qdev_prop_bit = {
+     .set   = prop_set_bit,
+ };
+ 
++/* Bit64 */
++
++static uint64_t qdev_get_prop_mask64(Property *prop)
++{
++    assert(prop->info == &qdev_prop_bit);
++    return 0x1 << prop->bitnr;
++}
++
++static void bit64_prop_set(DeviceState *dev, Property *props, bool val)
++{
++    uint64_t *p = qdev_get_prop_ptr(dev, props);
++    uint64_t mask = qdev_get_prop_mask64(props);
++    if (val) {
++        *p |= mask;
++    } else {
++        *p &= ~mask;
++    }
++}
++
++static void prop_get_bit64(Object *obj, Visitor *v, void *opaque,
++                           const char *name, Error **errp)
++{
++    DeviceState *dev = DEVICE(obj);
++    Property *prop = opaque;
++    uint64_t *p = qdev_get_prop_ptr(dev, prop);
++    bool value = (*p & qdev_get_prop_mask64(prop)) != 0;
++
++    visit_type_bool(v, &value, name, errp);
++}
++
++static void prop_set_bit64(Object *obj, Visitor *v, void *opaque,
++                           const char *name, Error **errp)
++{
++    DeviceState *dev = DEVICE(obj);
++    Property *prop = opaque;
++    Error *local_err = NULL;
++    bool value;
++
++    if (dev->realized) {
++        qdev_prop_set_after_realize(dev, name, errp);
++        return;
++    }
++
++    visit_type_bool(v, &value, name, &local_err);
++    if (local_err) {
++        error_propagate(errp, local_err);
++        return;
++    }
++    bit64_prop_set(dev, prop, value);
++}
++
++PropertyInfo qdev_prop_bit64 = {
++    .name  = "bool",
++    .description = "on/off",
++    .get   = prop_get_bit64,
++    .set   = prop_set_bit64,
++};
++
+ /* --- bool --- */
+ 
+ static void get_bool(Object *obj, Visitor *v, void *opaque,
+diff --git a/include/hw/qdev-properties.h b/include/hw/qdev-properties.h
+index d67dad5..0cfff1c 100644
+--- a/include/hw/qdev-properties.h
++++ b/include/hw/qdev-properties.h
+@@ -6,6 +6,7 @@
+ /*** qdev-properties.c ***/
+ 
+ extern PropertyInfo qdev_prop_bit;
++extern PropertyInfo qdev_prop_bit64;
+ extern PropertyInfo qdev_prop_bool;
+ extern PropertyInfo qdev_prop_uint8;
+ extern PropertyInfo qdev_prop_uint16;
+@@ -50,6 +51,15 @@ extern PropertyInfo qdev_prop_arraylen;
+         .qtype     = QTYPE_QBOOL,                                \
+         .defval    = (bool)_defval,                              \
+         }
++#define DEFINE_PROP_BIT64(_name, _state, _field, _bit, _defval) {       \
++        .name      = (_name),                                           \
++        .info      = &(qdev_prop_bit),                                  \
++        .bitnr    = (_bit),                                             \
++        .offset    = offsetof(_state, _field)                           \
++            + type_check(uint64_t, typeof_field(_state, _field)),       \
++        .qtype     = QTYPE_QBOOL,                                       \
++        .defval    = (bool)_defval,                                     \
++        }
+ 
+ #define DEFINE_PROP_BOOL(_name, _state, _field, _defval) {       \
+         .name      = (_name),                                    \
+-- 
+1.8.3.1
+

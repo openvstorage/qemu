@@ -1,0 +1,113 @@
+From e0754aa6358c9c9dc0da86cf87afebcc8f9a5319 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:10 +0200
+Subject: [PATCH 096/100] virtio-input: add input routing support
+
+Message-id: <1436260751-25015-68-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66842
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 67/68] virtio-input: add input routing support
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Add display and head properties for input routing to
+virtio-input devices, update multiseat documentation.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit 5cce173323cfe1bb22f7a10f9b73ac7796909cef)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/multiseat.txt               | 17 +++++++++++++++--
+ hw/input/virtio-input-hid.c      | 11 +++++++++++
+ include/hw/virtio/virtio-input.h |  2 ++
+ 3 files changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/docs/multiseat.txt b/docs/multiseat.txt
+index b963665..e93d223 100644
+--- a/docs/multiseat.txt
++++ b/docs/multiseat.txt
+@@ -2,8 +2,8 @@
+ multiseat howto (with some multihead coverage)
+ ==============================================
+ 
+-host side
+----------
++host devices
++------------
+ 
+ First you must compile qemu with a user interface supporting
+ multihead/multiseat and input event routing.  Right now this
+@@ -41,6 +41,19 @@ The "display=video2" sets up the input routing.  Any input coming from
+ the window which belongs to the video.2 display adapter will be routed
+ to these input devices.
+ 
++Starting with qemu 2.4 and linux kernel 4.1 you can also use virtio
++for the input devices, using this ...
++
++	-device pci-bridge,addr=12.0,chassis_nr=2,id=head.2 \
++	-device secondary-vga,bus=head.2,addr=02.0,id=video.2 \
++	-device virtio-keyboard-pci,bus=head.2,addr=03.0,display=video.2 \
++	-device virtio-tablet-pci,bus=head.2,addr=03.0,display=video.2
++
++... instead of xhci and usb hid devices.
++
++host ui
++-------
++
+ The sdl2 ui will start up with two windows, one for each display
+ device.  The gtk ui will start with a single window and each display
+ in a separate tab.  You can either simply switch tabs to switch heads,
+diff --git a/hw/input/virtio-input-hid.c b/hw/input/virtio-input-hid.c
+index 32cc94a..616a815 100644
+--- a/hw/input/virtio-input-hid.c
++++ b/hw/input/virtio-input-hid.c
+@@ -252,7 +252,11 @@ static void virtio_input_handle_sync(DeviceState *dev)
+ static void virtio_input_hid_realize(DeviceState *dev, Error **errp)
+ {
+     VirtIOInputHID *vhid = VIRTIO_INPUT_HID(dev);
++
+     vhid->hs = qemu_input_handler_register(dev, vhid->handler);
++    if (vhid->display && vhid->hs) {
++        qemu_input_handler_bind(vhid->hs, vhid->display, vhid->head, NULL);
++    }
+ }
+ 
+ static void virtio_input_hid_unrealize(DeviceState *dev, Error **errp)
+@@ -301,10 +305,17 @@ static void virtio_input_hid_handle_status(VirtIOInput *vinput,
+     }
+ }
+ 
++static Property virtio_input_hid_properties[] = {
++    DEFINE_PROP_STRING("display", VirtIOInputHID, display),
++    DEFINE_PROP_UINT32("head", VirtIOInputHID, head, 0),
++};
++
+ static void virtio_input_hid_class_init(ObjectClass *klass, void *data)
+ {
++    DeviceClass *dc = DEVICE_CLASS(klass);
+     VirtIOInputClass *vic = VIRTIO_INPUT_CLASS(klass);
+ 
++    dc->props          = virtio_input_hid_properties;
+     vic->realize       = virtio_input_hid_realize;
+     vic->unrealize     = virtio_input_hid_unrealize;
+     vic->change_active = virtio_input_hid_change_active;
+diff --git a/include/hw/virtio/virtio-input.h b/include/hw/virtio/virtio-input.h
+index fd5417d..af1c207 100644
+--- a/include/hw/virtio/virtio-input.h
++++ b/include/hw/virtio/virtio-input.h
+@@ -95,6 +95,8 @@ struct VirtIOInputClass {
+ 
+ struct VirtIOInputHID {
+     VirtIOInput                       parent_obj;
++    char                              *display;
++    uint32_t                          head;
+     QemuInputHandler                  *handler;
+     QemuInputHandlerState             *hs;
+     int                               ledstate;
+-- 
+1.8.3.1
+

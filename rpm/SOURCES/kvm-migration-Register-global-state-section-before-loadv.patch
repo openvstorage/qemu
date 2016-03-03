@@ -1,0 +1,46 @@
+From 14a281b2962ee9bfb5141383af61ea373f6a6266 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:10 +0200
+Subject: [PATCH 25/28] migration: Register global state section before loadvm
+
+Message-id: <1438098431-30847-26-git-send-email-quintela@redhat.com>
+Patchwork-id: 67180
+O-Subject: [RHEL-7 qemu-kvm PATCH 25/26] migration: Register global state section before loadvm
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Otherwise, it is not found
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 48212d87d6655b029231d830a77983c21552fe49)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ vl.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/vl.c b/vl.c
+index 4e44fda..c238329 100644
+--- a/vl.c
++++ b/vl.c
+@@ -4356,6 +4356,7 @@ int main(int argc, char **argv, char **envp)
+     rom_load_done();
+ 
+     qemu_system_reset(VMRESET_SILENT);
++    register_global_state();
+     if (loadvm) {
+         if (load_vmstate(loadvm) < 0) {
+             autostart = 0;
+@@ -4369,7 +4370,6 @@ int main(int argc, char **argv, char **envp)
+         return 0;
+     }
+ 
+-    register_global_state();
+     if (incoming) {
+         Error *local_err = NULL;
+         qemu_start_incoming_migration(incoming, &local_err);
+-- 
+1.8.3.1
+

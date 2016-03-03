@@ -1,0 +1,95 @@
+From f410a44483618a856142ce074037aa9a9a7afd36 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:46 +0200
+Subject: [PATCH 10/20] pci: remove hard-coded bar size in
+ msix_init_exclusive_bar()
+
+Message-id: <1434607916-15166-11-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66315
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 10/20] pci: remove hard-coded bar size in msix_init_exclusive_bar()
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+This patch lets msix_init_exclusive_bar() can calculate the bar and
+pba size based on the number of MSI-X vectors other than using a
+hard-coded limit 4096. This is needed to allow device to have more
+than 128 MSI_X vectors. To keep migration compatibility, keep using
+4096 as bar size and 2048 for pba offset.
+
+Notes: We don't care about the case that using vectors > 128 for
+legacy machine type. Since we limit the queue max to 64, so vectors >=
+65 is meaningless.
+
+Virtio device will be the first user for this.
+
+Cc: Keith Busch <keith.busch@intel.com>
+Cc: Kevin Wolf <kwolf@redhat.com>
+Cc: Stefan Hajnoczi <stefanha@redhat.com>
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit a0ccd2123ee2f83a1f081e4c39013c3316f9ec7a)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci/msix.c | 30 +++++++++++++++++++-----------
+ 1 file changed, 19 insertions(+), 11 deletions(-)
+
+diff --git a/hw/pci/msix.c b/hw/pci/msix.c
+index 24de260..f8748cf 100644
+--- a/hw/pci/msix.c
++++ b/hw/pci/msix.c
+@@ -295,29 +295,37 @@ int msix_init_exclusive_bar(PCIDevice *dev, unsigned short nentries,
+ {
+     int ret;
+     char *name;
++    uint32_t bar_size = 4096;
++    uint32_t bar_pba_offset = bar_size / 2;
++    uint32_t bar_pba_size = (nentries / 8 + 1) * 8;
+ 
+     /*
+      * Migration compatibility dictates that this remains a 4k
+      * BAR with the vector table in the lower half and PBA in
+-     * the upper half.  Do not use these elsewhere!
++     * the upper half for nentries which is lower or equal to 128.
++     * No need to care about using more than 65 entries for legacy
++     * machine types who has at most 64 queues.
+      */
+-#define MSIX_EXCLUSIVE_BAR_SIZE 4096
+-#define MSIX_EXCLUSIVE_BAR_TABLE_OFFSET 0
+-#define MSIX_EXCLUSIVE_BAR_PBA_OFFSET (MSIX_EXCLUSIVE_BAR_SIZE / 2)
+-#define MSIX_EXCLUSIVE_CAP_OFFSET 0
++    if (nentries * PCI_MSIX_ENTRY_SIZE > bar_pba_offset) {
++        bar_pba_offset = nentries * PCI_MSIX_ENTRY_SIZE;
++    }
+ 
+-    if (nentries * PCI_MSIX_ENTRY_SIZE > MSIX_EXCLUSIVE_BAR_PBA_OFFSET) {
+-        return -EINVAL;
++    if (bar_pba_offset + bar_pba_size > 4096) {
++        bar_size = bar_pba_offset + bar_pba_size;
++    }
++
++    if (bar_size & (bar_size - 1)) {
++        bar_size = 1 << qemu_fls(bar_size);
+     }
+ 
+     name = g_strdup_printf("%s-msix", dev->name);
+-    memory_region_init(&dev->msix_exclusive_bar, OBJECT(dev), name, MSIX_EXCLUSIVE_BAR_SIZE);
++    memory_region_init(&dev->msix_exclusive_bar, OBJECT(dev), name, bar_size);
+     g_free(name);
+ 
+     ret = msix_init(dev, nentries, &dev->msix_exclusive_bar, bar_nr,
+-                    MSIX_EXCLUSIVE_BAR_TABLE_OFFSET, &dev->msix_exclusive_bar,
+-                    bar_nr, MSIX_EXCLUSIVE_BAR_PBA_OFFSET,
+-                    MSIX_EXCLUSIVE_CAP_OFFSET);
++                    0, &dev->msix_exclusive_bar,
++                    bar_nr, bar_pba_offset,
++                    0);
+     if (ret) {
+         return ret;
+     }
+-- 
+1.8.3.1
+

@@ -1,0 +1,117 @@
+From 8e0d94c549a26493ff066d35a4f8b20e9f8d94e3 Mon Sep 17 00:00:00 2001
+Message-Id: <8e0d94c549a26493ff066d35a4f8b20e9f8d94e3.1444668695.git.jen@redhat.com>
+In-Reply-To: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+References: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+From: Markus Armbruster <armbru@redhat.com>
+Date: Fri, 9 Oct 2015 14:37:32 -0500
+Subject: [CHANGE 05/11] tests: Fix how qom-test is run
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Markus Armbruster <armbru@redhat.com>
+Message-id: <1444401458-7995-4-git-send-email-armbru@redhat.com>
+Patchwork-id: 68109
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 3/9] tests: Fix how qom-test is run
+Bugzilla: 1264347
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+We want to run qom-test for every architecture, without having to
+manually add it to every architecture's list of tests.  Commit 3687d53
+accomplished this by adding it to every architecture's list
+automatically.
+
+However, some architectures inherit their tests from others, like this:
+
+    check-qtest-x86_64-y = $(check-qtest-i386-y)
+    check-qtest-microblazeel-y = $(check-qtest-microblaze-y)
+    check-qtest-xtensaeb-y = $(check-qtest-xtensa-y)
+
+For such architectures, we ended up running the (slow!) test twice.
+Commit 2b8419c attempted to avoid this by adding the test only when
+it's not already present.  Works only as long as we consider adding
+the test to the architectures on the left hand side *after* the ones
+on the right hand side: x86_64 after i386, microblazeel after
+microblaze, xtensaeb after xtensa.
+
+Turns out we consider them in $(SYSEMU_TARGET_LIST) order.  Defined as
+
+    SYSEMU_TARGET_LIST := $(subst -softmmu.mak,,$(notdir \
+       $(wildcard $(SRC_PATH)/default-configs/*-softmmu.mak)))
+
+On my machine, this results in the oder xtensa, x86_64, microblazeel,
+microblaze, i386.  Consequently, qom-test runs twice for microblazeel
+and x86_64.
+
+Replace this complex and flawed machinery with a much simpler one: add
+generic tests (currently just qom-test) to check-qtest-generic-y
+instead of check-qtest-$(target)-y for every target, then run
+$(check-qtest-generic-y) for every target.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Andreas Färber <afaerber@suse.de>
+Message-Id: <1443689999-12182-5-git-send-email-armbru@redhat.com>
+(cherry picked from commit e253c287153c6f3ce4177686ac12c196f9bd8292)
+---
+ tests/Makefile | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ tests/Makefile | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/tests/Makefile b/tests/Makefile
+index 694576c..7590534 100644
+--- a/tests/Makefile
++++ b/tests/Makefile
+@@ -78,6 +78,8 @@ check-block-$(CONFIG_POSIX) += tests/qemu-iotests-quick.sh
+ # All QTests for now are POSIX-only, but the dependencies are
+ # really in libqtest, not in the testcases themselves.
+ 
++check-qtest-generic-y =
++
+ gcov-files-ipack-y += hw/ipack/ipack.c
+ 
+ check-qtest-virtioserial-y += tests/virtio-console-test$(EXESUF)
+@@ -182,10 +184,7 @@ gcov-files-ppc64-y += ppc64-softmmu/hw/ppc/spapr_pci.c
+ check-qtest-microblazeel-y = $(check-qtest-microblaze-y)
+ check-qtest-xtensaeb-y = $(check-qtest-xtensa-y)
+ 
+-# qom-test works for all sysemu architectures:
+-$(foreach target,$(SYSEMU_TARGET_LIST), \
+-	$(if $(findstring tests/qom-test$(EXESUF), $(check-qtest-$(target)-y)),, \
+-		$(eval check-qtest-$(target)-y += tests/qom-test$(EXESUF))))
++check-qtest-generic-y += tests/qom-test$(EXESUF)
+ 
+ check-qapi-schema-y := $(addprefix tests/qapi-schema/, \
+ 	comments.json empty.json funny-char.json indented-expr.json \
+@@ -352,8 +351,11 @@ endif
+ 
+ TARGETS=$(patsubst %-softmmu,%, $(filter %-softmmu,$(TARGET_DIRS)))
+ ifeq ($(CONFIG_POSIX),y)
+-QTEST_TARGETS=$(foreach TARGET,$(TARGETS), $(if $(check-qtest-$(TARGET)-y), $(TARGET),))
++QTEST_TARGETS = $(TARGETS)
+ check-qtest-y=$(foreach TARGET,$(TARGETS), $(check-qtest-$(TARGET)-y))
++check-qtest-y += $(check-qtest-generic-y)
++else
++QTEST_TARGETS =
+ endif
+ 
+ qtest-obj-y = tests/libqtest.o libqemuutil.a libqemustub.a
+@@ -390,7 +392,7 @@ $(patsubst %, check-qtest-%, $(QTEST_TARGETS)): check-qtest-%: $(check-qtest-y)
+ 	$(if $(CONFIG_GCOV),@rm -f *.gcda */*.gcda */*/*.gcda */*/*/*.gcda,)
+ 	$(call quiet-command,QTEST_QEMU_BINARY=$*-softmmu/qemu-system-$* \
+ 		MALLOC_PERTURB_=$${MALLOC_PERTURB_:-$$((RANDOM % 255 + 1))} \
+-		gtester $(GTESTER_OPTIONS) -m=$(SPEED) $(check-qtest-$*-y),"GTESTER $@")
++		gtester $(GTESTER_OPTIONS) -m=$(SPEED) $(check-qtest-$*-y) $(check-qtest-generic-y),"GTESTER $@")
+ 	$(if $(CONFIG_GCOV),@for f in $(gcov-files-$*-y); do \
+ 	  echo Gcov report for $$f:;\
+ 	  $(GCOV) $(GCOV_OPTIONS) $$f -o `dirname $$f`; \
+-- 
+2.4.3
+

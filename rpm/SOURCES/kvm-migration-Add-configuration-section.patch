@@ -1,0 +1,164 @@
+From 8640f840724def1c92db68b454c1e5ae83c807e3 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:00 +0200
+Subject: [PATCH 15/28] migration: Add configuration section
+
+Message-id: <1438098431-30847-16-git-send-email-quintela@redhat.com>
+Patchwork-id: 67176
+O-Subject: [RHEL-7 qemu-kvm PATCH 15/26] migration: Add configuration section
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+It needs to be the first one and it is not optional, that is the reason
+why it is opencoded.  For new machine types, it is required that machine
+type name is the same in both sides.
+
+It is just done right now for pc's.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 61964c23e5ddd5a33f15699e45ce126f879e3e33)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/i386/pc_piix.c
+	hw/i386/pc_q35.c
+	include/migration/migration.h
+	migration/savevm.c
+
+Red Hat machine types are different, and we don't have section footers
+or RHEL7.2
+
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+---
+ hw/i386/pc_piix.c             |  1 +
+ include/migration/migration.h |  2 ++
+ migration/savevm.c            | 61 +++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 64 insertions(+)
+
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index ff75277..4a4060d 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -1077,6 +1077,7 @@ static void pc_compat_rhel710(MachineState *machine)
+     /* Disable all the extra subsections that were added in 2.2 */
+     migrate_pre_2_2 = true;
+     global_state_set_optional();
++    savevm_skip_configuration();
+ }
+ 
+ static void pc_init_rhel710(MachineState *machine)
+diff --git a/include/migration/migration.h b/include/migration/migration.h
+index 439e8a8..d3b5fa6 100644
+--- a/include/migration/migration.h
++++ b/include/migration/migration.h
+@@ -34,6 +34,7 @@
+ #define QEMU_VM_SECTION_FULL         0x04
+ #define QEMU_VM_SUBSECTION           0x05
+ #define QEMU_VM_VMDESCRIPTION        0x06
++#define QEMU_VM_CONFIGURATION        0x07
+ 
+ struct MigrationParams {
+     bool blk;
+@@ -179,4 +180,5 @@ void register_global_state(void);
+  */
+ extern bool migrate_pre_2_2;
+ void global_state_set_optional(void);
++void savevm_skip_configuration(void);
+ #endif
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 68c6f36..f59d665 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -245,11 +245,55 @@ typedef struct SaveStateEntry {
+ typedef struct SaveState {
+     QTAILQ_HEAD(, SaveStateEntry) handlers;
+     int global_section_id;
++    bool skip_configuration;
++    uint32_t len;
++    const char *name;
+ } SaveState;
+ 
+ static SaveState savevm_state = {
+     .handlers = QTAILQ_HEAD_INITIALIZER(savevm_state.handlers),
+     .global_section_id = 0,
++    .skip_configuration = false,
++};
++
++void savevm_skip_configuration(void)
++{
++    savevm_state.skip_configuration = true;
++}
++
++
++static void configuration_pre_save(void *opaque)
++{
++    SaveState *state = opaque;
++    const char *current_name = MACHINE_GET_CLASS(current_machine)->name;
++
++    state->len = strlen(current_name);
++    state->name = current_name;
++}
++
++static int configuration_post_load(void *opaque, int version_id)
++{
++    SaveState *state = opaque;
++    const char *current_name = MACHINE_GET_CLASS(current_machine)->name;
++
++    if (strncmp(state->name, current_name, state->len) != 0) {
++        error_report("Machine type received is '%s' and local is '%s'",
++                     state->name, current_name);
++        return -EINVAL;
++    }
++    return 0;
++}
++
++static const VMStateDescription vmstate_configuration = {
++    .name = "configuration",
++    .version_id = 1,
++    .post_load = configuration_post_load,
++    .pre_save = configuration_pre_save,
++    .fields = (VMStateField[]) {
++        VMSTATE_UINT32(len, SaveState),
++        VMSTATE_VBUFFER_ALLOC_UINT32(name, SaveState, 0, NULL, 0, len),
++        VMSTATE_END_OF_LIST()
++    },
+ };
+ 
+ static void dump_vmstate_vmsd(FILE *out_file,
+@@ -645,6 +689,11 @@ void qemu_savevm_state_begin(QEMUFile *f,
+     qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
+     qemu_put_be32(f, QEMU_VM_FILE_VERSION);
+ 
++    if (!savevm_state.skip_configuration) {
++        qemu_put_byte(f, QEMU_VM_CONFIGURATION);
++        vmstate_save_state(f, &vmstate_configuration, &savevm_state, 0);
++    }
++
+     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         int len;
+ 
+@@ -1040,6 +1089,18 @@ int qemu_loadvm_state(QEMUFile *f)
+         return -ENOTSUP;
+     }
+ 
++    if (!savevm_state.skip_configuration) {
++        if (qemu_get_byte(f) != QEMU_VM_CONFIGURATION) {
++            error_report("Configuration section missing");
++            return -EINVAL;
++        }
++        ret = vmstate_load_state(f, &vmstate_configuration, &savevm_state, 0);
++
++        if (ret) {
++            return ret;
++        }
++    }
++
+     while ((section_type = qemu_get_byte(f)) != QEMU_VM_EOF) {
+         uint32_t instance_id, version_id, section_id;
+         SaveStateEntry *se;
+-- 
+1.8.3.1
+

@@ -1,0 +1,47 @@
+From 4fe289fb6dde48e43285e95b68a0942ed39005fa Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:01 +0200
+Subject: [PATCH 39/58] spapr: override default ram size to 512MB
+
+Message-id: <1437715580-14817-10-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67126
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 09/28] spapr: override default ram size to 512MB
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Signed-off-by: Nikunj A Dadhania <nikunj@linux.vnet.ibm.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Acked-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit a34944fe2e2457309bde74c1ffe3a1c60c6da018)
+
+This is a non-obvious dependency for the ppc memory hotplug code.  Without
+this, "make check" will fail, because the memory hotplug code requires that
+all memory blocks be multiples of 256 MiB (the LMB size), but without this
+patch the default RAM size for all machine types is 128 MiB.
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 21bb6da..8686547 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1806,6 +1806,7 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
+     mc->max_cpus = MAX_CPUS;
+     mc->no_parallel = 1;
+     mc->default_boot_order = "";
++    mc->default_ram_size = 512 * M_BYTE;
+     mc->kvm_type = spapr_kvm_type;
+     mc->has_dynamic_sysbus = true;
+ 
+-- 
+1.8.3.1
+

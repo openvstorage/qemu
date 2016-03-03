@@ -1,0 +1,133 @@
+From be922162698a96a6a64b73bdd87918501cb4a6e6 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:33:24 +0100
+Subject: [PATCH 39/44] vhost-user: modify SET_LOG_BASE to pass mmap size and
+ offset
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-33-git-send-email-mst@redhat.com>
+Patchwork-id: 68388
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 32/36] vhost-user: modify SET_LOG_BASE to pass mmap size and offset
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Victor Kaplansky <victork@redhat.com>
+
+Unlike the kernel, vhost-user application accesses log table by
+mmaping it to its user space. This change adds two new fields to
+VhostUserMsg payload: mmap_size, and mmap_offset and make QEMU to
+pass the to vhost-user application in VHOST_USER_SET_LOG_BASE
+request.
+
+Signed-off-by: Victor Kaplansky <victork@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry-picked from commit 2b8819c6eee517c1582983773f8555bb3f9ed645)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/vhost-user.txt |  8 +++++++-
+ hw/virtio/vhost-user.c    | 11 +++++++++--
+ tests/vhost-user-test.c   |  8 ++++++++
+ 3 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/docs/specs/vhost-user.txt b/docs/specs/vhost-user.txt
+index d319715..26dde2e 100644
+--- a/docs/specs/vhost-user.txt
++++ b/docs/specs/vhost-user.txt
+@@ -98,6 +98,7 @@ typedef struct VhostUserMsg {
+         struct vhost_vring_state state;
+         struct vhost_vring_addr addr;
+         VhostUserMemory memory;
++        VhostUserLog log;
+     };
+ } QEMU_PACKED VhostUserMsg;
+ 
+@@ -282,7 +283,12 @@ Message types
+       Master payload: u64
+       Slave payload: N/A
+ 
+-      Sets the logging base address.
++      Sets logging shared memory space.
++      When slave has VHOST_USER_PROTOCOL_F_LOG_SHMFD protocol
++      feature, the log memory fd is provided in the ancillary data of
++      VHOST_USER_SET_LOG_BASE message, the size and offset of shared
++      memory area provided in the message.
++
+ 
+  * VHOST_USER_SET_LOG_FD
+ 
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 69cf1bf..ededdf7 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -75,6 +75,11 @@ typedef struct VhostUserMemory {
+     VhostUserMemoryRegion regions[VHOST_MEMORY_MAX_NREGIONS];
+ } VhostUserMemory;
+ 
++typedef struct VhostUserLog {
++    uint64_t mmap_size;
++    uint64_t mmap_offset;
++} VhostUserLog;
++
+ typedef struct VhostUserMsg {
+     VhostUserRequest request;
+ 
+@@ -89,6 +94,7 @@ typedef struct VhostUserMsg {
+         struct vhost_vring_state state;
+         struct vhost_vring_addr addr;
+         VhostUserMemory memory;
++        VhostUserLog log;
+     };
+ } QEMU_PACKED VhostUserMsg;
+ 
+@@ -386,8 +392,9 @@ static int vhost_set_log_base(struct vhost_dev *dev, uint64_t base,
+     VhostUserMsg msg = {
+         .request = VHOST_USER_SET_LOG_BASE,
+         .flags = VHOST_USER_VERSION,
+-        .u64 = base,
+-        .size = sizeof(m.u64),
++        .log.mmap_size = log->size,
++        .log.mmap_offset = 0,
++        .size = sizeof(msg.log),
+     };
+ 
+     if (shmfd && log->fd != -1) {
+diff --git a/tests/vhost-user-test.c b/tests/vhost-user-test.c
+index d2fc048..58b7361 100644
+--- a/tests/vhost-user-test.c
++++ b/tests/vhost-user-test.c
+@@ -86,6 +86,11 @@ typedef struct VhostUserMemory {
+     VhostUserMemoryRegion regions[VHOST_MEMORY_MAX_NREGIONS];
+ } VhostUserMemory;
+ 
++typedef struct VhostUserLog {
++    uint64_t mmap_size;
++    uint64_t mmap_offset;
++} VhostUserLog;
++
+ typedef struct VhostUserMsg {
+     VhostUserRequest request;
+ 
+@@ -94,10 +99,13 @@ typedef struct VhostUserMsg {
+     uint32_t flags;
+     uint32_t size; /* the following payload size */
+     union {
++#define VHOST_USER_VRING_IDX_MASK   (0xff)
++#define VHOST_USER_VRING_NOFD_MASK  (0x1<<8)
+         uint64_t u64;
+         struct vhost_vring_state state;
+         struct vhost_vring_addr addr;
+         VhostUserMemory memory;
++        VhostUserLog log;
+     };
+ } QEMU_PACKED VhostUserMsg;
+ 
+-- 
+1.8.3.1
+

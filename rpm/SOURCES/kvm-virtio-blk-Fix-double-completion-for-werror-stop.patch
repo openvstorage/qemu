@@ -1,0 +1,58 @@
+From bcfe0f8f7ca6c670783cfaa98f45b6985fcbcc39 Mon Sep 17 00:00:00 2001
+Message-Id: <bcfe0f8f7ca6c670783cfaa98f45b6985fcbcc39.1448914830.git.jen@redhat.com>
+From: Fam Zheng <famz@redhat.com>
+Date: Wed, 25 Nov 2015 03:49:11 -0600
+Subject: [CHANGE 1/5] virtio-blk: Fix double completion for werror=stop
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Fam Zheng <famz@redhat.com>
+Message-id: <1448423352-12857-2-git-send-email-famz@redhat.com>
+Patchwork-id: 68458
+O-Subject: [RHEL-7.2.z qemu-kvm-rhev v2 PATCH 1/2] virtio-blk: Fix double completion for werror=stop
+Bugzilla: 1277922 1283987
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+When a request R is absorbed by request M, it is appended to the
+"mr_next" queue led by M, and is completed together with the completion
+of M, in virtio_blk_rw_complete.
+
+During DMA restart in virtio_blk_dma_restart_bh, requests in s->rq are
+parsed and submitted again, possibly with a stale req->mr_next. It could
+be a problem if the request merging in virtio_blk_handle_request hasn't
+refreshed every mr_next pointer, in which case, virtio_blk_rw_complete
+could walk through unexpected requests following the stale pointers.
+
+Fix this by unsetting the pointer in virtio_blk_rw_complete. It is safe
+because this req is either completed and freed right away, or it will be
+restarted and parsed from scratch out of the vq later.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 10f5a72f70862d299ddbdf226d6dc71fa4ae34dd)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ hw/block/virtio-blk.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index 3af6567..5d96f20 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -112,6 +112,10 @@ static void virtio_blk_rw_complete(void *opaque, int ret)
+              * happen on the other side of the migration).
+              */
+             if (virtio_blk_handle_rw_error(req, -ret, is_read)) {
++                /* Break the link in case the next request is added to the
++                 * restart queue and is going to be parsed from the ring again.
++                 */
++                req->mr_next = NULL;
+                 continue;
+             }
+         }
+-- 
+2.5.0
+

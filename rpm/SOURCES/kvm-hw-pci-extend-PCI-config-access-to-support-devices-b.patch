@@ -1,0 +1,87 @@
+From 8c838a8233c3862a6953eb23b041143a98110a9f Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:24 +0200
+Subject: [PATCH 15/31] hw/pci: extend PCI config access to support devices
+ behind PXB
+
+Message-id: <1435154016-26233-32-git-send-email-marcel@redhat.com>
+Patchwork-id: 66463
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 31/43] hw/pci: extend PCI config access to support devices behind PXB
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+PXB buses are assumed to be children of bus 0. Look for them
+while scanning the buses.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 09e5b81922179b6c52b42fd27587e64b474036c7)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci/pci.c | 34 +++++++++++++++++++++++++++++-----
+ 1 file changed, 29 insertions(+), 5 deletions(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index ca6a708..38a9cb4 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -1714,10 +1714,28 @@ static bool pci_secondary_bus_in_range(PCIDevice *dev, int bus_num)
+ {
+     return !(pci_get_word(dev->config + PCI_BRIDGE_CONTROL) &
+              PCI_BRIDGE_CTL_BUS_RESET) /* Don't walk the bus if it's reset. */ &&
+-        dev->config[PCI_SECONDARY_BUS] < bus_num &&
++        dev->config[PCI_SECONDARY_BUS] <= bus_num &&
+         bus_num <= dev->config[PCI_SUBORDINATE_BUS];
+ }
+ 
++/* Whether a given bus number is in a range of a root bus */
++static bool pci_root_bus_in_range(PCIBus *bus, int bus_num)
++{
++    int i;
++
++    for (i = 0; i < ARRAY_SIZE(bus->devices); ++i) {
++        PCIDevice *dev = bus->devices[i];
++
++        if (dev && PCI_DEVICE_GET_CLASS(dev)->is_bridge) {
++            if (pci_secondary_bus_in_range(dev, bus_num)) {
++                return true;
++            }
++        }
++    }
++
++    return false;
++}
++
+ static PCIBus *pci_find_bus_nr(PCIBus *bus, int bus_num)
+ {
+     PCIBus *sec;
+@@ -1739,12 +1757,18 @@ static PCIBus *pci_find_bus_nr(PCIBus *bus, int bus_num)
+     /* try child bus */
+     for (; bus; bus = sec) {
+         QLIST_FOREACH(sec, &bus->child, sibling) {
+-            assert(!pci_bus_is_root(sec));
+-            if (sec->parent_dev->config[PCI_SECONDARY_BUS] == bus_num) {
++            if (pci_bus_num(sec) == bus_num) {
+                 return sec;
+             }
+-            if (pci_secondary_bus_in_range(sec->parent_dev, bus_num)) {
+-                break;
++            /* PXB buses assumed to be children of bus 0 */
++            if (pci_bus_is_root(sec)) {
++                if (pci_root_bus_in_range(sec, bus_num)) {
++                    break;
++                }
++            } else {
++                if (pci_secondary_bus_in_range(sec->parent_dev, bus_num)) {
++                    break;
++                }
+             }
+         }
+     }
+-- 
+1.8.3.1
+

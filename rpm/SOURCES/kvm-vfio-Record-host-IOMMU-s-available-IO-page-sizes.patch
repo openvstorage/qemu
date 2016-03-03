@@ -1,0 +1,83 @@
+From b74a99f274d579edd02215499af43b3ce5fa32e2 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 30 Sep 2015 06:43:12 +0200
+Subject: [PATCH 04/10] vfio: Record host IOMMU's available IO page sizes
+
+Message-id: <1443595398-20898-5-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67988
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv4 04/10] vfio: Record host IOMMU's available IO page sizes
+Bugzilla: 1259556
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+Depending on the host IOMMU type we determine and record the available page
+sizes for IOMMU translation.  We'll need this for other validation in
+future patches.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Laurent Vivier <lvivier@redhat.com>
+
+Upstream: 7a140a57c69293a2f19b045f40953a87879e8c76
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/vfio/common.c              | 13 +++++++++++++
+ include/hw/vfio/vfio-common.h |  1 +
+ 2 files changed, 14 insertions(+)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index bf517dc..26a5a14 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -682,6 +682,7 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
+     if (ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_TYPE1_IOMMU) ||
+         ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_TYPE1v2_IOMMU)) {
+         bool v2 = !!ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_TYPE1v2_IOMMU);
++        struct vfio_iommu_type1_info info;
+ 
+         ret = ioctl(group->fd, VFIO_GROUP_SET_CONTAINER, &fd);
+         if (ret) {
+@@ -707,6 +708,15 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
+          */
+         container->min_iova = 0;
+         container->max_iova = (hwaddr)-1;
++
++        /* Assume just 4K IOVA page size */
++        container->iova_pgsizes = 0x1000;
++        info.argsz = sizeof(info);
++        ret = ioctl(fd, VFIO_IOMMU_GET_INFO, &info);
++        /* Ignore errors */
++        if ((ret == 0) && (info.flags & VFIO_IOMMU_INFO_PGSIZES)) {
++            container->iova_pgsizes = info.iova_pgsizes;
++        }
+     } else if (ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_SPAPR_TCE_IOMMU)) {
+         struct vfio_iommu_spapr_tce_info info;
+ 
+@@ -749,6 +759,9 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
+         }
+         container->min_iova = info.dma32_window_start;
+         container->max_iova = container->min_iova + info.dma32_window_size - 1;
++
++        /* Assume just 4K IOVA pages for now */
++        container->iova_pgsizes = 0x1000;
+     } else {
+         error_report("vfio: No available IOMMU models");
+         ret = -EINVAL;
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index c9ad02c..20d81a9 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -75,6 +75,7 @@ typedef struct VFIOContainer {
+      * future
+      */
+     hwaddr min_iova, max_iova;
++    uint64_t iova_pgsizes;
+     QLIST_HEAD(, VFIOGuestIOMMU) giommu_list;
+     QLIST_HEAD(, VFIOGroup) group_list;
+     QLIST_ENTRY(VFIOContainer) next;
+-- 
+1.8.3.1
+

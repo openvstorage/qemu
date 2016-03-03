@@ -1,0 +1,145 @@
+From 5ac955065a4db27368d82e8e2c91be71accb1e74 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:10 +0100
+Subject: [PATCH 13/44] util: add memfd helpers
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-7-git-send-email-mst@redhat.com>
+Patchwork-id: 68357
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 06/36] util: add memfd helpers
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Add qemu_memfd_alloc/free() helpers.
+
+The function helps to allocate and seal shared memory.
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit d3592199ba3db504c6585115b9531b4cf7c50a0d)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/qemu/memfd.h |  4 +++
+ util/memfd.c         | 73 +++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 76 insertions(+), 1 deletion(-)
+
+diff --git a/include/qemu/memfd.h b/include/qemu/memfd.h
+index 8b1fe6a..950fb88 100644
+--- a/include/qemu/memfd.h
++++ b/include/qemu/memfd.h
+@@ -17,4 +17,8 @@
+ #define F_SEAL_WRITE    0x0008  /* prevent writes */
+ #endif
+ 
++void *qemu_memfd_alloc(const char *name, size_t size, unsigned int seals,
++                       int *fd);
++void qemu_memfd_free(void *ptr, size_t size, int fd);
++
+ #endif /* QEMU_MEMFD_H */
+diff --git a/util/memfd.c b/util/memfd.c
+index e43a3f8..f3ae34e 100644
+--- a/util/memfd.c
++++ b/util/memfd.c
+@@ -27,6 +27,12 @@
+ 
+ #include "qemu/osdep.h"
+ 
++#include <glib.h>
++#include <glib/gprintf.h>
++
++#include <sys/mman.h>
++#include <fcntl.h>
++
+ #include "qemu/memfd.h"
+ 
+ #ifdef CONFIG_MEMFD
+@@ -36,7 +42,7 @@
+ #include <sys/syscall.h>
+ #include <asm/unistd.h>
+ 
+-inline static int memfd_create(const char *name, unsigned int flags)
++static int memfd_create(const char *name, unsigned int flags)
+ {
+ #ifdef __NR_memfd_create
+     return syscall(__NR_memfd_create, name, flags);
+@@ -53,3 +59,68 @@ inline static int memfd_create(const char *name, unsigned int flags)
+ #ifndef MFD_ALLOW_SEALING
+ #define MFD_ALLOW_SEALING 0x0002U
+ #endif
++
++/*
++ * This is a best-effort helper for shared memory allocation, with
++ * optional sealing. The helper will do his best to allocate using
++ * memfd with sealing, but may fallback on other methods without
++ * sealing.
++ */
++void *qemu_memfd_alloc(const char *name, size_t size, unsigned int seals,
++                       int *fd)
++{
++    void *ptr;
++    int mfd = -1;
++
++    *fd = -1;
++
++#ifdef CONFIG_LINUX
++    if (seals) {
++        mfd = memfd_create(name, MFD_ALLOW_SEALING | MFD_CLOEXEC);
++    }
++
++    if (mfd == -1) {
++        /* some systems have memfd without sealing */
++        mfd = memfd_create(name, MFD_CLOEXEC);
++        seals = 0;
++    }
++#endif
++
++    if (mfd != -1) {
++        if (ftruncate(mfd, size) == -1) {
++            perror("ftruncate");
++            close(mfd);
++            return NULL;
++        }
++
++        if (seals && fcntl(mfd, F_ADD_SEALS, seals) == -1) {
++            perror("fcntl");
++            close(mfd);
++            return NULL;
++        }
++    } else {
++        perror("memfd");
++        return NULL;
++    }
++
++    ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, 0);
++    if (ptr == MAP_FAILED) {
++        perror("mmap");
++        close(mfd);
++        return NULL;
++    }
++
++    *fd = mfd;
++    return ptr;
++}
++
++void qemu_memfd_free(void *ptr, size_t size, int fd)
++{
++    if (ptr) {
++        munmap(ptr, size);
++    }
++
++    if (fd != -1) {
++        close(fd);
++    }
++}
+-- 
+1.8.3.1
+

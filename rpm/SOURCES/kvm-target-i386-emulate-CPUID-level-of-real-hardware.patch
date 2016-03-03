@@ -1,0 +1,292 @@
+From 3999ea575d8d7795189d73d942592ba517de9972 Mon Sep 17 00:00:00 2001
+From: Radim Krcmar <rkrcmar@redhat.com>
+Date: Tue, 4 Aug 2015 20:27:15 +0200
+Subject: [PATCH 3/4] target-i386: emulate CPUID level of real hardware
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1438720036-24588-2-git-send-email-rkrcmar@redhat.com>
+Patchwork-id: 67310
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 1/2] target-i386: emulate CPUID level of real hardware
+Bugzilla: 1223317
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Yan Vugenfirer <yvugenfi@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Bandan Das <bsd@redhat.com>
+
+W10 insider has a bug where it ignores CPUID level and interprets
+CPUID.(EAX=07H, ECX=0H) incorrectly, because CPUID in fact returned
+CPUID.(EAX=04H, ECX=0H);  this resulted in execution of unsupported
+instructions.
+
+While it's a Windows bug, there is no reason to emulate incorrect level.
+
+I used http://instlatx64.atw.hu/ as a source of CPUID and checked that
+it matches Penryn Xeon X5472, Westmere Xeon W3520, SandyBridge i5-2540M,
+and Haswell i5-4670T.
+
+kvm64 and qemu64 were bumped to 0xD to allow all available features for
+them (and to avoid the same Windows bug).
+
+Signed-off-by: Radim Krčmář <rkrcmar@redhat.com>
+Reviewed-by: Eduardo Habkost <ehabkost@redhat.com>
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+(cherry picked from commit 3046bb5debc8153a542acb1df93b2a1a85527a15)
+
+include/hw/i386/pc.h:
+ * modify PC_RHEL7_1_COMPAT instead of PC_COMPAT_2_3
+ * use comma convention compatible with PC_RHEL7_0_COMPAT
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/i386/pc.h | 71 +++++++++++++++++++++++++++++++++++++++++++++++++++-
+ target-i386/cpu.c    | 37 +++++++++++++--------------
+ 2 files changed, 88 insertions(+), 20 deletions(-)
+
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index f9129a0..eb911f6 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -520,7 +520,76 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
+ 
+ /* See include/hw/compat.h for shared compatibility lists */
+ #define PC_RHEL7_1_COMPAT \
+-        HW_COMPAT_RHEL7_1
++        HW_COMPAT_RHEL7_1, \
++        {\
++            .driver   = "qemu64" "-" TYPE_X86_CPU,\
++            .property = "level",\
++            .value    = stringify(4),\
++        },{\
++            .driver   = "kvm64" "-" TYPE_X86_CPU,\
++            .property = "level",\
++            .value    = stringify(5),\
++        },{\
++            .driver   = "pentium3" "-" TYPE_X86_CPU,\
++            .property = "level",\
++            .value    = stringify(2),\
++        },{\
++            .driver   = "n270" "-" TYPE_X86_CPU,\
++            .property = "level",\
++            .value    = stringify(5),\
++        },{\
++            .driver   = "Conroe" "-" TYPE_X86_CPU,\
++            .property = "level",\
++            .value    = stringify(4),\
++        },{\
++            .driver   = "Penryn" "-" TYPE_X86_CPU,\
++            .property = "level",\
++            .value    = stringify(4),\
++        },{\
++            .driver   = "Nehalem" "-" TYPE_X86_CPU,\
++            .property = "level",\
++            .value    = stringify(4),\
++        },{\
++            .driver   = "n270" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "Penryn" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "Conroe" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "Nehalem" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "Westmere" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "SandyBridge" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "Haswell" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "Haswell-noTSX" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "Broadwell" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        },{\
++            .driver   = "Broadwell-noTSX" "-" TYPE_X86_CPU,\
++            .property = "xlevel",\
++            .value    = stringify(0x8000000a),\
++        }
+ 
+ /*
+  * RHEL-7 is based on QEMU 1.5.3, so this needs the PC_COMPAT_*
+diff --git a/target-i386/cpu.c b/target-i386/cpu.c
+index 8b3476c..51790df 100644
+--- a/target-i386/cpu.c
++++ b/target-i386/cpu.c
+@@ -683,7 +683,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+          * possible.
+          */
+         .name = "qemu64",
+-        .level = 4,
++        .level = 0xd,
+         .vendor = CPUID_VENDOR_AMD,
+         .family = 6,
+         .model = 13,
+@@ -762,7 +762,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+     },
+     {
+         .name = "kvm64",
+-        .level = 5,
++        .level = 0xd,
+         .vendor = CPUID_VENDOR_INTEL,
+         .family = 15,
+         .model = 6,
+@@ -876,7 +876,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+     },
+     {
+         .name = "pentium3",
+-        .level = 2,
++        .level = 3,
+         .vendor = CPUID_VENDOR_INTEL,
+         .family = 6,
+         .model = 7,
+@@ -902,8 +902,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+     },
+     {
+         .name = "n270",
+-        /* original is on level 10 */
+-        .level = 5,
++        .level = 10,
+         .vendor = CPUID_VENDOR_INTEL,
+         .family = 6,
+         .model = 28,
+@@ -924,7 +923,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_EXT2_NX,
+         .features[FEAT_8000_0001_ECX] =
+             CPUID_EXT3_LAHF_LM,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel(R) Atom(TM) CPU N270   @ 1.60GHz",
+     },
+     {
+@@ -952,7 +951,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+     },
+     {
+         .name = "Conroe",
+-        .level = 4,
++        .level = 10,
+         .vendor = CPUID_VENDOR_INTEL,
+         .family = 6,
+         .model = 15,
+@@ -969,12 +968,12 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_EXT2_LM | CPUID_EXT2_NX | CPUID_EXT2_SYSCALL,
+         .features[FEAT_8000_0001_ECX] =
+             CPUID_EXT3_LAHF_LM,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Celeron_4x0 (Conroe/Merom Class Core 2)",
+     },
+     {
+         .name = "Penryn",
+-        .level = 4,
++        .level = 10,
+         .vendor = CPUID_VENDOR_INTEL,
+         .family = 6,
+         .model = 23,
+@@ -992,12 +991,12 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_EXT2_LM | CPUID_EXT2_NX | CPUID_EXT2_SYSCALL,
+         .features[FEAT_8000_0001_ECX] =
+             CPUID_EXT3_LAHF_LM,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Core 2 Duo P9xxx (Penryn Class Core 2)",
+     },
+     {
+         .name = "Nehalem",
+-        .level = 4,
++        .level = 11,
+         .vendor = CPUID_VENDOR_INTEL,
+         .family = 6,
+         .model = 26,
+@@ -1015,7 +1014,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_EXT2_LM | CPUID_EXT2_SYSCALL | CPUID_EXT2_NX,
+         .features[FEAT_8000_0001_ECX] =
+             CPUID_EXT3_LAHF_LM,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Core i7 9xx (Nehalem Class Core i7)",
+     },
+     {
+@@ -1039,7 +1038,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_EXT2_LM | CPUID_EXT2_SYSCALL | CPUID_EXT2_NX,
+         .features[FEAT_8000_0001_ECX] =
+             CPUID_EXT3_LAHF_LM,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Westmere E56xx/L56xx/X56xx (Nehalem-C)",
+     },
+     {
+@@ -1068,7 +1067,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_EXT3_LAHF_LM,
+         .features[FEAT_XSAVE] =
+             CPUID_XSAVE_XSAVEOPT,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Xeon E312xx (Sandy Bridge)",
+     },
+     {
+@@ -1100,7 +1099,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_EXT3_LAHF_LM,
+         .features[FEAT_XSAVE] =
+             CPUID_XSAVE_XSAVEOPT,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Xeon E3-12xx v2 (Ivy Bridge)",
+     },
+     {
+@@ -1134,7 +1133,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_7_0_EBX_BMI2 | CPUID_7_0_EBX_ERMS | CPUID_7_0_EBX_INVPCID,
+         .features[FEAT_XSAVE] =
+             CPUID_XSAVE_XSAVEOPT,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Core Processor (Haswell, no TSX)",
+     },    {
+         .name = "Haswell",
+@@ -1168,7 +1167,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_7_0_EBX_RTM,
+         .features[FEAT_XSAVE] =
+             CPUID_XSAVE_XSAVEOPT,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Core Processor (Haswell)",
+     },
+     {
+@@ -1204,7 +1203,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_7_0_EBX_SMAP,
+         .features[FEAT_XSAVE] =
+             CPUID_XSAVE_XSAVEOPT,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Core Processor (Broadwell, no TSX)",
+     },
+     {
+@@ -1240,7 +1239,7 @@ static X86CPUDefinition builtin_x86_defs[] = {
+             CPUID_7_0_EBX_SMAP,
+         .features[FEAT_XSAVE] =
+             CPUID_XSAVE_XSAVEOPT,
+-        .xlevel = 0x8000000A,
++        .xlevel = 0x80000008,
+         .model_id = "Intel Core Processor (Broadwell)",
+     },
+     {
+-- 
+1.8.3.1
+

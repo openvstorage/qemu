@@ -1,0 +1,52 @@
+From 208b0fb8b380551688739885a8af77badad1c29b Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:33:27 +0100
+Subject: [PATCH 40/44] vhost: let SET_VRING_ENABLE message depends on protocol
+ feature
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-34-git-send-email-mst@redhat.com>
+Patchwork-id: 68389
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 33/36] vhost: let SET_VRING_ENABLE message depends on protocol feature
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+
+But not depend on PROTOCOL_F_MQ feature bit. So that we could use
+SET_VRING_ENABLE to sign the backend on stop, even if MQ is disabled.
+
+That's reasonable, since we will have one queue pair at least.
+
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry-picked from commit 923e2d98ede7404882656aeb4364c3964a95db3d)
+(in maintainer's tree)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost-user.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index ededdf7..a106fe2 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -478,7 +478,7 @@ static int vhost_user_set_vring_enable(struct vhost_dev *dev, int enable)
+ 
+     assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_USER);
+ 
+-    if (!(dev->protocol_features & (1ULL << VHOST_USER_PROTOCOL_F_MQ))) {
++    if (!virtio_has_feature(dev->features, VHOST_USER_F_PROTOCOL_FEATURES)) {
+         return -1;
+     }
+ 
+-- 
+1.8.3.1
+

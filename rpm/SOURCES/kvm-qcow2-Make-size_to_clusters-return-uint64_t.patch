@@ -1,0 +1,252 @@
+From 7b6b02a32fed40931846a396bc8d1512a1bcbd57 Mon Sep 17 00:00:00 2001
+From: Max Reitz <mreitz@redhat.com>
+Date: Wed, 16 Sep 2015 16:23:06 +0200
+Subject: [PATCH 1/2] qcow2: Make size_to_clusters() return uint64_t
+
+Message-id: <1442420587-13545-2-git-send-email-mreitz@redhat.com>
+Patchwork-id: 67789
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 1/2] qcow2: Make size_to_clusters() return uint64_t
+Bugzilla: 1260365
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+
+Sadly, some images may have more clusters than what can be represented
+using a plain int. We should be prepared for that case (in
+qcow2_check_refcounts() we actually were trying to catch that case, but
+since size_to_clusters() truncated the returned value, that check never
+did anything useful).
+
+Cc: qemu-stable <qemu-stable@nongnu.org>
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit b6d36def6d9e9fd187327182d0abafc9b7085d8f)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	block/qcow2-cluster.c
+	block/qcow2.h
+
+%s/BDRVQcowState/BDRVQcow2State/g missing downstream.
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+---
+ block/qcow2-cluster.c  | 28 ++++++++++++++++++----------
+ block/qcow2-refcount.c | 12 ++++++++----
+ block/qcow2.h          |  6 +++---
+ 3 files changed, 29 insertions(+), 17 deletions(-)
+
+diff --git a/block/qcow2-cluster.c b/block/qcow2-cluster.c
+index ed2b44d..e4ae6fb 100644
+--- a/block/qcow2-cluster.c
++++ b/block/qcow2-cluster.c
+@@ -301,7 +301,7 @@ fail:
+  * as contiguous. (This allows it, for example, to stop at the first compressed
+  * cluster which may require a different handling)
+  */
+-static int count_contiguous_clusters(uint64_t nb_clusters, int cluster_size,
++static int count_contiguous_clusters(int nb_clusters, int cluster_size,
+         uint64_t *l2_table, uint64_t stop_flags)
+ {
+     int i;
+@@ -324,7 +324,7 @@ static int count_contiguous_clusters(uint64_t nb_clusters, int cluster_size,
+ 	return i;
+ }
+ 
+-static int count_contiguous_free_clusters(uint64_t nb_clusters, uint64_t *l2_table)
++static int count_contiguous_free_clusters(int nb_clusters, uint64_t *l2_table)
+ {
+     int i;
+ 
+@@ -471,6 +471,7 @@ int qcow2_get_cluster_offset(BlockDriverState *bs, uint64_t offset,
+     if (nb_needed > nb_available) {
+         nb_needed = nb_available;
+     }
++    assert(nb_needed <= INT_MAX);
+ 
+     *cluster_offset = 0;
+ 
+@@ -506,6 +507,8 @@ int qcow2_get_cluster_offset(BlockDriverState *bs, uint64_t offset,
+ 
+     l2_index = (offset >> s->cluster_bits) & (s->l2_size - 1);
+     *cluster_offset = be64_to_cpu(l2_table[l2_index]);
++
++    /* nb_needed <= INT_MAX, thus nb_clusters <= INT_MAX, too */
+     nb_clusters = size_to_clusters(s, nb_needed << 9);
+ 
+     ret = qcow2_get_cluster_type(*cluster_offset);
+@@ -942,7 +945,7 @@ static int handle_copied(BlockDriverState *bs, uint64_t guest_offset,
+     int l2_index;
+     uint64_t cluster_offset;
+     uint64_t *l2_table;
+-    unsigned int nb_clusters;
++    uint64_t nb_clusters;
+     unsigned int keep_clusters;
+     int ret, pret;
+ 
+@@ -961,6 +964,7 @@ static int handle_copied(BlockDriverState *bs, uint64_t guest_offset,
+ 
+     l2_index = offset_to_l2_index(s, guest_offset);
+     nb_clusters = MIN(nb_clusters, s->l2_size - l2_index);
++    assert(nb_clusters <= INT_MAX);
+ 
+     /* Find L2 entry for the first involved cluster */
+     ret = get_cluster_table(bs, guest_offset, &l2_table, &l2_index);
+@@ -1046,7 +1050,7 @@ out:
+  * restarted, but the whole request should not be failed.
+  */
+ static int do_alloc_cluster_offset(BlockDriverState *bs, uint64_t guest_offset,
+-    uint64_t *host_offset, unsigned int *nb_clusters)
++                                   uint64_t *host_offset, uint64_t *nb_clusters)
+ {
+     BDRVQcowState *s = bs->opaque;
+ 
+@@ -1064,7 +1068,7 @@ static int do_alloc_cluster_offset(BlockDriverState *bs, uint64_t guest_offset,
+         *host_offset = cluster_offset;
+         return 0;
+     } else {
+-        int ret = qcow2_alloc_clusters_at(bs, *host_offset, *nb_clusters);
++        int64_t ret = qcow2_alloc_clusters_at(bs, *host_offset, *nb_clusters);
+         if (ret < 0) {
+             return ret;
+         }
+@@ -1100,7 +1104,7 @@ static int handle_alloc(BlockDriverState *bs, uint64_t guest_offset,
+     int l2_index;
+     uint64_t *l2_table;
+     uint64_t entry;
+-    unsigned int nb_clusters;
++    uint64_t nb_clusters;
+     int ret;
+ 
+     uint64_t alloc_cluster_offset;
+@@ -1118,6 +1122,7 @@ static int handle_alloc(BlockDriverState *bs, uint64_t guest_offset,
+ 
+     l2_index = offset_to_l2_index(s, guest_offset);
+     nb_clusters = MIN(nb_clusters, s->l2_size - l2_index);
++    assert(nb_clusters <= INT_MAX);
+ 
+     /* Find L2 entry for the first involved cluster */
+     ret = get_cluster_table(bs, guest_offset, &l2_table, &l2_index);
+@@ -1414,7 +1419,8 @@ int qcow2_decompress_cluster(BlockDriverState *bs, uint64_t cluster_offset)
+  * clusters.
+  */
+ static int discard_single_l2(BlockDriverState *bs, uint64_t offset,
+-    unsigned int nb_clusters, enum qcow2_discard_type type, bool full_discard)
++                             uint64_t nb_clusters, enum qcow2_discard_type type,
++                             bool full_discard)
+ {
+     BDRVQcowState *s = bs->opaque;
+     uint64_t *l2_table;
+@@ -1429,6 +1435,7 @@ static int discard_single_l2(BlockDriverState *bs, uint64_t offset,
+ 
+     /* Limit nb_clusters to one L2 table */
+     nb_clusters = MIN(nb_clusters, s->l2_size - l2_index);
++    assert(nb_clusters <= INT_MAX);
+ 
+     for (i = 0; i < nb_clusters; i++) {
+         uint64_t old_l2_entry;
+@@ -1494,7 +1501,7 @@ int qcow2_discard_clusters(BlockDriverState *bs, uint64_t offset,
+ {
+     BDRVQcowState *s = bs->opaque;
+     uint64_t end_offset;
+-    unsigned int nb_clusters;
++    uint64_t nb_clusters;
+     int ret;
+ 
+     end_offset = offset + (nb_sectors << BDRV_SECTOR_BITS);
+@@ -1536,7 +1543,7 @@ fail:
+  * clusters.
+  */
+ static int zero_single_l2(BlockDriverState *bs, uint64_t offset,
+-    unsigned int nb_clusters)
++                          uint64_t nb_clusters)
+ {
+     BDRVQcowState *s = bs->opaque;
+     uint64_t *l2_table;
+@@ -1551,6 +1558,7 @@ static int zero_single_l2(BlockDriverState *bs, uint64_t offset,
+ 
+     /* Limit nb_clusters to one L2 table */
+     nb_clusters = MIN(nb_clusters, s->l2_size - l2_index);
++    assert(nb_clusters <= INT_MAX);
+ 
+     for (i = 0; i < nb_clusters; i++) {
+         uint64_t old_offset;
+@@ -1578,7 +1586,7 @@ static int zero_single_l2(BlockDriverState *bs, uint64_t offset,
+ int qcow2_zero_clusters(BlockDriverState *bs, uint64_t offset, int nb_sectors)
+ {
+     BDRVQcowState *s = bs->opaque;
+-    unsigned int nb_clusters;
++    uint64_t nb_clusters;
+     int ret;
+ 
+     /* The zero flag is only supported by version 3 and newer */
+diff --git a/block/qcow2-refcount.c b/block/qcow2-refcount.c
+index d4f3351..bbcef53 100644
+--- a/block/qcow2-refcount.c
++++ b/block/qcow2-refcount.c
+@@ -889,8 +889,8 @@ int64_t qcow2_alloc_clusters(BlockDriverState *bs, uint64_t size)
+     return offset;
+ }
+ 
+-int qcow2_alloc_clusters_at(BlockDriverState *bs, uint64_t offset,
+-    int nb_clusters)
++int64_t qcow2_alloc_clusters_at(BlockDriverState *bs, uint64_t offset,
++                                int64_t nb_clusters)
+ {
+     BDRVQcowState *s = bs->opaque;
+     uint64_t cluster_index, refcount;
+@@ -1276,7 +1276,7 @@ static size_t refcount_array_byte_size(BDRVQcowState *s, uint64_t entries)
+ static int realloc_refcount_array(BDRVQcowState *s, void **array,
+                                   int64_t *size, int64_t new_size)
+ {
+-    size_t old_byte_size, new_byte_size;
++    int64_t old_byte_size, new_byte_size;
+     void *new_ptr;
+ 
+     /* Round to clusters so the array can be directly written to disk */
+@@ -1292,13 +1292,17 @@ static int realloc_refcount_array(BDRVQcowState *s, void **array,
+ 
+     assert(new_byte_size > 0);
+ 
++    if (new_byte_size > SIZE_MAX) {
++        return -ENOMEM;
++    }
++
+     new_ptr = g_try_realloc(*array, new_byte_size);
+     if (!new_ptr) {
+         return -ENOMEM;
+     }
+ 
+     if (new_byte_size > old_byte_size) {
+-        memset((void *)((uintptr_t)new_ptr + old_byte_size), 0,
++        memset((char *)new_ptr + old_byte_size, 0,
+                new_byte_size - old_byte_size);
+     }
+ 
+diff --git a/block/qcow2.h b/block/qcow2.h
+index 22f9ac2..96346e4 100644
+--- a/block/qcow2.h
++++ b/block/qcow2.h
+@@ -414,7 +414,7 @@ static inline int64_t offset_into_cluster(BDRVQcowState *s, int64_t offset)
+     return offset & (s->cluster_size - 1);
+ }
+ 
+-static inline int size_to_clusters(BDRVQcowState *s, int64_t size)
++static inline uint64_t size_to_clusters(BDRVQcowState *s, uint64_t size)
+ {
+     return (size + (s->cluster_size - 1)) >> s->cluster_bits;
+ }
+@@ -508,8 +508,8 @@ int qcow2_update_cluster_refcount(BlockDriverState *bs, int64_t cluster_index,
+                                   enum qcow2_discard_type type);
+ 
+ int64_t qcow2_alloc_clusters(BlockDriverState *bs, uint64_t size);
+-int qcow2_alloc_clusters_at(BlockDriverState *bs, uint64_t offset,
+-    int nb_clusters);
++int64_t qcow2_alloc_clusters_at(BlockDriverState *bs, uint64_t offset,
++                                int64_t nb_clusters);
+ int64_t qcow2_alloc_bytes(BlockDriverState *bs, int size);
+ void qcow2_free_clusters(BlockDriverState *bs,
+                           int64_t offset, int64_t size,
+-- 
+1.8.3.1
+

@@ -1,0 +1,86 @@
+From 8d2b67c3a0e61cdefd2cb60924f0fb4265846ca9 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 30 Sep 2015 06:43:14 +0200
+Subject: [PATCH 06/10] vfio: Allow hotplug of containers onto existing guest
+ IOMMU mappings
+
+Message-id: <1443595398-20898-7-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67990
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv4 06/10] vfio: Allow hotplug of containers onto existing guest IOMMU mappings
+Bugzilla: 1259556
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+At present the memory listener used by vfio to keep host IOMMU mappings
+in sync with the guest memory image assumes that if a guest IOMMU
+appears, then it has no existing mappings.
+
+This may not be true if a VFIO device is hotplugged onto a guest bus
+which didn't previously include a VFIO device, and which has existing
+guest IOMMU mappings.
+
+Therefore, use the memory_region_register_iommu_notifier_replay()
+function in order to fix this case, replaying existing guest IOMMU
+mappings, bringing the host IOMMU into sync with the guest IOMMU.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+
+Upstream: 508ce5eb00070809f0d19917a1b2960dfcf5a64b
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/vfio/common.c | 23 +++++++++--------------
+ 1 file changed, 9 insertions(+), 14 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 26a5a14..197cd11 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -309,6 +309,11 @@ static void vfio_iommu_map_notify(Notifier *n, void *data)
+     }
+ }
+ 
++static hwaddr vfio_container_granularity(VFIOContainer *container)
++{
++    return (hwaddr)1 << ctz64(container->iova_pgsizes);
++}
++
+ static void vfio_listener_region_add(MemoryListener *listener,
+                                      MemoryRegionSection *section)
+ {
+@@ -366,26 +371,16 @@ static void vfio_listener_region_add(MemoryListener *listener,
+          * would be the right place to wire that up (tell the KVM
+          * device emulation the VFIO iommu handles to use).
+          */
+-        /*
+-         * This assumes that the guest IOMMU is empty of
+-         * mappings at this point.
+-         *
+-         * One way of doing this is:
+-         * 1. Avoid sharing IOMMUs between emulated devices or different
+-         * IOMMU groups.
+-         * 2. Implement VFIO_IOMMU_ENABLE in the host kernel to fail if
+-         * there are some mappings in IOMMU.
+-         *
+-         * VFIO on SPAPR does that. Other IOMMU models may do that different,
+-         * they must make sure there are no existing mappings or
+-         * loop through existing mappings to map them into VFIO.
+-         */
+         giommu = g_malloc0(sizeof(*giommu));
+         giommu->iommu = section->mr;
+         giommu->container = container;
+         giommu->n.notify = vfio_iommu_map_notify;
+         QLIST_INSERT_HEAD(&container->giommu_list, giommu, giommu_next);
++
+         memory_region_register_iommu_notifier(giommu->iommu, &giommu->n);
++        memory_region_iommu_replay(giommu->iommu, &giommu->n,
++                                   vfio_container_granularity(container),
++                                   false);
+ 
+         return;
+     }
+-- 
+1.8.3.1
+

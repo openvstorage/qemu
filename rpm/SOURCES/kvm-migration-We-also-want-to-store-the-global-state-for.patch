@@ -1,0 +1,91 @@
+From 119630cc8ba733af51c984ec81f01cd4d7a779b9 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:11 +0200
+Subject: [PATCH 26/28] migration: We also want to store the global state for
+ savevm
+
+Message-id: <1438098431-30847-27-git-send-email-quintela@redhat.com>
+Patchwork-id: 67184
+O-Subject: [RHEL-7 qemu-kvm PATCH 26/26] migration: We also want to store the global state for savevm
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Commit df4b1024526cae3479da3492d6371fd4a7324a03 introduced global_state
+section.  But it only filled the state while doing migration.  While
+doing a savevm, we stored an empty string as state.  So when we did a
+loadvm, it complained that state was invalid.
+
+Fedora 21, 4.1.1, qemu 2.4.0-rc0
+> ../../configure --target-list="x86_64-softmmu"
+
+dddd 2s ... - output mismatch (see 068.out.bad)
+
+<Removed output from make check, rh-brew chokes on it>
+
+Failures: 068
+Failed 1 of 1 tests
+
+Actually, there were two problems here:
+- we registered global_state too late for load_vm (fixed on another
+  patch on the list)
+- we didn't store a valid state for savevm (fixed by this patch).
+
+Reported-by: John Snow <jsnow@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Reviewed-by: Amit Shah <amit.shah@redhat.com>
+Tested-by:  Christian Borntraeger <borntraeger@de.ibm.com>
+(cherry picked from commit 560d027b54067ffa4e79c6f7c0a499abb0d749a3)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/migration/migration.h | 1 +
+ migration/migration.c         | 2 +-
+ migration/savevm.c            | 6 ++++++
+ 3 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/include/migration/migration.h b/include/migration/migration.h
+index b2b83c0..7a80a33 100644
+--- a/include/migration/migration.h
++++ b/include/migration/migration.h
+@@ -183,4 +183,5 @@ void register_global_state(void);
+ extern bool migrate_pre_2_2;
+ void global_state_set_optional(void);
+ void savevm_skip_configuration(void);
++int global_state_store(void);
+ #endif
+diff --git a/migration/migration.c b/migration/migration.c
+index 3edf1fb..dc80e50 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -71,7 +71,7 @@ typedef struct {
+ 
+ static GlobalState global_state;
+ 
+-static int global_state_store(void)
++int global_state_store(void)
+ {
+     if (!runstate_store((char *)global_state.runstate,
+                         sizeof(global_state.runstate))) {
+diff --git a/migration/savevm.c b/migration/savevm.c
+index f59d665..a34e833 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -1321,6 +1321,12 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
+     }
+ 
+     saved_vm_running = runstate_is_running();
++
++    ret = global_state_store();
++    if (ret) {
++        monitor_printf(mon, "Error saving global state\n");
++        return;
++    }
+     vm_stop(RUN_STATE_SAVE_VM);
+ 
+     memset(sn, 0, sizeof(*sn));
+-- 
+1.8.3.1
+

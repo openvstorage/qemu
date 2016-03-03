@@ -1,0 +1,65 @@
+From f046cdfc2b6e5b1d1cea487b2e2f9c70177bdfd3 Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:06 +0200
+Subject: [PATCH 17/22] nbd: Mark fd handlers client type as "nbd server"
+
+Message-id: <1442456951-3827-8-git-send-email-famz@redhat.com>
+Patchwork-id: 67798
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 07/12] nbd: Mark fd handlers client type as "nbd server"
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+So we could distinguish it from "protocol" to avoid handling in nested aio
+polls.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+---
+ include/block/aio.h | 1 +
+ nbd.c               | 4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/block/aio.h | 1 +
+ nbd.c               | 4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/include/block/aio.h b/include/block/aio.h
+index 3a573a7..63d65d7 100644
+--- a/include/block/aio.h
++++ b/include/block/aio.h
+@@ -226,6 +226,7 @@ bool aio_dispatch(AioContext *ctx);
+ 
+ #define AIO_CLIENT_UNSPECIFIED    (1 << 0)
+ #define AIO_CLIENT_PROTOCOL       (1 << 1)
++#define AIO_CLIENT_NBD_SERVER     (1 << 2)
+ #define AIO_CLIENT_MASK_ALL       -1
+ 
+ /* Progress in completing AIO work to occur.  This can issue new pending
+diff --git a/nbd.c b/nbd.c
+index acbe535..466d4bf 100644
+--- a/nbd.c
++++ b/nbd.c
+@@ -1380,7 +1380,7 @@ static void nbd_set_handlers(NBDClient *client)
+ {
+     if (client->exp && client->exp->ctx) {
+         aio_set_fd_handler(client->exp->ctx, client->sock,
+-                           AIO_CLIENT_UNSPECIFIED,
++                           AIO_CLIENT_NBD_SERVER,
+                            client->can_read ? nbd_read : NULL,
+                            client->send_coroutine ? nbd_restart_write : NULL,
+                            client);
+@@ -1391,7 +1391,7 @@ static void nbd_unset_handlers(NBDClient *client)
+ {
+     if (client->exp && client->exp->ctx) {
+         aio_set_fd_handler(client->exp->ctx, client->sock,
+-                           AIO_CLIENT_UNSPECIFIED, NULL, NULL, NULL);
++                           AIO_CLIENT_NBD_SERVER, NULL, NULL, NULL);
+     }
+ }
+ 
+-- 
+1.8.3.1
+

@@ -1,0 +1,49 @@
+From ce379619420abde523a6396b9f394760d9bebb48 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:34 +0200
+Subject: [PATCH 060/100] virtio-net: enable virtio 1.0
+
+Message-id: <1436260751-25015-32-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66806
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 31/68] virtio-net: enable virtio 1.0
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+virtio-net (non-vhost) now should have everything in place to support
+virtio 1.0: let's enable the feature bit for it.
+
+Note that VIRTIO_F_VERSION_1 is technically a transport feature; once
+every device is ready for virtio 1.0, we can move setting this
+feature bit out of the individual devices.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit df91055db5c9cee93d70ca8c08d72119a240b987)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/virtio-net.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index ea9e22e..ed47f39 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -476,6 +476,7 @@ static uint64_t virtio_net_get_features(VirtIODevice *vdev, uint64_t features)
+     }
+ 
+     if (!get_vhost_net(nc->peer)) {
++        virtio_add_feature(&features, VIRTIO_F_VERSION_1);
+         return features;
+     }
+     return vhost_net_get_features(get_vhost_net(nc->peer), features);
+-- 
+1.8.3.1
+

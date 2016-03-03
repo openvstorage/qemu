@@ -1,0 +1,108 @@
+From 867c1000bdb321094e712072b769ccc9bb424546 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:52 +0200
+Subject: [PATCH 078/100] virtio-pci: move virtio_pci_add_mem_cap call to
+ virtio_pci_modern_region_map
+
+Message-id: <1436260751-25015-50-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66823
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 49/68] virtio-pci: move virtio_pci_add_mem_cap call to virtio_pci_modern_region_map
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Also fill offset and length automatically,
+from VirtIOPCIRegion->offset and region size.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 54790d71e4adcfaae95dac3c7019b10721e609de)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 28 ++++++++++------------------
+ 1 file changed, 10 insertions(+), 18 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 415660a..3b61b21 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1275,11 +1275,16 @@ static void virtio_pci_modern_regions_init(VirtIOPCIProxy *proxy)
+ }
+ 
+ static void virtio_pci_modern_region_map(VirtIOPCIProxy *proxy,
+-                                         VirtIOPCIRegion *region)
++                                         VirtIOPCIRegion *region,
++                                         struct virtio_pci_cap *cap)
+ {
+     memory_region_add_subregion(&proxy->modern_bar,
+                                 region->offset,
+                                 &region->mr);
++
++    cap->offset = cpu_to_le32(region->offset);
++    cap->length = cpu_to_le32(memory_region_size(&region->mr));
++    virtio_pci_add_mem_cap(proxy, cap);
+ }
+ 
+ /* This is called by virtio-bus just after the device is plugged. */
+@@ -1335,49 +1340,36 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+             .cfg_type = VIRTIO_PCI_CAP_COMMON_CFG,
+             .cap_len = sizeof common,
+             .bar = modern_mem_bar,
+-            .offset = cpu_to_le32(0x0),
+-            .length = cpu_to_le32(0x1000),
+         };
+         struct virtio_pci_cap isr = {
+             .cfg_type = VIRTIO_PCI_CAP_ISR_CFG,
+             .cap_len = sizeof isr,
+             .bar = modern_mem_bar,
+-            .offset = cpu_to_le32(0x1000),
+-            .length = cpu_to_le32(0x1000),
+         };
+         struct virtio_pci_cap device = {
+             .cfg_type = VIRTIO_PCI_CAP_DEVICE_CFG,
+             .cap_len = sizeof device,
+             .bar = modern_mem_bar,
+-            .offset = cpu_to_le32(0x2000),
+-            .length = cpu_to_le32(0x1000),
+         };
+         struct virtio_pci_notify_cap notify = {
+             .cap.cfg_type = VIRTIO_PCI_CAP_NOTIFY_CFG,
+             .cap.cap_len = sizeof notify,
+             .cap.bar = modern_mem_bar,
+-            .cap.offset = cpu_to_le32(0x3000),
+-            .cap.length = cpu_to_le32(QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
+-                                      VIRTIO_QUEUE_MAX),
+             .notify_off_multiplier =
+                 cpu_to_le32(QEMU_VIRTIO_PCI_QUEUE_MEM_MULT),
+         };
+ 
+         /* TODO: add io access for speed */
+-        virtio_pci_add_mem_cap(proxy, &common);
+-        virtio_pci_add_mem_cap(proxy, &isr);
+-        virtio_pci_add_mem_cap(proxy, &device);
+-        virtio_pci_add_mem_cap(proxy, &notify.cap);
+ 
+         virtio_add_feature(&vdev->host_features, VIRTIO_F_VERSION_1);
+         memory_region_init(&proxy->modern_bar, OBJECT(proxy), "virtio-pci",
+                            2 * QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
+                            VIRTIO_QUEUE_MAX);
+         virtio_pci_modern_regions_init(proxy);
+-        virtio_pci_modern_region_map(proxy, &proxy->common);
+-        virtio_pci_modern_region_map(proxy, &proxy->isr);
+-        virtio_pci_modern_region_map(proxy, &proxy->device);
+-        virtio_pci_modern_region_map(proxy, &proxy->notify);
++        virtio_pci_modern_region_map(proxy, &proxy->common, &common);
++        virtio_pci_modern_region_map(proxy, &proxy->isr, &isr);
++        virtio_pci_modern_region_map(proxy, &proxy->device, &device);
++        virtio_pci_modern_region_map(proxy, &proxy->notify, &notify.cap);
+         pci_register_bar(&proxy->pci_dev, modern_mem_bar,
+                          PCI_BASE_ADDRESS_SPACE_MEMORY |
+                          PCI_BASE_ADDRESS_MEM_PREFETCH |
+-- 
+1.8.3.1
+

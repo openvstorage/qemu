@@ -1,0 +1,56 @@
+From 5668cc1d3adb7102ed5a65d35831b66699075602 Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Fri, 17 Jul 2015 09:18:50 +0200
+Subject: [PATCH 11/23] Fix reported machine type
+
+Message-id: <1436520115-10254-1-git-send-email-mrezanin@redhat.com>
+Patchwork-id: 66938
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH] Fix reported machine type
+Bugzilla: 1241331
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Miroslav Rezanina <mrezanin@redhat.com>
+
+We used description field (RHEL 7.0.0 PC (i440FX + PIIX, 1996)) for reporting
+machine type instead of name field (pc-i440fx-rhel7.0.0) in RHEL-7.1. This
+behavior was lost with rebase to 2.3 so we use name field now.
+
+This fix returns 7.1 behavior.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc_piix.c | 2 +-
+ hw/i386/pc_q35.c  | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 7aaa19e..4fc85f4 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -174,7 +174,7 @@ static void pc_init1(MachineState *machine,
+         MachineClass *mc = MACHINE_GET_CLASS(machine);
+         /* These values are guest ABI, do not change */
+         smbios_set_defaults("Red Hat", "KVM",
+-                            mc->name, smbios_legacy_mode, smbios_uuid_encoded);
++                            mc->desc, smbios_legacy_mode, smbios_uuid_encoded);
+     }
+ 
+     /* allocate ram and load rom/bios */
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 41c53ac..2236ecf 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -165,7 +165,7 @@ static void pc_q35_init(MachineState *machine)
+     if (smbios_defaults) {
+         /* These values are guest ABI, do not change */
+         smbios_set_defaults("Red Hat", "KVM",
+-                            mc->name, smbios_legacy_mode, smbios_uuid_encoded);
++                            mc->desc, smbios_legacy_mode, smbios_uuid_encoded);
+     }
+ 
+     /* allocate ram and load rom/bios */
+-- 
+1.8.3.1
+

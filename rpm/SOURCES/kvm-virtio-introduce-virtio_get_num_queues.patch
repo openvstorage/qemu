@@ -1,0 +1,65 @@
+From edd9d3291596fe232370d1a983545b4d685df286 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:49 +0200
+Subject: [PATCH 13/20] virtio: introduce virtio_get_num_queues()
+
+Message-id: <1434607916-15166-14-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66311
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 13/20] virtio: introduce virtio_get_num_queues()
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+This patch introduces virtio_get_num_queues() which iterates the vqs
+array and return the number of virtqueues used by device.
+
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 8ad176aaed24535f535e0fdb03c538c23017535d)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio.c         | 13 +++++++++++++
+ include/hw/virtio/virtio.h |  1 +
+ 2 files changed, 14 insertions(+)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 0b50f9d..81d8905 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -746,6 +746,19 @@ int virtio_queue_get_num(VirtIODevice *vdev, int n)
+     return vdev->vq[n].vring.num;
+ }
+ 
++int virtio_get_num_queues(VirtIODevice *vdev)
++{
++    int i;
++
++    for (i = 0; i < VIRTIO_PCI_QUEUE_MAX; i++) {
++        if (!virtio_queue_get_num(vdev, i)) {
++            break;
++        }
++    }
++
++    return i;
++}
++
+ int virtio_queue_get_id(VirtQueue *vq)
+ {
+     VirtIODevice *vdev = vq->vdev;
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 9706c29..6f49108 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -175,6 +175,7 @@ void virtio_queue_set_addr(VirtIODevice *vdev, int n, hwaddr addr);
+ hwaddr virtio_queue_get_addr(VirtIODevice *vdev, int n);
+ void virtio_queue_set_num(VirtIODevice *vdev, int n, int num);
+ int virtio_queue_get_num(VirtIODevice *vdev, int n);
++int virtio_get_num_queues(VirtIODevice *vdev);
+ void virtio_queue_set_align(VirtIODevice *vdev, int n, int align);
+ void virtio_queue_notify(VirtIODevice *vdev, int n);
+ uint16_t virtio_queue_vector(VirtIODevice *vdev, int n);
+-- 
+1.8.3.1
+

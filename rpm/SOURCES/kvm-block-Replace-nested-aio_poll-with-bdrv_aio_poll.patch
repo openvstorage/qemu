@@ -1,0 +1,242 @@
+From 48c26c9a294573973afbe09055e64f3eca55604b Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:10 +0200
+Subject: [PATCH 21/22] block: Replace nested aio_poll with bdrv_aio_poll
+
+Message-id: <1442456951-3827-12-git-send-email-famz@redhat.com>
+Patchwork-id: 67802
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 11/12] block: Replace nested aio_poll with bdrv_aio_poll
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+Just a manual search and replace. No semantic change here.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block.c           | 16 ++++++++--------
+ block/curl.c      |  2 +-
+ block/iscsi.c     |  2 +-
+ block/nfs.c       |  2 +-
+ block/qed-table.c |  8 ++++----
+ block/sheepdog.c  |  2 +-
+ blockjob.c        |  2 +-
+ qemu-img.c        |  2 +-
+ qemu-io-cmds.c    |  4 ++--
+ 9 files changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/block.c b/block.c
+index 0380ef1..461cd1f 100644
+--- a/block.c
++++ b/block.c
+@@ -482,7 +482,7 @@ int bdrv_create(BlockDriver *drv, const char* filename,
+         co = qemu_coroutine_create(bdrv_create_co_entry);
+         qemu_coroutine_enter(co, &cco);
+         while (cco.ret == NOT_DONE) {
+-            aio_poll(qemu_get_aio_context(), true);
++            bdrv_aio_poll(qemu_get_aio_context(), true);
+         }
+     }
+ 
+@@ -1992,7 +1992,7 @@ static bool bdrv_drain_one(BlockDriverState *bs)
+     bdrv_flush_io_queue(bs);
+     bdrv_start_throttled_reqs(bs);
+     bs_busy = bdrv_requests_pending(bs);
+-    bs_busy |= aio_poll(bdrv_get_aio_context(bs), bs_busy);
++    bs_busy |= bdrv_aio_poll(bdrv_get_aio_context(bs), bs_busy);
+     return bs_busy;
+ }
+ 
+@@ -2770,7 +2770,7 @@ static int bdrv_prwv_co(BlockDriverState *bs, int64_t offset,
+         co = qemu_coroutine_create(bdrv_rw_co_entry);
+         qemu_coroutine_enter(co, &rwco);
+         while (rwco.ret == NOT_DONE) {
+-            aio_poll(aio_context, true);
++            bdrv_aio_poll(aio_context, true);
+         }
+     }
+     return rwco.ret;
+@@ -4315,7 +4315,7 @@ int64_t bdrv_get_block_status_above(BlockDriverState *bs,
+         co = qemu_coroutine_create(bdrv_get_block_status_above_co_entry);
+         qemu_coroutine_enter(co, &data);
+         while (!data.done) {
+-            aio_poll(aio_context, true);
++            bdrv_aio_poll(aio_context, true);
+         }
+     }
+     return data.ret;
+@@ -4865,9 +4865,9 @@ void bdrv_aio_cancel(BlockAIOCB *acb)
+     bdrv_aio_cancel_async(acb);
+     while (acb->refcnt > 1) {
+         if (acb->aiocb_info->get_aio_context) {
+-            aio_poll(acb->aiocb_info->get_aio_context(acb), true);
++            bdrv_aio_poll(acb->aiocb_info->get_aio_context(acb), true);
+         } else if (acb->bs) {
+-            aio_poll(bdrv_get_aio_context(acb->bs), true);
++            bdrv_aio_poll(bdrv_get_aio_context(acb->bs), true);
+         } else {
+             abort();
+         }
+@@ -5313,7 +5313,7 @@ int bdrv_flush(BlockDriverState *bs)
+         co = qemu_coroutine_create(bdrv_flush_co_entry);
+         qemu_coroutine_enter(co, &rwco);
+         while (rwco.ret == NOT_DONE) {
+-            aio_poll(aio_context, true);
++            bdrv_aio_poll(aio_context, true);
+         }
+     }
+ 
+@@ -5426,7 +5426,7 @@ int bdrv_discard(BlockDriverState *bs, int64_t sector_num, int nb_sectors)
+         co = qemu_coroutine_create(bdrv_discard_co_entry);
+         qemu_coroutine_enter(co, &rwco);
+         while (rwco.ret == NOT_DONE) {
+-            aio_poll(aio_context, true);
++            bdrv_aio_poll(aio_context, true);
+         }
+     }
+ 
+diff --git a/block/curl.c b/block/curl.c
+index 7b78bce..124375d 100644
+--- a/block/curl.c
++++ b/block/curl.c
+@@ -391,7 +391,7 @@ static CURLState *curl_init_state(BlockDriverState *bs, BDRVCURLState *s)
+             break;
+         }
+         if (!state) {
+-            aio_poll(bdrv_get_aio_context(bs), true);
++            bdrv_aio_poll(bdrv_get_aio_context(bs), true);
+         }
+     } while(!state);
+ 
+diff --git a/block/iscsi.c b/block/iscsi.c
+index 83c8600..3996933 100644
+--- a/block/iscsi.c
++++ b/block/iscsi.c
+@@ -793,7 +793,7 @@ static int iscsi_ioctl(BlockDriverState *bs, unsigned long int req, void *buf)
+         iscsi_aio_ioctl(bs, req, buf, ioctl_cb, &status);
+ 
+         while (status == -EINPROGRESS) {
+-            aio_poll(iscsilun->aio_context, true);
++            bdrv_aio_poll(iscsilun->aio_context, true);
+         }
+ 
+         return 0;
+diff --git a/block/nfs.c b/block/nfs.c
+index 4bfad25..38ca7fe 100644
+--- a/block/nfs.c
++++ b/block/nfs.c
+@@ -462,7 +462,7 @@ static int64_t nfs_get_allocated_file_size(BlockDriverState *bs)
+ 
+     while (!task.complete) {
+         nfs_set_events(client);
+-        aio_poll(client->aio_context, true);
++        bdrv_aio_poll(client->aio_context, true);
+     }
+ 
+     return (task.ret < 0 ? task.ret : st.st_blocks * st.st_blksize);
+diff --git a/block/qed-table.c b/block/qed-table.c
+index 513aa87..6421ce7 100644
+--- a/block/qed-table.c
++++ b/block/qed-table.c
+@@ -173,7 +173,7 @@ int qed_read_l1_table_sync(BDRVQEDState *s)
+     qed_read_table(s, s->header.l1_table_offset,
+                    s->l1_table, qed_sync_cb, &ret);
+     while (ret == -EINPROGRESS) {
+-        aio_poll(bdrv_get_aio_context(s->bs), true);
++        bdrv_aio_poll(bdrv_get_aio_context(s->bs), true);
+     }
+ 
+     return ret;
+@@ -194,7 +194,7 @@ int qed_write_l1_table_sync(BDRVQEDState *s, unsigned int index,
+ 
+     qed_write_l1_table(s, index, n, qed_sync_cb, &ret);
+     while (ret == -EINPROGRESS) {
+-        aio_poll(bdrv_get_aio_context(s->bs), true);
++        bdrv_aio_poll(bdrv_get_aio_context(s->bs), true);
+     }
+ 
+     return ret;
+@@ -267,7 +267,7 @@ int qed_read_l2_table_sync(BDRVQEDState *s, QEDRequest *request, uint64_t offset
+ 
+     qed_read_l2_table(s, request, offset, qed_sync_cb, &ret);
+     while (ret == -EINPROGRESS) {
+-        aio_poll(bdrv_get_aio_context(s->bs), true);
++        bdrv_aio_poll(bdrv_get_aio_context(s->bs), true);
+     }
+ 
+     return ret;
+@@ -289,7 +289,7 @@ int qed_write_l2_table_sync(BDRVQEDState *s, QEDRequest *request,
+ 
+     qed_write_l2_table(s, request, index, n, flush, qed_sync_cb, &ret);
+     while (ret == -EINPROGRESS) {
+-        aio_poll(bdrv_get_aio_context(s->bs), true);
++        bdrv_aio_poll(bdrv_get_aio_context(s->bs), true);
+     }
+ 
+     return ret;
+diff --git a/block/sheepdog.c b/block/sheepdog.c
+index 9887d5b..44ad147 100644
+--- a/block/sheepdog.c
++++ b/block/sheepdog.c
+@@ -691,7 +691,7 @@ static int do_req(int sockfd, AioContext *aio_context, SheepdogReq *hdr,
+         co = qemu_coroutine_create(do_co_req);
+         qemu_coroutine_enter(co, &srco);
+         while (!srco.finished) {
+-            aio_poll(aio_context, true);
++            bdrv_aio_poll(aio_context, true);
+         }
+     }
+ 
+diff --git a/blockjob.c b/blockjob.c
+index ba2255d..c5cef0f 100644
+--- a/blockjob.c
++++ b/blockjob.c
+@@ -196,7 +196,7 @@ static int block_job_finish_sync(BlockJob *job,
+         return -EBUSY;
+     }
+     while (data.ret == -EINPROGRESS) {
+-        aio_poll(bdrv_get_aio_context(bs), true);
++        bdrv_aio_poll(bdrv_get_aio_context(bs), true);
+     }
+     return (data.cancelled && data.ret == 0) ? -ECANCELED : data.ret;
+ }
+diff --git a/qemu-img.c b/qemu-img.c
+index 9dddfbe..ee38e0e 100644
+--- a/qemu-img.c
++++ b/qemu-img.c
+@@ -744,7 +744,7 @@ static void run_block_job(BlockJob *job, Error **errp)
+     AioContext *aio_context = bdrv_get_aio_context(job->bs);
+ 
+     do {
+-        aio_poll(aio_context, true);
++        bdrv_aio_poll(aio_context, true);
+         qemu_progress_print((float)job->offset / job->len * 100.f, 0);
+     } while (!job->ready);
+ 
+diff --git a/qemu-io-cmds.c b/qemu-io-cmds.c
+index 1afcfc0..72f1ce6 100644
+--- a/qemu-io-cmds.c
++++ b/qemu-io-cmds.c
+@@ -477,7 +477,7 @@ static int do_co_write_zeroes(BlockBackend *blk, int64_t offset, int count,
+     co = qemu_coroutine_create(co_write_zeroes_entry);
+     qemu_coroutine_enter(co, &data);
+     while (!data.done) {
+-        aio_poll(blk_get_aio_context(blk), true);
++        bdrv_aio_poll(blk_get_aio_context(blk), true);
+     }
+     if (data.ret < 0) {
+         return data.ret;
+@@ -2045,7 +2045,7 @@ static const cmdinfo_t resume_cmd = {
+ static int wait_break_f(BlockBackend *blk, int argc, char **argv)
+ {
+     while (!bdrv_debug_is_suspended(blk_bs(blk), argv[1])) {
+-        aio_poll(blk_get_aio_context(blk), true);
++        bdrv_aio_poll(blk_get_aio_context(blk), true);
+     }
+ 
+     return 0;
+-- 
+1.8.3.1
+

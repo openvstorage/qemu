@@ -1,0 +1,210 @@
+From bb6cd636f5622419327456fb260eec24d5947dff Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:01 +0200
+Subject: [PATCH 12/22] aio-posix: move pollfds to thread-local storage
+
+Message-id: <1442456951-3827-3-git-send-email-famz@redhat.com>
+Patchwork-id: 67793
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 02/12] aio-posix: move pollfds to thread-local storage
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+From: Paolo Bonzini <pbonzini@redhat.com>
+
+By using thread-local storage, aio_poll can stop using global data during
+g_poll_ns.  This will make it possible to drop callbacks from rfifolock.
+
+[Moved npfd = 0 assignment to end of walking_handlers region as
+suggested by Paolo.  This resolves the assert(npfd == 0) assertion
+failure in pollfds_cleanup().
+--Stefan]
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-id: 1424449612-18215-2-git-send-email-pbonzini@redhat.com
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit e98ab097092e54999f046e9efa1ca1dd52f0c9e5)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+---
+ aio-posix.c         | 78 ++++++++++++++++++++++++++++++++++++++---------------
+ async.c             |  2 --
+ include/block/aio.h |  3 ---
+ 3 files changed, 57 insertions(+), 26 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ aio-posix.c         | 78 ++++++++++++++++++++++++++++++++++++++---------------
+ async.c             |  2 --
+ include/block/aio.h |  3 ---
+ 3 files changed, 57 insertions(+), 26 deletions(-)
+
+diff --git a/aio-posix.c b/aio-posix.c
+index cbd4c34..296cd9b 100644
+--- a/aio-posix.c
++++ b/aio-posix.c
+@@ -24,7 +24,6 @@ struct AioHandler
+     IOHandler *io_read;
+     IOHandler *io_write;
+     int deleted;
+-    int pollfds_idx;
+     void *opaque;
+     QLIST_ENTRY(AioHandler) node;
+ };
+@@ -83,7 +82,6 @@ void aio_set_fd_handler(AioContext *ctx,
+         node->io_read = io_read;
+         node->io_write = io_write;
+         node->opaque = opaque;
+-        node->pollfds_idx = -1;
+ 
+         node->pfd.events = (io_read ? G_IO_IN | G_IO_HUP | G_IO_ERR : 0);
+         node->pfd.events |= (io_write ? G_IO_OUT | G_IO_ERR : 0);
+@@ -186,12 +184,59 @@ bool aio_dispatch(AioContext *ctx)
+     return progress;
+ }
+ 
++/* These thread-local variables are used only in a small part of aio_poll
++ * around the call to the poll() system call.  In particular they are not
++ * used while aio_poll is performing callbacks, which makes it much easier
++ * to think about reentrancy!
++ *
++ * Stack-allocated arrays would be perfect but they have size limitations;
++ * heap allocation is expensive enough that we want to reuse arrays across
++ * calls to aio_poll().  And because poll() has to be called without holding
++ * any lock, the arrays cannot be stored in AioContext.  Thread-local data
++ * has none of the disadvantages of these three options.
++ */
++static __thread GPollFD *pollfds;
++static __thread AioHandler **nodes;
++static __thread unsigned npfd, nalloc;
++static __thread Notifier pollfds_cleanup_notifier;
++
++static void pollfds_cleanup(Notifier *n, void *unused)
++{
++    g_assert(npfd == 0);
++    g_free(pollfds);
++    g_free(nodes);
++    nalloc = 0;
++}
++
++static void add_pollfd(AioHandler *node)
++{
++    if (npfd == nalloc) {
++        if (nalloc == 0) {
++            pollfds_cleanup_notifier.notify = pollfds_cleanup;
++            qemu_thread_atexit_add(&pollfds_cleanup_notifier);
++            nalloc = 8;
++        } else {
++            g_assert(nalloc <= INT_MAX);
++            nalloc *= 2;
++        }
++        pollfds = g_renew(GPollFD, pollfds, nalloc);
++        nodes = g_renew(AioHandler *, nodes, nalloc);
++    }
++    nodes[npfd] = node;
++    pollfds[npfd] = (GPollFD) {
++        .fd = node->pfd.fd,
++        .events = node->pfd.events,
++    };
++    npfd++;
++}
++
+ bool aio_poll(AioContext *ctx, bool blocking)
+ {
+     AioHandler *node;
+     bool was_dispatching;
+-    int ret;
++    int i, ret;
+     bool progress;
++    int64_t timeout;
+ 
+     was_dispatching = ctx->dispatching;
+     progress = false;
+@@ -210,39 +255,30 @@ bool aio_poll(AioContext *ctx, bool blocking)
+ 
+     ctx->walking_handlers++;
+ 
+-    g_array_set_size(ctx->pollfds, 0);
++    assert(npfd == 0);
+ 
+     /* fill pollfds */
+     QLIST_FOREACH(node, &ctx->aio_handlers, node) {
+-        node->pollfds_idx = -1;
+         if (!node->deleted && node->pfd.events) {
+-            GPollFD pfd = {
+-                .fd = node->pfd.fd,
+-                .events = node->pfd.events,
+-            };
+-            node->pollfds_idx = ctx->pollfds->len;
+-            g_array_append_val(ctx->pollfds, pfd);
++            add_pollfd(node);
+         }
+     }
+ 
+-    ctx->walking_handlers--;
++    timeout = blocking ? aio_compute_timeout(ctx) : 0;
+ 
+     /* wait until next event */
+-    ret = qemu_poll_ns((GPollFD *)ctx->pollfds->data,
+-                         ctx->pollfds->len,
+-                         blocking ? aio_compute_timeout(ctx) : 0);
++    ret = qemu_poll_ns((GPollFD *)pollfds, npfd, timeout);
+ 
+     /* if we have any readable fds, dispatch event */
+     if (ret > 0) {
+-        QLIST_FOREACH(node, &ctx->aio_handlers, node) {
+-            if (node->pollfds_idx != -1) {
+-                GPollFD *pfd = &g_array_index(ctx->pollfds, GPollFD,
+-                                              node->pollfds_idx);
+-                node->pfd.revents = pfd->revents;
+-            }
++        for (i = 0; i < npfd; i++) {
++            nodes[i]->pfd.revents = pollfds[i].revents;
+         }
+     }
+ 
++    npfd = 0;
++    ctx->walking_handlers--;
++
+     /* Run dispatch even if there were no readable fds to run timers */
+     aio_set_dispatching(ctx, true);
+     if (aio_dispatch(ctx)) {
+diff --git a/async.c b/async.c
+index 66790c6..fc5f43a 100644
+--- a/async.c
++++ b/async.c
+@@ -230,7 +230,6 @@ aio_ctx_finalize(GSource     *source)
+     event_notifier_cleanup(&ctx->notifier);
+     rfifolock_destroy(&ctx->lock);
+     qemu_mutex_destroy(&ctx->bh_lock);
+-    g_array_free(ctx->pollfds, TRUE);
+     timerlistgroup_deinit(&ctx->tlg);
+ }
+ 
+@@ -305,7 +304,6 @@ AioContext *aio_context_new(Error **errp)
+     aio_set_event_notifier(ctx, &ctx->notifier,
+                            (EventNotifierHandler *)
+                            event_notifier_test_and_clear);
+-    ctx->pollfds = g_array_new(FALSE, FALSE, sizeof(GPollFD));
+     ctx->thread_pool = NULL;
+     qemu_mutex_init(&ctx->bh_lock);
+     rfifolock_init(&ctx->lock, aio_rfifolock_cb, ctx);
+diff --git a/include/block/aio.h b/include/block/aio.h
+index 7d1e26b..0dc7a25 100644
+--- a/include/block/aio.h
++++ b/include/block/aio.h
+@@ -82,9 +82,6 @@ struct AioContext {
+     /* Used for aio_notify.  */
+     EventNotifier notifier;
+ 
+-    /* GPollFDs for aio_poll() */
+-    GArray *pollfds;
+-
+     /* Thread pool for performing work and receiving completion callbacks */
+     struct ThreadPool *thread_pool;
+ 
+-- 
+1.8.3.1
+

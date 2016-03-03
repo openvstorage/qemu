@@ -1,0 +1,73 @@
+From 661984f4c417a5ccd3b739ad89cfd4b9907f4146 Mon Sep 17 00:00:00 2001
+Message-Id: <661984f4c417a5ccd3b739ad89cfd4b9907f4146.1444668695.git.jen@redhat.com>
+In-Reply-To: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+References: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+From: Markus Armbruster <armbru@redhat.com>
+Date: Fri, 9 Oct 2015 14:37:30 -0500
+Subject: [CHANGE 03/11] memory: allow destroying a non-empty MemoryRegion
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Markus Armbruster <armbru@redhat.com>
+Message-id: <1444401458-7995-2-git-send-email-armbru@redhat.com>
+Patchwork-id: 68107
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 1/9] memory: allow destroying a non-empty MemoryRegion
+Bugzilla: 1264347
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+From: Paolo Bonzini <pbonzini@redhat.com>
+
+This is legal; the MemoryRegion will simply unreference all the
+existing subregions and possibly bring them down with it as well.
+However, it requires a bit of care to avoid an infinite loop.
+Finalizing a memory region cannot trigger an address space update,
+but memory_region_del_subregion errs on the side of caution and
+might trigger a spurious update: avoid that by resetting mr->enabled
+first.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Message-Id: <1443689999-12182-2-git-send-email-armbru@redhat.com>
+(cherry picked from commit 2e2b8eb70fdb7dfbec39f3a19b20f9a73f2f813e)
+---
+ memory.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ memory.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/memory.c b/memory.c
+index 7de38a5..85f353f 100644
+--- a/memory.c
++++ b/memory.c
+@@ -1312,7 +1312,22 @@ static void memory_region_finalize(Object *obj)
+ {
+     MemoryRegion *mr = MEMORY_REGION(obj);
+ 
+-    assert(QTAILQ_EMPTY(&mr->subregions));
++    assert(!mr->container);
++
++    /* We know the region is not visible in any address space (it
++     * does not have a container and cannot be a root either because
++     * it has no references, so we can blindly clear mr->enabled.
++     * memory_region_set_enabled instead could trigger a transaction
++     * and cause an infinite loop.
++     */
++    mr->enabled = false;
++    memory_region_transaction_begin();
++    while (!QTAILQ_EMPTY(&mr->subregions)) {
++        MemoryRegion *subregion = QTAILQ_FIRST(&mr->subregions);
++        memory_region_del_subregion(mr, subregion);
++    }
++    memory_region_transaction_commit();
++
+     mr->destructor(mr);
+     memory_region_clear_coalescing(mr);
+     g_free((char *)mr->name);
+-- 
+2.4.3
+

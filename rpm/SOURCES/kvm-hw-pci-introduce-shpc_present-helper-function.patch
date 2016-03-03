@@ -1,0 +1,51 @@
+From 8c05f9cd5612dfb11e9a5882c5821719c8e2e5e6 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Mon, 13 Jul 2015 19:17:45 +0200
+Subject: [PATCH 19/23] hw/pci: introduce shpc_present() helper function
+
+Message-id: <1436815069-15106-9-git-send-email-lersek@redhat.com>
+Patchwork-id: 66999
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 08/12] hw/pci: introduce shpc_present() helper function
+Bugzilla: 1242479
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+It follows msi_present() in "include/hw/pci/msi.h".
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Marcel Apfelbaum <marcel@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 23ab143dcce8d7f758eb6946ebf68d8689018a9c)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/pci/shpc.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/include/hw/pci/shpc.h b/include/hw/pci/shpc.h
+index 14015af..2c871b9 100644
+--- a/include/hw/pci/shpc.h
++++ b/include/hw/pci/shpc.h
+@@ -6,6 +6,7 @@
+ #include "migration/vmstate.h"
+ #include "qapi/error.h"
+ #include "hw/hotplug.h"
++#include "hw/pci/pci.h"
+ 
+ struct SHPCDevice {
+     /* Capability offset in device's config space */
+@@ -55,4 +56,9 @@ extern VMStateInfo shpc_vmstate_info;
+     VMSTATE_BUFFER_UNSAFE_INFO_TEST(_field, _type, _test, 0, \
+                                     shpc_vmstate_info, 0)
+ 
++static inline bool shpc_present(const PCIDevice *dev)
++{
++    return dev->cap_present & QEMU_PCI_CAP_SHPC;
++}
++
+ #endif
+-- 
+1.8.3.1
+

@@ -1,0 +1,67 @@
+From 0fca8c39482ca9e9852e36daf5e341c06a5d6b76 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:39 +0200
+Subject: [PATCH 065/100] virtio: generation counter support
+
+Message-id: <1436260751-25015-37-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66811
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 36/68] virtio: generation counter support
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit b8f059081d93f1802480059d1d49fe5c1d32f60c)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c     | 2 +-
+ hw/virtio/virtio.c         | 1 +
+ include/hw/virtio/virtio.h | 1 +
+ 3 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 5c69614..a41ceee 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -977,7 +977,7 @@ static uint64_t virtio_pci_common_read(void *opaque, hwaddr addr,
+         val = vdev->status;
+         break;
+     case VIRTIO_PCI_COMMON_CFGGENERATION:
+-        val = 0; /* TODO */
++        val = vdev->generation;
+         break;
+     case VIRTIO_PCI_COMMON_Q_SELECT:
+         val = vdev->queue_sel;
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 8a6ebae..cae5eca 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -930,6 +930,7 @@ void virtio_notify_config(VirtIODevice *vdev)
+         return;
+ 
+     vdev->isr |= 0x03;
++    vdev->generation++;
+     virtio_notify_vector(vdev, vdev->config_vector);
+ }
+ 
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index effb8f8..96a32a1 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -78,6 +78,7 @@ struct VirtIODevice
+     size_t config_len;
+     void *config;
+     uint16_t config_vector;
++    uint32_t generation;
+     int nvectors;
+     VirtQueue *vq;
+     uint16_t device_id;
+-- 
+1.8.3.1
+

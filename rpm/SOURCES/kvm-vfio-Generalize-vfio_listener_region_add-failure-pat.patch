@@ -1,0 +1,81 @@
+From ef47733e329b3e719ffdb980d8a1bfdbdda20d57 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 30 Sep 2015 06:43:10 +0200
+Subject: [PATCH 02/10] vfio: Generalize vfio_listener_region_add failure path
+
+Message-id: <1443595398-20898-3-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67986
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv4 02/10] vfio: Generalize vfio_listener_region_add failure path
+Bugzilla: 1259556
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+If a DMA mapping operation fails in vfio_listener_region_add() it
+checks to see if we've already completed initial setup of the
+container.  If so it reports an error so the setup code can fail
+gracefully, otherwise throws a hw_error().
+
+There are other potential failure cases in vfio_listener_region_add()
+which could benefit from the same logic, so move it to its own
+fail: block.  Later patches can use this to extend other failure cases
+to fail as gracefully as possible under the circumstances.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Reviewed-by: Laurent Vivier <lvivier@redhat.com>
+
+Upstream: ac6dc3894fbb6775245565229953879a0263d27f
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+---
+ hw/vfio/common.c | 26 +++++++++++++++-----------
+ 1 file changed, 15 insertions(+), 11 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/vfio/common.c | 26 +++++++++++++++-----------
+ 1 file changed, 15 insertions(+), 11 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index c583e62..8e1069a 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -396,19 +396,23 @@ static void vfio_listener_region_add(MemoryListener *listener,
+         error_report("vfio_dma_map(%p, 0x%"HWADDR_PRIx", "
+                      "0x%"HWADDR_PRIx", %p) = %d (%m)",
+                      container, iova, end - iova, vaddr, ret);
++        goto fail;
++    }
+ 
+-        /*
+-         * On the initfn path, store the first error in the container so we
+-         * can gracefully fail.  Runtime, there's not much we can do other
+-         * than throw a hardware error.
+-         */
+-        if (!container->initialized) {
+-            if (!container->error) {
+-                container->error = ret;
+-            }
+-        } else {
+-            hw_error("vfio: DMA mapping failed, unable to continue");
++    return;
++
++fail:
++    /*
++     * On the initfn path, store the first error in the container so we
++     * can gracefully fail.  Runtime, there's not much we can do other
++     * than throw a hardware error.
++     */
++    if (!container->initialized) {
++        if (!container->error) {
++            container->error = ret;
+         }
++    } else {
++        hw_error("vfio: DMA mapping failed, unable to continue");
+     }
+ }
+ 
+-- 
+1.8.3.1
+

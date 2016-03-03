@@ -1,0 +1,256 @@
+From a1a469a2eef76054c5fa363b9397c6e0aae7cb51 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 8 Jun 2015 00:52:05 +0200
+Subject: [PATCH 07/44] acpi: add hardware implementation for memory hot unplug
+
+Message-id: <1433724727-46928-8-git-send-email-imammedo@redhat.com>
+Patchwork-id: 65393
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 7/9] acpi: add hardware implementation for memory hot unplug
+Bugzilla: 1120706
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+
+- implements QEMU hardware part of memory hot unplug protocol
+  described at "docs/spec/acpi_mem_hotplug.txt"
+- handles memory remove notification event
+- handles device eject notification
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit c06b2ffb02bfcc642c67300d2c4dffd5aa54932b)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/acpi_mem_hotplug.txt   | 11 +++++++++--
+ hw/acpi/memory_hotplug.c          | 21 ++++++++++++++++++++-
+ hw/core/qdev.c                    |  2 +-
+ hw/i386/acpi-build.c              | 12 ++++++++++++
+ hw/i386/acpi-dsdt-mem-hotplug.dsl | 13 ++++++++++++-
+ include/hw/acpi/pc-hotplug.h      |  3 +++
+ include/hw/qdev-core.h            |  1 +
+ trace-events                      |  3 +++
+ 8 files changed, 61 insertions(+), 5 deletions(-)
+
+diff --git a/docs/specs/acpi_mem_hotplug.txt b/docs/specs/acpi_mem_hotplug.txt
+index 68daa14..3df3620 100644
+--- a/docs/specs/acpi_mem_hotplug.txt
++++ b/docs/specs/acpi_mem_hotplug.txt
+@@ -19,7 +19,9 @@ Memory hot-plug interface (IO port 0xa00-0xa17, 1-4 byte access):
+               1: Device insert event, used to distinguish device for which
+                  no device check event to OSPM was issued.
+                  It's valid only when bit 1 is set.
+-              2-7: reserved and should be ignored by OSPM
++              2: Device remove event, used to distinguish device for which
++                 no device eject request to OSPM was issued.
++              3-7: reserved and should be ignored by OSPM
+       [0x15-0x17] reserved
+ 
+   write access:
+@@ -38,7 +40,12 @@ Memory hot-plug interface (IO port 0xa00-0xa17, 1-4 byte access):
+               1: if set to 1 clears device insert event, set by OSPM
+                  after it has emitted device check event for the
+                  selected memory device
+-              2-7: reserved, OSPM must clear them before writing to register
++              2: if set to 1 clears device remove event, set by OSPM
++                 after it has emitted device eject request for the
++                 selected memory device
++              3: if set to 1 initiates device eject, set by OSPM when it
++                 triggers memory device removal and calls _EJ0 method
++              4-7: reserved, OSPM must clear them before writing to register
+ 
+ Selecting memory device slot beyond present range has no effect on platform:
+    - write accesses to memory hot-plug registers not documented above are
+diff --git a/hw/acpi/memory_hotplug.c b/hw/acpi/memory_hotplug.c
+index 07e281f..35bbfeb 100644
+--- a/hw/acpi/memory_hotplug.c
++++ b/hw/acpi/memory_hotplug.c
+@@ -2,6 +2,7 @@
+ #include "hw/acpi/pc-hotplug.h"
+ #include "hw/mem/pc-dimm.h"
+ #include "hw/boards.h"
++#include "hw/qdev-core.h"
+ #include "trace.h"
+ #include "qapi-event.h"
+ 
+@@ -91,6 +92,8 @@ static void acpi_memory_hotplug_write(void *opaque, hwaddr addr, uint64_t data,
+     MemHotplugState *mem_st = opaque;
+     MemStatus *mdev;
+     ACPIOSTInfo *info;
++    DeviceState *dev = NULL;
++    HotplugHandler *hotplug_ctrl = NULL;
+ 
+     if (!mem_st->dev_count) {
+         return;
+@@ -128,13 +131,29 @@ static void acpi_memory_hotplug_write(void *opaque, hwaddr addr, uint64_t data,
+         qapi_event_send_acpi_device_ost(info, &error_abort);
+         qapi_free_ACPIOSTInfo(info);
+         break;
+-    case 0x14:
++    case 0x14: /* set is_* fields  */
+         mdev = &mem_st->devs[mem_st->selector];
+         if (data & 2) { /* clear insert event */
+             mdev->is_inserting  = false;
+             trace_mhp_acpi_clear_insert_evt(mem_st->selector);
++        } else if (data & 4) {
++            mdev->is_removing = false;
++            trace_mhp_acpi_clear_remove_evt(mem_st->selector);
++        } else if (data & 8) {
++            if (!mdev->is_enabled) {
++                trace_mhp_acpi_ejecting_invalid_slot(mem_st->selector);
++                break;
++            }
++
++            dev = DEVICE(mdev->dimm);
++            hotplug_ctrl = qdev_get_hotplug_handler(dev);
++            /* call pc-dimm unplug cb */
++            hotplug_handler_unplug(hotplug_ctrl, dev, NULL);
++            trace_mhp_acpi_pc_dimm_deleted(mem_st->selector);
+         }
+         break;
++    default:
++        break;
+     }
+ 
+ }
+diff --git a/hw/core/qdev.c b/hw/core/qdev.c
+index 6e6a65d..b0f0f84 100644
+--- a/hw/core/qdev.c
++++ b/hw/core/qdev.c
+@@ -273,7 +273,7 @@ void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
+     dev->alias_required_for_version = required_for_version;
+ }
+ 
+-static HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev)
++HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev)
+ {
+     HotplugHandler *hotplug_ctrl = NULL;
+ 
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index 795af4e..6f29e7d 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -934,6 +934,12 @@ build_ssdt(GArray *table_data, GArray *linker,
+         aml_append(field,
+             /*(read) 1 if has a insert event. (write) 1 to clear event */
+             aml_named_field(stringify(MEMORY_SLOT_INSERT_EVENT), 1));
++        aml_append(field,
++            /* (read) 1 if has a remove event. (write) 1 to clear event */
++            aml_named_field(stringify(MEMORY_SLOT_REMOVE_EVENT), 1));
++        aml_append(field,
++            /* initiates device eject, write only */
++            aml_named_field(stringify(MEMORY_SLOT_EJECT), 1));
+         aml_append(scope, field);
+ 
+         field = aml_field(stringify(MEMORY_HOTPLUG_IO_REGION), aml_dword_acc,
+@@ -978,6 +984,12 @@ build_ssdt(GArray *table_data, GArray *linker,
+             )));
+             aml_append(dev, method);
+ 
++            method = aml_method("_EJ0", 1);
++            s = BASEPATH stringify(MEMORY_SLOT_EJECT_METHOD);
++            aml_append(method, aml_return(aml_call2(
++                       s, aml_name("_UID"), aml_arg(0))));
++            aml_append(dev, method);
++
+             aml_append(sb_scope, dev);
+         }
+ 
+diff --git a/hw/i386/acpi-dsdt-mem-hotplug.dsl b/hw/i386/acpi-dsdt-mem-hotplug.dsl
+index 1e9ec39..c2bb6a1 100644
+--- a/hw/i386/acpi-dsdt-mem-hotplug.dsl
++++ b/hw/i386/acpi-dsdt-mem-hotplug.dsl
+@@ -29,6 +29,8 @@
+             External(MEMORY_SLOT_PROXIMITY, FieldUnitObj) // read only
+             External(MEMORY_SLOT_ENABLED, FieldUnitObj) // 1 if enabled, read only
+             External(MEMORY_SLOT_INSERT_EVENT, FieldUnitObj) // (read) 1 if has a insert event. (write) 1 to clear event
++            External(MEMORY_SLOT_REMOVE_EVENT, FieldUnitObj) // (read) 1 if has a remove event. (write) 1 to clear event
++            External(MEMORY_SLOT_EJECT, FieldUnitObj) // initiates device eject, write only
+             External(MEMORY_SLOT_SLECTOR, FieldUnitObj) // DIMM selector, write only
+             External(MEMORY_SLOT_OST_EVENT, FieldUnitObj) // _OST event code, write only
+             External(MEMORY_SLOT_OST_STATUS, FieldUnitObj) // _OST status code, write only
+@@ -55,8 +57,10 @@
+                     If (LEqual(MEMORY_SLOT_INSERT_EVENT, One)) { // Memory device needs check
+                         MEMORY_SLOT_NOTIFY_METHOD(Local0, 1)
+                         Store(1, MEMORY_SLOT_INSERT_EVENT)
++                    } Elseif (LEqual(MEMORY_SLOT_REMOVE_EVENT, One)) { // Ejection request
++                        MEMORY_SLOT_NOTIFY_METHOD(Local0, 3)
++                        Store(1, MEMORY_SLOT_REMOVE_EVENT)
+                     }
+-                    // TODO: handle memory eject request
+                     Add(Local0, One, Local0) // goto next DIMM
+                 }
+                 Release(MEMORY_SLOT_LOCK)
+@@ -156,5 +160,12 @@
+                 Store(Arg2, MEMORY_SLOT_OST_STATUS)
+                 Release(MEMORY_SLOT_LOCK)
+             }
++
++            Method(MEMORY_SLOT_EJECT_METHOD, 2) {
++                Acquire(MEMORY_SLOT_LOCK, 0xFFFF)
++                Store(ToInteger(Arg0), MEMORY_SLOT_SLECTOR) // select DIMM
++                Store(1, MEMORY_SLOT_EJECT)
++                Release(MEMORY_SLOT_LOCK)
++            }
+         } // Device()
+     } // Scope()
+diff --git a/include/hw/acpi/pc-hotplug.h b/include/hw/acpi/pc-hotplug.h
+index efa6ed7..0513c1c 100644
+--- a/include/hw/acpi/pc-hotplug.h
++++ b/include/hw/acpi/pc-hotplug.h
+@@ -43,6 +43,8 @@
+ #define MEMORY_SLOT_PROXIMITY        MPX
+ #define MEMORY_SLOT_ENABLED          MES
+ #define MEMORY_SLOT_INSERT_EVENT     MINS
++#define MEMORY_SLOT_REMOVE_EVENT     MRMV
++#define MEMORY_SLOT_EJECT            MEJ
+ #define MEMORY_SLOT_SLECTOR          MSEL
+ #define MEMORY_SLOT_OST_EVENT        MOEV
+ #define MEMORY_SLOT_OST_STATUS       MOSC
+@@ -51,6 +53,7 @@
+ #define MEMORY_SLOT_CRS_METHOD       MCRS
+ #define MEMORY_SLOT_OST_METHOD       MOST
+ #define MEMORY_SLOT_PROXIMITY_METHOD MPXM
++#define MEMORY_SLOT_EJECT_METHOD     MEJ0
+ #define MEMORY_SLOT_NOTIFY_METHOD    MTFY
+ #define MEMORY_SLOT_SCAN_METHOD      MSCN
+ 
+diff --git a/include/hw/qdev-core.h b/include/hw/qdev-core.h
+index 4e673f9..5b7acf1 100644
+--- a/include/hw/qdev-core.h
++++ b/include/hw/qdev-core.h
+@@ -266,6 +266,7 @@ int qdev_init(DeviceState *dev) QEMU_WARN_UNUSED_RESULT;
+ void qdev_init_nofail(DeviceState *dev);
+ void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
+                                  int required_for_version);
++HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
+ void qdev_unplug(DeviceState *dev, Error **errp);
+ void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
+                                   DeviceState *dev, Error **errp);
+diff --git a/trace-events b/trace-events
+index 30eba92..46f6ef0 100644
+--- a/trace-events
++++ b/trace-events
+@@ -1562,6 +1562,7 @@ vfio_put_base_device(int fd) "close vdev->fd=%d"
+ 
+ #hw/acpi/memory_hotplug.c
+ mhp_acpi_invalid_slot_selected(uint32_t slot) "0x%"PRIx32
++mhp_acpi_ejecting_invalid_slot(uint32_t slot) "0x%"PRIx32
+ mhp_acpi_read_addr_lo(uint32_t slot, uint32_t addr) "slot[0x%"PRIx32"] addr lo: 0x%"PRIx32
+ mhp_acpi_read_addr_hi(uint32_t slot, uint32_t addr) "slot[0x%"PRIx32"] addr hi: 0x%"PRIx32
+ mhp_acpi_read_size_lo(uint32_t slot, uint32_t size) "slot[0x%"PRIx32"] size lo: 0x%"PRIx32
+@@ -1572,6 +1573,8 @@ mhp_acpi_write_slot(uint32_t slot) "set active slot: 0x%"PRIx32
+ mhp_acpi_write_ost_ev(uint32_t slot, uint32_t ev) "slot[0x%"PRIx32"] OST EVENT: 0x%"PRIx32
+ mhp_acpi_write_ost_status(uint32_t slot, uint32_t st) "slot[0x%"PRIx32"] OST STATUS: 0x%"PRIx32
+ mhp_acpi_clear_insert_evt(uint32_t slot) "slot[0x%"PRIx32"] clear insert event"
++mhp_acpi_clear_remove_evt(uint32_t slot) "slot[0x%"PRIx32"] clear remove event"
++mhp_acpi_pc_dimm_deleted(uint32_t slot) "slot[0x%"PRIx32"] pc-dimm deleted"
+ 
+ # hw/i386/pc.c
+ mhp_pc_dimm_assigned_slot(int slot) "0x%d"
+-- 
+1.8.3.1
+

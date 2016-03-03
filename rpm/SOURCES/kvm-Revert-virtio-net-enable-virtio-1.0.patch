@@ -1,0 +1,45 @@
+From 7b183d2768e1cc9052c4d58e1884bd36bc4df0fd Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Mon, 10 Aug 2015 05:09:23 +0200
+Subject: [PATCH 02/16] Revert "virtio-net: enable virtio 1.0"
+
+Message-id: <1439183375-4841-3-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67429
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 02/14] Revert "virtio-net: enable virtio 1.0"
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+This reverts commit df91055db5c9cee93d70ca8c08d72119a240b987.
+
+This is because:
+- vhost support virtio 1.0 now
+- transport code (e.g virtio-pci) set this feature when modern is
+  enabled, setting this unconditionally will break disable-modern=on.
+
+Cc: Cornelia Huck <cornelia.huck@de.ibm.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 06c4670ff6d4acdc5a24e3d25748ee4a489d5869)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/virtio-net.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 53d2169..0e7ef9e 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -476,7 +476,6 @@ static uint64_t virtio_net_get_features(VirtIODevice *vdev, uint64_t features)
+     }
+ 
+     if (!get_vhost_net(nc->peer)) {
+-        virtio_add_feature(&features, VIRTIO_F_VERSION_1);
+         return features;
+     }
+     return vhost_net_get_features(get_vhost_net(nc->peer), features);
+-- 
+1.8.3.1
+

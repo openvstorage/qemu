@@ -1,0 +1,53 @@
+From 49466823301cb0c0adc70d1430465c563db9f19c Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Sun, 6 Sep 2015 07:11:21 +0200
+Subject: [PATCH 1/8] scsi-disk: Fix assertion failure on WRITE SAME
+
+Message-id: <1441523481-20200-1-git-send-email-famz@redhat.com>
+Patchwork-id: 67671
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH] scsi-disk: Fix assertion failure on WRITE SAME
+Bugzilla: 1247042
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+The last portion of an unaligned WRITE SAME command could fail the
+assertion in bdrv_aligned_pwritev:
+
+    assert(!qiov || bytes == qiov->size);
+
+Because we updated data->iov.iov_len right above this if block, but
+data->qiov still has the old size.
+
+Reinitialize the qiov to make them equal and keep block layer happy.
+
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Message-Id: <1438159512-3871-2-git-send-email-famz@redhat.com>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit a56537a12757a8cdee24ad8c83e5af7a9833ea70)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/scsi/scsi-disk.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/scsi/scsi-disk.c b/hw/scsi/scsi-disk.c
+index 36317fb..ea38c8b 100644
+--- a/hw/scsi/scsi-disk.c
++++ b/hw/scsi/scsi-disk.c
+@@ -1669,6 +1669,10 @@ static void scsi_write_same_complete(void *opaque, int ret)
+     if (data->iov.iov_len) {
+         block_acct_start(blk_get_stats(s->qdev.conf.blk), &r->acct,
+                          data->iov.iov_len, BLOCK_ACCT_WRITE);
++        /* blk_aio_write doesn't like the qiov size being different from
++         * nb_sectors, make sure they match.
++         */
++        qemu_iovec_init_external(&data->qiov, &data->iov, 1);
+         r->req.aiocb = blk_aio_writev(s->qdev.conf.blk, data->sector,
+                                       &data->qiov, data->iov.iov_len / 512,
+                                       scsi_write_same_complete, data);
+-- 
+1.8.3.1
+

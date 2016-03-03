@@ -1,0 +1,50 @@
+From 0b4d93a6907cd2e18ec29dbc2355c8a52bad9604 Mon Sep 17 00:00:00 2001
+Message-Id: <0b4d93a6907cd2e18ec29dbc2355c8a52bad9604.1440703553.git.ymankad@redhat.com>
+In-Reply-To: <4a5ad49968bc31ee539dc9d002790297359b97d9.1440703553.git.ymankad@redhat.com>
+References: <4a5ad49968bc31ee539dc9d002790297359b97d9.1440703553.git.ymankad@redhat.com>
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Wed, 26 Aug 2015 11:31:52 -0400
+Subject: [CHANGE 2/2] spice: fix spice_chr_add_watch() pre-condition
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+To: rhvirt-patches@redhat.com,
+    ymankad@redhat.com
+
+Message-id: <1440588712-22117-2-git-send-email-kraxel@redhat.com>
+Patchwork-id: 67622
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 1/1] spice: fix spice_chr_add_watch() pre-condition
+Bugzilla: 1128992
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@gmail.com>
+
+Since e02bc6de30c44fd668dc0d6e1cd1804f2eed3ed3, add_watch() is called
+with G_IO_HUP. Even if spice-qemu-char ignores this flag, the
+precondition must be changed.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit f7a8beb5e6a13dc924895244777d9ef08b23b367)
+Signed-off-by: ymankad <ymankad@redhat.com>
+---
+ spice-qemu-char.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/spice-qemu-char.c b/spice-qemu-char.c
+index a4f4e57..4199bc2 100644
+--- a/spice-qemu-char.c
++++ b/spice-qemu-char.c
+@@ -169,7 +169,7 @@ static GSource *spice_chr_add_watch(CharDriverState *chr, GIOCondition cond)
+     SpiceCharDriver *scd = chr->opaque;
+     SpiceCharSource *src;
+ 
+-    assert(cond == G_IO_OUT);
++    assert(cond & G_IO_OUT);
+ 
+     src = (SpiceCharSource *)g_source_new(&SpiceCharSourceFuncs,
+                                           sizeof(SpiceCharSource));
+-- 
+2.4.3
+

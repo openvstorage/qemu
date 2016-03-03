@@ -1,0 +1,108 @@
+From 455953c2b0dc72c3c57f7e1be97dfb1b0655d573 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Wed, 8 Jul 2015 19:41:18 +0200
+Subject: [PATCH 04/23] i386/pc: pc_basic_device_init(): delegate FDC creation
+ request
+
+Message-id: <1436384484-21640-2-git-send-email-lersek@redhat.com>
+Patchwork-id: 66872
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 1/7] i386/pc: pc_basic_device_init(): delegate FDC creation request
+Bugzilla: 1227282
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: John Snow <jsnow@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+This patch introduces no observable change, but it allows the callers of
+pc_basic_device_init(), ie. pc_init1() and pc_q35_init(), to request (or
+not request) the creation of the FDC explicitly.
+
+At the moment both callers pass constant create_fdctrl=true (hence no
+observable change).
+
+Assuming a board passes create_fdctrl=false, "floppy" will be NULL on
+output, and (beyond the FDC not being created) that NULL will be passed on
+to pc_cmos_init(). Luckily, pc_cmos_init() already handles that case.
+
+Cc: Markus Armbruster <armbru@redhat.com>
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Cc: Gerd Hoffmann <kraxel@redhat.com>
+Cc: John Snow <jsnow@redhat.com>
+Cc: "Gabriel L. Somlo" <gsomlo@gmail.com>
+Cc: "Michael S. Tsirkin" <mst@redhat.com>
+Cc: Kevin Wolf <kwolf@redhat.com>
+Cc: qemu-block@nongnu.org
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Markus Armbruster <armbru@redhat.com>
+(cherry picked from commit fd53c87cf6651b0dfe9f5107cfe77d2f697bd4f6)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c         | 3 ++-
+ hw/i386/pc_piix.c    | 2 +-
+ hw/i386/pc_q35.c     | 2 +-
+ include/hw/i386/pc.h | 1 +
+ 4 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index eb310ee..a3a0ac2 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1416,6 +1416,7 @@ static const MemoryRegionOps ioportF0_io_ops = {
+ 
+ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+                           ISADevice **rtc_state,
++                          bool create_fdctrl,
+                           ISADevice **floppy,
+                           bool no_vmport,
+                           uint32 hpet_irqs)
+@@ -1512,7 +1513,7 @@ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+     for(i = 0; i < MAX_FD; i++) {
+         fd[i] = drive_get(IF_FLOPPY, 0, i);
+     }
+-    *floppy = fdctrl_init_isa(isa_bus, fd);
++    *floppy = create_fdctrl ? fdctrl_init_isa(isa_bus, fd) : NULL;
+ }
+ 
+ void pc_nic_init(ISABus *isa_bus, PCIBus *pci_bus)
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 8ba87bb..16dbf3e 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -242,7 +242,7 @@ static void pc_init1(MachineState *machine,
+     }
+ 
+     /* init basic PC hardware */
+-    pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy,
++    pc_basic_device_init(isa_bus, gsi, &rtc_state, true, &floppy,
+                          (pc_machine->vmport != ON_OFF_AUTO_ON), 0x4);
+ 
+     pc_nic_init(isa_bus, pci_bus);
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 44d5138..e754bf5 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -250,7 +250,7 @@ static void pc_q35_init(MachineState *machine)
+     }
+ 
+     /* init basic PC hardware */
+-    pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy,
++    pc_basic_device_init(isa_bus, gsi, &rtc_state, true, &floppy,
+                          (pc_machine->vmport != ON_OFF_AUTO_ON), 0xff0104);
+ 
+     /* connect pm stuff to lpc */
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index 54afc73..ce940ff 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -199,6 +199,7 @@ qemu_irq *pc_allocate_cpu_irq(void);
+ DeviceState *pc_vga_init(ISABus *isa_bus, PCIBus *pci_bus);
+ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+                           ISADevice **rtc_state,
++                          bool create_fdctrl,
+                           ISADevice **floppy,
+                           bool no_vmport,
+                           uint32 hpet_irqs);
+-- 
+1.8.3.1
+

@@ -1,0 +1,117 @@
+From 61011278da4529a1452ea7d90016f6ce158b4d1c Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:50 +0200
+Subject: [PATCH 05/28] migration: reduce include files
+
+Message-id: <1438098431-30847-6-git-send-email-quintela@redhat.com>
+Patchwork-id: 67161
+O-Subject: [RHEL-7 qemu-kvm PATCH 05/26] migration: reduce include files
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+To make changes easier, with the copy, I maintained almost all include
+files.  Now I remove the unnecessary ones on this patch.  This compiles
+on linux x64 with all architectures configured, and cross-compiles for
+windows 32 and 64 bits.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit 7205c9ec525fe375dd34c0f116c36dc4aab4c0f7)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	arch_init.c
+	migration/ram.c
+
+Compression code again
+
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+---
+ arch_init.c     | 22 ----------------------
+ migration/ram.c | 18 ++----------------
+ 2 files changed, 2 insertions(+), 38 deletions(-)
+
+diff --git a/arch_init.c b/arch_init.c
+index 2f38359..7c0d73e 100644
+--- a/arch_init.c
++++ b/arch_init.c
+@@ -22,37 +22,15 @@
+  * THE SOFTWARE.
+  */
+ #include <stdint.h>
+-#include <stdarg.h>
+-#include <stdlib.h>
+-#ifndef _WIN32
+-#include <sys/types.h>
+-#include <sys/mman.h>
+-#endif
+-#include "config.h"
+-#include "monitor/monitor.h"
+ #include "sysemu/sysemu.h"
+-#include "qemu/bitops.h"
+-#include "qemu/bitmap.h"
+ #include "sysemu/arch_init.h"
+-#include "audio/audio.h"
+-#include "hw/i386/pc.h"
+ #include "hw/pci/pci.h"
+ #include "hw/audio/audio.h"
+-#include "sysemu/kvm.h"
+-#include "migration/migration.h"
+ #include "hw/i386/smbios.h"
+-#include "exec/address-spaces.h"
+-#include "hw/audio/pcspk.h"
+-#include "migration/page_cache.h"
+ #include "qemu/config-file.h"
+ #include "qemu/error-report.h"
+ #include "qmp-commands.h"
+-#include "trace.h"
+-#include "exec/cpu-all.h"
+-#include "exec/ram_addr.h"
+ #include "hw/acpi/acpi.h"
+-#include "qemu/host-utils.h"
+-#include "qemu/rcu_queue.h"
+ 
+ #ifdef TARGET_SPARC
+ int graphic_width = 1024;
+diff --git a/migration/ram.c b/migration/ram.c
+index 6ee8354..31c56e0 100644
+--- a/migration/ram.c
++++ b/migration/ram.c
+@@ -26,30 +26,16 @@
+  * THE SOFTWARE.
+  */
+ #include <stdint.h>
+-#include <stdarg.h>
+-#include <stdlib.h>
+-#ifndef _WIN32
+-#include <sys/types.h>
+-#include <sys/mman.h>
+-#endif
+-#include "config.h"
+-#include "monitor/monitor.h"
+-#include "sysemu/sysemu.h"
+ #include "qemu/bitops.h"
+ #include "qemu/bitmap.h"
+-#include "hw/i386/pc.h"
+-#include "hw/pci/pci.h"
+-#include "hw/audio/audio.h"
++#include "qemu/timer.h"
++#include "qemu/main-loop.h"
+ #include "migration/migration.h"
+ #include "exec/address-spaces.h"
+ #include "migration/page_cache.h"
+-#include "qemu/config-file.h"
+ #include "qemu/error-report.h"
+-#include "qmp-commands.h"
+ #include "trace.h"
+-#include "exec/cpu-all.h"
+ #include "exec/ram_addr.h"
+-#include "qemu/host-utils.h"
+ #include "qemu/rcu_queue.h"
+ 
+ #ifdef DEBUG_MIGRATION_RAM
+-- 
+1.8.3.1
+
