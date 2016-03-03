@@ -2012,7 +2012,7 @@ ApplyOptionalPatch()
 ## wget -q -nc -O ${RPM_SOURCE_DIR}/openvstorage.patch https://github.com/openvstorage/qemu/compare/upstream...master.patch
 ## this patch might not apply via patch so we use git for this...
 git init
-git apply -v --whitespace=nowarn --exclude=rpm/ %{PATCH9999}
+git apply -v --whitespace=nowarn --exclude=rpm/* --exclude=debian/* --exclude=jenkins/* %{PATCH9999}
 
 ApplyOptionalPatch qemu-kvm-test.patch
 
