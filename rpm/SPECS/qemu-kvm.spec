@@ -1226,6 +1226,7 @@ Patch566: kvm-ahci-clean-up-ncq_tfs-used-on-error.patch
 
 Patch9999: openvstorage.patch
 
+BuildRequires: git
 BuildRequires: zlib-devel
 BuildRequires: SDL-devel
 BuildRequires: which
@@ -2008,9 +2009,10 @@ ApplyOptionalPatch()
 %patch468 -p1
 
 # openvstorage patch
-# rm -f ${RPM_SOURCE_DIR}/openvstorage.patch
-# wget -q -nc -O ${RPM_SOURCE_DIR}/openvstorage.patch https://github.com/openvstorage/qemu/compare/upstream...master.patch
-%patch9999 -p1
+## wget -q -nc -O ${RPM_SOURCE_DIR}/openvstorage.patch https://github.com/openvstorage/qemu/compare/upstream...master.patch
+## this patch might not apply via patch so we use git for this...
+git init
+git apply -v --whitespace=nowarn --exclude=rpm/ %{PATCH9999}
 
 ApplyOptionalPatch qemu-kvm-test.patch
 
