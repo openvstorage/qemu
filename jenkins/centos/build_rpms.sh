@@ -22,7 +22,7 @@ echo "%_topdir ${PWD}" > ~/.rpmmacros
 
 echo '>>> FETCHING UPSTREAM SOURCES <<<' 
 spectool -g -R SPECS/qemu-kvm.spec
- 
+
 if [ ! -d kvm-unit-tests ]
 then
    git clone https://git.kernel.org/pub/scm/virt/kvm/kvm-unit-tests.git
@@ -31,6 +31,14 @@ then
    cd ..
    tar cjf SOURCES/kvm-unit-tests.git-4ea7633.tar.bz2 --exclude-vcs kvm-unit-tests
 fi
+
+#################################################################################################################
+## HACK: there's a zillion of patches in the CentOS qemu specfile; these don't apply on our sources on github
+##       but fortunately our changes can still be applied onto the CentOS patched sources. So we fetch our sources
+##       in patch format from github (changes between upstream and our master branch) and we'll apply these on top 
+##       of the CentOS patched pristine source. Our specfile has the logic to do this (note: uses git apply 
+##       instead of the patch utility due to binary contents) so we only fetch the patch here...
+#################################################################################################################
 
 echo '>>> GET OPENVSTORAGE PATCH FROM GITHUB <<<'
 rm -f SOURCES/openvstorage.patch
