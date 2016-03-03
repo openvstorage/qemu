@@ -62,6 +62,7 @@ fi
     --with-coroutine=ucontext \
     --with-system-pixman \
     --disable-archipelago \
+    --enable-openvstorage \
     --disable-bluez \
     --disable-brlapi \
     --disable-cap-ng \
@@ -102,7 +103,7 @@ fi
     --enable-vnc-tls \
     --enable-vnc-ws \
     --disable-vte \
-    --enable-werror \
+    --disable-werror \
     --disable-xen \
     --disable-xfsctl \
     --${have_fdt}-fdt \
