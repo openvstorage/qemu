@@ -62,7 +62,7 @@
 # - extra_provides_suffix: used for dependency checking of other packages
 # - conflicts_suffix:      used to prevent installation of both RHEL and RHEV
 
-%global pkgsuffix -ev
+%global pkgsuffix -ev-openvstorage
 %global extra_provides_suffix %{nil}
 %global rhev_provide_suffix %{rhev_suffix}
 %global conflicts_suffix %{rhel_suffix}
@@ -1224,6 +1224,8 @@ Patch565: kvm-fw_cfg-add-check-to-validate-current-entry-value-CVE.patch
 # For bz#1297292 - CVE-2016-1568 qemu-kvm-rhev: Qemu: ide: ahci use-after-free vulnerability in aio port commands [rhel-7.2.z]
 Patch566: kvm-ahci-clean-up-ncq_tfs-used-on-error.patch
 
+Patch9999: openvstorage.patch
+
 BuildRequires: zlib-devel
 BuildRequires: SDL-devel
 BuildRequires: which
@@ -1254,10 +1256,10 @@ BuildRequires: libseccomp-devel >= 1.0.0
 # For network block driver
 BuildRequires: libcurl-devel
 BuildRequires: libssh2-devel
-%ifarch x86_64
-BuildRequires: librados2-devel
-BuildRequires: librbd1-devel
-%endif
+# %ifarch x86_64
+# BuildRequires: librados2-devel
+# BuildRequires: librbd1-devel
+# %endif
 %if %{have_gluster}
 # For gluster block driver
 BuildRequires: glusterfs-api-devel >= 3.6.0
@@ -2005,6 +2007,11 @@ ApplyOptionalPatch()
 %patch566 -p1
 %patch468 -p1
 
+# openvstorage patch
+# rm -f ${RPM_SOURCE_DIR}/openvstorage.patch
+# wget -q -nc -O ${RPM_SOURCE_DIR}/openvstorage.patch https://github.com/openvstorage/qemu/compare/upstream...master.patch
+%patch9999 -p1
+
 ApplyOptionalPatch qemu-kvm-test.patch
 
 # for tscdeadline_latency.flat
@@ -2053,7 +2060,7 @@ cp %{SOURCE24} build_configure.sh
   disable \
   enable \
 %ifarch x86_64
-  enable \
+  disable \
 %else
   disable \
 %endif
