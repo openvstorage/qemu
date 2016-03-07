@@ -18,6 +18,10 @@ set -e
 
 echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
 
+# apt-get update is needed to fetch info on updated packages since the docker image was built
+echo ">>> APT-GET UPDATE <<<"
+sudo apt-get -qq update
+
 ## we know we depend on the volumedriver-dev package, and we want latest greatest, so install from artifact
 
 for p in volumedriver-base_*_amd64.deb volumedriver-server_*_amd64.deb volumedriver-dev_*_amd64.deb
