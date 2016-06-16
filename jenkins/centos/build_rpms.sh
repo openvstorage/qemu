@@ -11,8 +11,8 @@ baseurl=http://yum.openvstorage.org/CentOS/7/x86_64/dists/unstable
 enabled=1
 gpgcheck=0' | sudo tee /etc/yum.repos.d/openvstorage.repo
 
-## install the volumedriver-*.rpm files copied in by jenkins
-sudo yum install -y volumedriver-*.rpm
+## install the libovsvolumedriver*.rpm files copied in by jenkins
+sudo yum install -y libovsvolumedriver*.rpm
 
 ## prepare the build env
 chown -R jenkins:jenkins qemu

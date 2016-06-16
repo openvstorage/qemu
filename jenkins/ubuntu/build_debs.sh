@@ -27,9 +27,9 @@ echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selecti
 echo ">>> APT-GET UPDATE <<<"
 sudo apt-get -qq update
 
-## we know we depend on the volumedriver-dev package, and we want latest greatest, so install from artifact
+## we know we depend on the libovsvolumedriver-dev package, and we want latest greatest, so install from artifact
 
-for p in volumedriver-base_*_amd64.deb volumedriver-server_*_amd64.deb volumedriver-dev_*_amd64.deb
+for p in libovsvolumedriver_*_amd64.deb libovsvolumedriver-dev_*_amd64.deb
 do
   echo -n "Installing $p..."
   sudo dpkg -i $p || sudo apt-get install --allow-unauthenticated -qq -y -f
