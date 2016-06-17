@@ -1,3 +1,9 @@
+qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.3) unstable; urgency=medium
+
+  * Update to use libovsvolumedriver 6.0.0
+
+ -- Arne Redlich <arne.redlich@openvstorage.com>  Fri, 17 Jun 2016 11:01:39 +0200
+
 qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.2) unstable; urgency=medium
 
   * OpenvStorage block backend support
