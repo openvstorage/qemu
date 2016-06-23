@@ -2,65 +2,60 @@ Index: qemu/hw/i386/pc_piix.c
 ===================================================================
 --- qemu.orig/hw/i386/pc_piix.c
 +++ qemu/hw/i386/pc_piix.c
-@@ -522,7 +522,6 @@ static QEMUMachine pc_i440fx_machine_v2_
-     .name = "pc-i440fx-2.3",
-     .alias = "pc",
-     .init = pc_init_pci,
--    .is_default = 1,
- };
- 
- #define PC_I440FX_2_2_MACHINE_OPTIONS PC_I440FX_2_3_MACHINE_OPTIONS
-@@ -995,3 +994,53 @@ static void pc_machine_init(void)
+@@ -473,7 +473,7 @@ static void pc_i440fx_2_5_machine_option
+ {
+     pc_i440fx_machine_options(m);
+     m->alias = "pc";
+-    m->is_default = 1;
++    m->is_default = 0;
  }
  
- machine_init(pc_machine_init);
+ DEFINE_I440FX_MACHINE(v2_5, "pc-i440fx-2.5", NULL,
+@@ -1057,3 +1057,47 @@ static void xenfv_machine_options(Machin
+ DEFINE_PC_MACHINE(xenfv, "xenfv", pc_xen_hvm_init,
+                   xenfv_machine_options);
+ #endif
 +
 +/* Ubuntu machine types */
-+
-+static QEMUMachine pc_machine_trusty = {
-+	PC_DEFAULT_MACHINE_OPTIONS,
-+        .family = "pc_piix", \
-+	.default_machine_opts = "firmware=bios-256k.bin",
-+	.name = "pc-i440fx-trusty",
-+	.desc = "Ubuntu 14.04 PC (i440FX + PIIX, 1996)",
-+	.hot_add_cpu = pc_hot_add_cpu,
-+	.init = pc_init_pci_2_0,
-+	.compat_props = (GlobalProperty[]) {
-+		PC_COMPAT_2_0,
-+		{ /* end of list */ }
-+	},
-+};
-+
-+static QEMUMachine pc_machine_utopic = {
-+	PC_DEFAULT_MACHINE_OPTIONS,
-+        .family = "pc_piix", \
-+	.default_machine_opts = "firmware=bios-256k.bin",
-+	.name = "pc-i440fx-utopic",
-+	.desc = "Ubuntu 14.10 PC (i440FX + PIIX, 1996)",
-+	.alias = "ubuntu",
-+	.hot_add_cpu = pc_hot_add_cpu,
-+	.init = pc_init_pci,
-+        .default_display = "std",
-+};
-+
-+static QEMUMachine pc_machine_vivid = {
-+	PC_DEFAULT_MACHINE_OPTIONS,
-+        .family = "pc_piix", \
-+	.default_machine_opts = "firmware=bios-256k.bin",
-+	.name = "pc-i440fx-vivid",
-+	.desc = "Ubuntu 15.04 PC (i440FX + PIIX, 1996)",
-+	.alias = "ubuntu",
-+	.hot_add_cpu = pc_hot_add_cpu,
-+	.init = pc_init_pci,
-+        .default_display = "std",
-+	.is_default = 1,
-+};
-+
-+static void ubuntu_machine_init(void)
++static void pc_trusty_machine_options(MachineClass *m)
 +{
-+	qemu_register_pc_machine(&pc_machine_trusty);
-+	qemu_register_pc_machine(&pc_machine_utopic);
-+	qemu_register_pc_machine(&pc_machine_vivid);
++    pc_i440fx_machine_options(m);
++    m->desc = "Ubuntu 14.04 PC (i440FX + PIIX, 1996)";
++}
++DEFINE_I440FX_MACHINE(trusty, "pc-i440fx-trusty", pc_compat_2_0,
++			pc_trusty_machine_options)
++
++static void pc_utopic_machine_options(MachineClass *m)
++{
++    pc_i440fx_machine_options(m);
++    m->desc = "Ubuntu 14.10 PC (i440FX + PIIX, 1996)";
++    m->default_display = "std";
++}
++DEFINE_I440FX_MACHINE(utopic, "pc-i440fx-utopic", pc_compat_2_0,
++			pc_utopic_machine_options)
++
++static void pc_vivid_machine_options(MachineClass *m)
++{
++    pc_i440fx_2_3_machine_options(m);
++    pc_i440fx_machine_options(m);
++    m->desc = "Ubuntu 15.04 PC (i440FX + PIIX, 1996)",
++    m->default_display = "std";
++    m->alias = "ubuntu";
++    m->is_default = 1;
 +}
 +
-+machine_init(ubuntu_machine_init);
++DEFINE_I440FX_MACHINE(vivid, "pc-i440fx-vivid", pc_compat_2_3,
++			pc_vivid_machine_options);
++
++static void pc_wily_machine_options(MachineClass *m)
++{
++    pc_i440fx_2_4_machine_options(m);
++    pc_i440fx_machine_options(m);
++    m->desc = "Ubuntu 15.04 PC (i440FX + PIIX, 1996)",
++    m->default_display = "std";
++    m->alias = "ubuntu";
++    m->is_default = 1;
++}
++
++DEFINE_I440FX_MACHINE(wily, "pc-i440fx-wily", pc_compat_2_3,
++			pc_wily_machine_options);

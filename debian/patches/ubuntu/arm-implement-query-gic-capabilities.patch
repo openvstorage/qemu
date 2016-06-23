@@ -1,0 +1,88 @@
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 30 Mar 2016 17:27:24 +0100
+Subject: [PATCH] arm: implement query-gic-capabilities
+
+For emulated GIC capabilities, currently only gicv2 is supported. We
+need to add gicv3 in when emulated gicv3 ready. For KVM accelerated ARM
+VM, we detect the capability bits by creating a scratch VM.
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Acked-by: Sergey Fedorov <serge.fdrv@gmail.com>
+Message-id: 1458788142-17509-5-git-send-email-peterx@redhat.com
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+
+Origin: http://git.qemu.org/?p=qemu.git;a=commitdiff;h=db31e49a565fc4c165fd98201721b313c3412c1f
+Bug-Ubuntu: http://bugs.launchpad.net/bugs/1566564
+Last-Updated: 2016-05-19
+
+diff --git a/target-arm/monitor.c b/target-arm/monitor.c
+index 4c9bef3..1ee59a2 100644
+--- a/target-arm/monitor.c
++++ b/target-arm/monitor.c
+@@ -21,8 +21,64 @@
+  */
+ #include "qemu/osdep.h"
+ #include "qmp-commands.h"
++#include "hw/boards.h"
++#include "kvm_arm.h"
++
++static GICCapability *gic_cap_new(int version)
++{
++    GICCapability *cap = g_new0(GICCapability, 1);
++    cap->version = version;
++    /* by default, support none */
++    cap->emulated = false;
++    cap->kernel = false;
++    return cap;
++}
++
++static GICCapabilityList *gic_cap_list_add(GICCapabilityList *head,
++                                           GICCapability *cap)
++{
++    GICCapabilityList *item = g_new0(GICCapabilityList, 1);
++    item->value = cap;
++    item->next = head;
++    return item;
++}
++
++static inline void gic_cap_kvm_probe(GICCapability *v2, GICCapability *v3)
++{
++#ifdef CONFIG_KVM
++    int fdarray[3];
++
++    if (!kvm_arm_create_scratch_host_vcpu(NULL, fdarray, NULL)) {
++        return;
++    }
++
++    /* Test KVM GICv2 */
++    if (kvm_device_supported(fdarray[1], KVM_DEV_TYPE_ARM_VGIC_V2)) {
++        v2->kernel = true;
++    }
++
++    /* Test KVM GICv3 */
++    if (kvm_device_supported(fdarray[1], KVM_DEV_TYPE_ARM_VGIC_V3)) {
++        v3->kernel = true;
++    }
++
++    kvm_arm_destroy_scratch_host_vcpu(fdarray);
++#endif
++}
+ 
+ GICCapabilityList *qmp_query_gic_capabilities(Error **errp)
+ {
+-    return NULL;
++    GICCapabilityList *head = NULL;
++    GICCapability *v2 = gic_cap_new(2), *v3 = gic_cap_new(3);
++
++    v2->emulated = true;
++    /* TODO: we'd change to true after we get emulated GICv3. */
++    v3->emulated = false;
++
++    gic_cap_kvm_probe(v2, v3);
++
++    head = gic_cap_list_add(head, v2);
++    head = gic_cap_list_add(head, v3);
++
++    return head;
+ }

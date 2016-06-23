@@ -1,0 +1,78 @@
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 30 Mar 2016 17:27:24 +0100
+Subject: [PATCH] arm: enhance kvm_arm_create_scratch_host_vcpu
+
+Support passing NULL for the first parameter (with the same effect
+as passing an empty array) and for the third parameter (meaning
+that we should not attempt to init the vcpu).
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Acked-by: Sergey Fedorov <serge.fdrv@gmail.com>
+Message-id: 1458788142-17509-3-git-send-email-peterx@redhat.com
+[PMM: tweaked commit message, comment]
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+
+Origin: http://git.qemu.org/?p=qemu.git;a=commitdiff;h=2f340e9c24e3af17ad376d27a41830387999c285
+Bug-Ubuntu: http://bugs.launchpad.net/bugs/1566564
+Last-Updated: 2016-05-19
+
+diff --git a/target-arm/kvm.c b/target-arm/kvm.c
+index 969ab0b..3671032 100644
+--- a/target-arm/kvm.c
++++ b/target-arm/kvm.c
+@@ -62,13 +62,18 @@ bool kvm_arm_create_scratch_host_vcpu(const uint32_t *cpus_to_try,
+         goto err;
+     }
+ 
++    if (!init) {
++        /* Caller doesn't want the VCPU to be initialized, so skip it */
++        goto finish;
++    }
++
+     ret = ioctl(vmfd, KVM_ARM_PREFERRED_TARGET, init);
+     if (ret >= 0) {
+         ret = ioctl(cpufd, KVM_ARM_VCPU_INIT, init);
+         if (ret < 0) {
+             goto err;
+         }
+-    } else {
++    } else if (cpus_to_try) {
+         /* Old kernel which doesn't know about the
+          * PREFERRED_TARGET ioctl: we know it will only support
+          * creating one kind of guest CPU which is its preferred
+@@ -85,8 +90,15 @@ bool kvm_arm_create_scratch_host_vcpu(const uint32_t *cpus_to_try,
+         if (ret < 0) {
+             goto err;
+         }
++    } else {
++        /* Treat a NULL cpus_to_try argument the same as an empty
++         * list, which means we will fail the call since this must
++         * be an old kernel which doesn't support PREFERRED_TARGET.
++         */
++        goto err;
+     }
+ 
++finish:
+     fdarray[0] = kvmfd;
+     fdarray[1] = vmfd;
+     fdarray[2] = cpufd;
+diff --git a/target-arm/kvm_arm.h b/target-arm/kvm_arm.h
+index 07f0c72..345233c 100644
+--- a/target-arm/kvm_arm.h
++++ b/target-arm/kvm_arm.h
+@@ -124,9 +124,12 @@ void kvm_arm_reset_vcpu(ARMCPU *cpu);
+  * kvm_arm_create_scratch_host_vcpu:
+  * @cpus_to_try: array of QEMU_KVM_ARM_TARGET_* values (terminated with
+  * QEMU_KVM_ARM_TARGET_NONE) to try as fallback if the kernel does not
+- * know the PREFERRED_TARGET ioctl
++ * know the PREFERRED_TARGET ioctl. Passing NULL is the same as passing
++ * an empty array.
+  * @fdarray: filled in with kvmfd, vmfd, cpufd file descriptors in that order
+- * @init: filled in with the necessary values for creating a host vcpu
++ * @init: filled in with the necessary values for creating a host
++ * vcpu. If NULL is provided, will not init the vCPU (though the cpufd
++ * will still be set up).
+  *
+  * Create a scratch vcpu in its own VM of the type preferred by the host
+  * kernel (as would be used for '-cpu host'), for purposes of probing it

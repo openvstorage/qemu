@@ -1498,9 +1498,9 @@
 { 'enum': 'BlockdevDriver',
   'data': [ 'archipelago', 'blkdebug', 'blkverify', 'bochs', 'cloop',
             'dmg', 'file', 'ftp', 'ftps', 'host_cdrom', 'host_device',
-            'http', 'https', 'null-aio', 'null-co', 'parallels', 'openvstorage',
-            'qcow', 'qcow2', 'qed', 'quorum', 'raw', 'tftp', 'vdi', 'vhdx',
-            'vmdk', 'vpc', 'vvfat' ] }
+            'http', 'https', 'null-aio', 'null-co', 'openvstorage',
+            'parallels', 'qcow', 'qcow2', 'qed', 'quorum', 'raw', 'tftp',
+            'vdi', 'vhdx', 'vmdk', 'vpc', 'vvfat' ] }
 
 ##
 # @BlockdevOptionsBase
@@ -1784,7 +1784,7 @@
 #
 # Since: 2.3
 ##
-{ 'type': 'BlockdevOptionsOpenvStorage',
+{ 'struct': 'BlockdevOptionsOpenvStorage',
   'data': { 'volume': 'str',
             '*snapshot-timeout': 'int' } }
 

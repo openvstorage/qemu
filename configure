@@ -3428,7 +3428,7 @@ EOF
 	echo "To disable OpenvStorage, use --disable-openvstorage"
     else
       if test "$openvstorage" = "yes" ; then
-        feature_not_found "OpenvStorage backend support" "Install volumedriver devel"
+        feature_not_found "OpenvStorage backend support" "Install libovsvolumedriver devel"
       fi
       openvstorage="no"
     fi

@@ -1,24 +1,217 @@
-qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.3) unstable; urgency=medium
+qemu (99:2.5+dfsg-0ovs1.0-5ubuntu10.2) unstable; urgency=medium
 
-  * Update to use libovsvolumedriver 6.0.0
+  * Bump version that denotes OpenvStorage block support
 
- -- Arne Redlich <arne.redlich@openvstorage.com>  Fri, 17 Jun 2016 11:01:39 +0200
+ -- Chrysostomos Nanakos <cnanakos@openvstorage.com>  Thu, 23 Jun 2016 15:08:01 -0500
 
-qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.2) unstable; urgency=medium
+qemu (1:2.5+dfsg-5ubuntu10.2) xenial; urgency=medium
 
-  * OpenvStorage block backend support
+  * Cherrypick upstream patches to support the query-gic-version QMP command
+    (LP: #1566564)
 
- -- Chrysostomos Nanakos <cnanakos@openvstorage.com>  Mon, 15 Feb 2016 15:30:01 -0500
+ -- dann frazier <dannf@ubuntu.com>  Fri, 03 Jun 2016 14:24:25 -0600
 
-qemu (1:2.3+dfsg-5ubuntu9.2) wily-security; urgency=medium
+qemu (1:2.5+dfsg-5ubuntu10.1) xenial-security; urgency=medium
 
-  * SECURITY UPDATE: msi-x null pointer dereference
-    - debian/patches/CVE-2015-7549.patch: implement pba write in
-      hw/pci/msix.c.
-    - CVE-2015-7549
-  * SECURITY UPDATE: vnc floating point exception
-    - debian/patches/CVE-2015-8504.patch: handle zero values in ui/vnc.c.
-    - CVE-2015-8504
+  * SECURITY UPDATE: denial of service via multiple eof_timers in ohci
+    - debian/patches/CVE-2016-2391.patch: allocate timer only once in
+      hw/usb/hcd-ohci.c.
+    - CVE-2016-2391
+  * SECURITY UPDATE: denial of service in in remote NDIS control message
+    handling
+    - debian/patches/CVE-2016-2392.patch: check USB configuration
+      descriptor object in hw/usb/dev-network.c.
+    - CVE-2016-2392
+  * SECURITY UPDATE: denial of service or host information leak in USB Net
+    device emulation support
+    - debian/patches/CVE-2016-2538.patch: check RNDIS buffer offsets and
+      length in hw/usb/dev-network.c.
+    - CVE-2016-2538
+  * SECURITY UPDATE: denial of service via infinite loop in ne2000
+    - debian/patches/CVE-2016-2841.patch: heck ring buffer control
+      registers in hw/net/ne2000.c.
+    - CVE-2016-2841
+  * SECURITY UPDATE: denial of service via payload length in crafted packet
+    - debian/patches/CVE-2016-2857.patch: check packet payload length in
+      net/checksum.c.
+    - CVE-2016-2857
+  * SECURITY UPDATE: denial of service in PRNG support
+    - debian/patches/CVE-2016-2858.patch: add request queue support to
+      rng-random in backends/rng-egd.c, backends/rng-random.c,
+      backends/rng.c, include/sysemu/rng.h.
+    - CVE-2016-2858
+  * SECURITY UPDATE: arbitrary host code execution via VGA module
+    - debian/patches/CVE-2016-3710.patch: fix banked access bounds checking
+      in hw/display/vga.c.
+    - CVE-2016-3710
+  * SECURITY UPDATE: denial of service via VGA module
+    - debian/patches/CVE-2016-3712.patch: make sure vga register setup for
+      vbe stays intact in hw/display/vga.c.
+    - CVE-2016-3712
+  * SECURITY UPDATE: denial of service in Luminary Micro Stellaris Ethernet
+    - debian/patches/CVE-2016-4001.patch: check packet length against
+      receive buffer in hw/net/stellaris_enet.c.
+    - CVE-2016-4001
+  * SECURITY UPDATE: denial of sevice and possible code execution in
+    MIPSnet
+    - debian/patches/CVE-2016-4002.patch: check size in hw/net/mipsnet.c.
+    - CVE-2016-4002
+  * SECURITY UPDATE: host information leak via TPR access
+    - debian/patches/CVE-2016-4020.patch: initialize variable in
+      hw/i386/kvmvapic.c.
+    - CVE-2016-4020
+  * SECURITY UPDATE: denial of service via infinite loop in in usb_ehci
+    - debian/patches/CVE-2016-4037.patch: apply limit to iTD/sidt
+      descriptors in hw/usb/hcd-ehci.c.
+    - CVE-2016-4037
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 10 May 2016 12:59:14 -0400
+
+qemu (1:2.5+dfsg-5ubuntu10) xenial; urgency=medium
+
+  * qemu-system-s390x only available on s390x, so qemu-system should only
+    depend on it on this arch.
+  * have qemu-system-aarch64 Suggest: qemu-efi; this should be a stronger
+    relationship, but qemu-efi is still in universe right now.
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Tue, 19 Apr 2016 13:41:37 -0700
+
+qemu (1:2.5+dfsg-5ubuntu9) xenial; urgency=medium
+
+  * And actually ship the right things in qemu-system-s390x.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Tue, 19 Apr 2016 16:49:00 +0100
+
+qemu (1:2.5+dfsg-5ubuntu8) xenial; urgency=medium
+
+  * Create qemu-system-s390x package on ubuntu only.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Mon, 18 Apr 2016 10:16:19 +0100
+
+qemu (1:2.5+dfsg-5ubuntu7) xenial; urgency=medium
+
+  * Cherrypick patch from mailing list to fix qemu in sandbox.  (LP: #1560149)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 11 Apr 2016 15:13:06 -0500
+
+qemu (1:2.5+dfsg-5ubuntu6) xenial; urgency=medium
+
+  * Cherrypick upstream patch vhost-user-interrupt-management-fixes.patch
+    (LP: #1556306)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 16 Mar 2016 16:35:22 -0700
+
+qemu (1:2.5+dfsg-5ubuntu5) xenial; urgency=medium
+
+  * Cherrypick upstream patch to fix snapshot regression (LP: #1533728)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Mon, 07 Mar 2016 18:53:34 -0800
+
+qemu (1:2.5+dfsg-5ubuntu4) xenial; urgency=medium
+
+  * d/control{-in}: Re-generate and build with libiscsi-dev now
+    that its in Ubuntu main (LP: #1271653).
+
+ -- James Page <james.page@ubuntu.com>  Wed, 24 Feb 2016 17:59:13 +0000
+
+qemu (1:2.5+dfsg-5ubuntu3) xenial; urgency=medium
+
+  * Make -no-pie conditional, on $(CC) supporting -no-pie flag.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Wed, 24 Feb 2016 14:40:19 +0000
+
+qemu (1:2.5+dfsg-5ubuntu2) xenial; urgency=medium
+
+  * No-change rebuild for gnutls transition.
+
+ -- Matthias Klose <doko@ubuntu.com>  Wed, 17 Feb 2016 22:27:20 +0000
+
+qemu (1:2.5+dfsg-5ubuntu1) xenial; urgency=medium
+
+  * Merge with Debian; remaining changes:
+    - debian/rules: do not drop the init scripts loading kvm modules
+      (still needed in precise in cloud archive)
+    - qemu-system-common.postinst:
+      * remove acl placed by udev, and add udevadm trigger.
+      * reload kvm_intel if needed to set nested=1
+    - qemu-system-common.preinst: add kvm group if needed
+    - add qemu-kvm upstart job and defaults file (rules,
+      qemu-system-x86.qemu-kvm.default, qemu-system-x86.qemu-kvm.upstart)
+    - rules,qemu-system-x86.modprobe: support use under older udevs which
+      do not auto-load the kvm kernel module.  Enable nesting by default
+      on intel.
+    - d/p/ubuntu/expose-vmx_qemu64cpu.patch: enable nested kvm by default
+      in qemu64 cpu type.
+    - d/p/ubuntu/define-ubuntu-machine-types.patch: define distro machine
+      types to ease future live vm migration.
+    - apport hook for qemu source package: d/source_qemu-kvm.py,
+      d/qemu-system-common.install
+    - Make qemu-system-common and qemu-utils depend on qemu-block-extra
+      to fix errors with missing block backends. (LP: #1495895)
+    - Enable pie by default, on ubuntu/s390x.
+    - Include s390-ccw.img firmware.
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 09 Feb 2016 10:24:49 -0800
+
+qemu (1:2.5+dfsg-5) unstable; urgency=medium
+
+  * fix misspellings in previous debian/changelog entry
+  * e1000-eliminate-infinite-loops-on-out-of-bounds-start-CVE-2016-1981.patch
+    (Closes: #812307, CVE-2016-1981)
+  * hmp-fix-sendkey-out-of-bounds-write-CVE-2015-8619.patch
+    (Closes: #809237, CVE-2015-8619)
+  * use `command -v' instead of `type' to check for command existence
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 28 Jan 2016 18:39:21 +0300
+
+qemu (1:2.5+dfsg-4) unstable; urgency=medium
+
+  * change misspelling of won't in NEWS (lintian)
+  * two patches from upstream to enable sigaltstack syscall (linux-user)
+    (Closes: #805826)
+  * word-wrapped last entry in debian/changelog
+  * use type to find out whenever update-binfmts is available
+  * fw_cfg-add-check-to-validate-current-entry-value-CVE-2016-1714.patch
+    (Partial) patch targeted 2.3 which fixes the read side of the issue
+    (Closes: CVE-2016-1714)
+  * i386-avoid-null-pointer-dereference-CVE-2016-1922.patch
+    (Closes: #811201, CVE-2016-1922)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 21 Jan 2016 13:06:06 +0300
+
+qemu (1:2.5+dfsg-3) unstable; urgency=high
+
+  [ Aurelien Jarno ]
+  * debian/copyright:
+    fix a spelling error reported by lintian: dependecy -> dependency.
+
+  [ Michael Tokarev ]
+  * net-vmxnet3-avoid-memory-leakage-in-activate_device patch
+    (Closes: #808145, CVE-2015-8567, CVE-2015-8568)
+  * scsi-initialise-info-object-with-appropriate-size-CVE-2015-8613.patch
+    (Closes: #809232, CVE-2015-8613)
+  * net-rocker-fix-an-incorrect-array-bounds-check-CVE-2015-8701.patch
+    (Closes: #809313, CVE-2015-8701)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 10 Jan 2016 10:59:46 +0300
+
+qemu (1:2.5+dfsg-2) unstable; urgency=high
+
+  * ehci-make-idt-processing-more-robust-CVE-2015-8558.patch
+    (Closes: #808144, CVE-2015-8558)
+  * virtio-9p-use-accessor-to-get-thread_pool.patch (Closes: #808357)
+  * two upstream patches from xsa-155 fixing unsafe shared memory access in xen
+    (Closes: #809229, CVE-2015-8550)
+  * net-ne2000-fix-bounds-check-in-ioport-operations-CVE-2015-8743.patch
+    (Closes: #810519, CVE-2015-8743)
+  * ide-ahci-reset-ncq-object-to-unused-on-error-CVE-2016-1568.patch
+    (Closes: #810527, CVE-2016-1568)
+  * changed build-depends from libpng12-dev to libpng-dev (Closes: #810205)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sat, 09 Jan 2016 21:40:43 +0300
+
+qemu (1:2.5+dfsg-1ubuntu5) xenial; urgency=medium
+
   * SECURITY UPDATE: paravirtualized drivers incautious about shared memory
     contents
     - debian/patches/CVE-2015-8550-1.patch: avoid double access in
@@ -43,30 +236,18 @@ qemu (1:2.3+dfsg-5ubuntu9.2) wily-security; urgency=medium
     - debian/patches/CVE-2015-8619.patch: fix sendkey out of bounds write
       in hmp.c, include/ui/console.h, ui/input-legacy.c.
     - CVE-2015-8619
-  * SECURITY UPDATE: buffer overrun during VM migration
-    - debian/patches/CVE-2015-8666.patch: handle full length bytes in
-      hw/acpi/core.c.
-    - CVE-2015-8666
+  * SECURITY UPDATE: incorrect array bounds check in rocker
+    - debian/patches/CVE-2015-8701.patch: fix an incorrect array bounds
+      check in hw/net/rocker/rocker.c.
+    - CVE-2015-8701
   * SECURITY UPDATE: ne2000 OOB r/w in ioport operations
     - debian/patches/CVE-2015-8743.patch: fix bounds check in ioport
       operations in hw/net/ne2000.c.
     - CVE-2015-8743
-  * SECURITY UPDATE: incorrect l2 header validation in vmxnet3
-    - debian/patches/CVE-2015-8744.patch: properly validate header in
-      hw/net/vmxnet3.c, hw/net/vmxnet_tx_pkt.c.
-    - CVE-2015-8744
-  * SECURITY UPDATE: crash via reading IMR registers in vmxnet3
-    - debian/patches/CVE-2015-8745.patch: support reading IMR registers in
-      hw/net/vmxnet3.c.
-    - CVE-2015-8745
   * SECURITY UPDATE: ahci use-after-free vulnerability in aio port commands
     - debian/patches/CVE-2016-1568.patch: reset ncq object to unused on
       error in hw/ide/ahci.c.
     - CVE-2016-1568
-  * SECURITY UPDATE: firmware configuration device OOB rw access
-    - debian/patches/CVE-2016-1714.patch: avoid calculating invalid current
-      entry pointer in hw/nvram/fw_cfg.c.
-    - CVE-2016-1714
   * SECURITY UPDATE: DoS via null pointer dereference in vapic_write()
     - debian/patches/CVE-2016-1922.patch: avoid null pointer dereference in
       hw/i386/kvmvapic.c.
@@ -85,14 +266,140 @@ qemu (1:2.3+dfsg-5ubuntu9.2) wily-security; urgency=medium
       function in hw/usb/hcd-ehci.c.
     - CVE-2016-2198
 
- -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Mon, 01 Feb 2016 15:30:01 -0500
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Mon, 01 Feb 2016 09:39:01 -0500
 
-qemu (1:2.3+dfsg-5ubuntu9.1) wily-security; urgency=medium
+qemu (1:2.5+dfsg-1ubuntu4) xenial; urgency=medium
 
-  * SECURITY UPDATE: denial of service via jumbo frame flood in virtio
-    - debian/patches/CVE-2015-7295.patch: drop truncated packets in
-      hw/net/virtio-net.c, hw/virtio/virtio.c, include/hw/virtio/virtio.h.
-    - CVE-2015-7295
+  * debian/qemu-kvm-init: Call systemd-detect-virt instead of the
+    Ubuntu specific running-in-container wrapper. (LP: #1539016)
+
+ -- Martin Pitt <martin.pitt@ubuntu.com>  Thu, 28 Jan 2016 13:24:51 +0100
+
+qemu (1:2.5+dfsg-1ubuntu3) xenial; urgency=high
+
+  * Include s390-ccw.img firmware.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Tue, 12 Jan 2016 15:53:43 +0000
+
+qemu (1:2.5+dfsg-1ubuntu2) xenial; urgency=medium
+
+  * Place qemu-kvm.defaults file in qemu-system-common, next to the init
+    scripts.  Fix the comparison operator when checking KVM_HUGEPAGES.
+    Thanks Simon.  (LP: #1531191)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Wed, 06 Jan 2016 09:45:37 -0800
+
+qemu (1:2.5+dfsg-1ubuntu1) xenial; urgency=medium
+
+  * Merge with Debian; remaining changes:
+    - debian/rules: do not drop the init scripts loading kvm modules
+      (still needed in precise in cloud archive)
+    - qemu-system-common.postinst:
+      * remove acl placed by udev, and add udevadm trigger.
+      * reload kvm_intel if needed to set nested=1
+    - qemu-system-common.preinst: add kvm group if needed
+    - add qemu-kvm upstart job and defaults file (rules,
+      qemu-system-x86.qemu-kvm.default, qemu-system-x86.qemu-kvm.upstart)
+    - rules,qemu-system-x86.modprobe: support use under older udevs which
+      do not auto-load the kvm kernel module.  Enable nesting by default
+      on intel.
+    - d/p/ubuntu/expose-vmx_qemu64cpu.patch: enable nested kvm by default
+      in qemu64 cpu type.
+    - d/p/ubuntu/define-ubuntu-machine-types.patch: define distro machine
+      types to ease future live vm migration.
+    - apport hook for qemu source package: d/source_qemu-kvm.py,
+      d/qemu-system-common.install
+    - Make qemu-system-common and qemu-utils depend on qemu-block-extra
+      to fix errors with missing block backends. (LP: #1495895)
+    - Enable pie by default, on ubuntu/s390x.
+  * Drop vGICv3 support patches - all is now upstream
+  * debian/qemu-kvm-init: handle KVM_HUGEPAGES being unset (LP: #1531191)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 05 Jan 2016 15:42:50 -0800
+
+qemu (1:2.5+dfsg-1) unstable; urgency=medium
+
+  * new upstream release
+    (Closes: #801158)
+    Closes: #806373 CVE-2015-8345
+    Closes: #806742 CVE-2015-7504
+    Closes: #806741 CVE-2015-7512
+    Closes: #808131 CVE-2015-7549
+    Closes: #808130 CVE-2015-8504
+  * adopt for the new upstream:
+   - removed patches which are upstream now
+   - build-depend on libcacard-dev and stop requiring libtool
+   - removed libcacard refs from debian/qemu-system-common.docs
+   - moved qmp docs out of subdir following upstream
+   - removed pc-bios/vgabios-virtio.bin
+  * enable new linux-user target: tilegx
+  * install qemu-ga manpage
+  * install ivshmem-server and ivshmem-client to qemu-utils
+  * stop using cylinders/heads/sectors for sfdisk
+    in qemu-make-debian-root (Closes: #785470)
+  * modify qemu-make-debian-root to use some current tools
+    (this simplifies things, removes usage of uudecode)
+    (usefulness of this utility is questionable anyway)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Wed, 16 Dec 2015 20:00:04 +0300
+
+qemu (1:2.4+dfsg-5ubuntu3) xenial; urgency=high
+
+  * Enable pie by default, on ubuntu/s390x.
+
+ -- Dimitri John Ledkov <xnox@ubuntu.com>  Mon, 07 Dec 2015 16:04:16 +0000
+
+qemu (1:2.4+dfsg-5ubuntu2) xenial; urgency=medium
+
+  * undo the libseccomp delta from debian.  libseccomp is indeed available
+    on other arches, but we need qemu's configure script to be fixed before
+    we can use it on anything other than amd64|i386.  Fixes FTBFS.
+    (LP: #1522531)
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Thu, 03 Dec 2015 12:44:46 -0600
+
+qemu (1:2.4+dfsg-5ubuntu1) xenial; urgency=medium
+
+  * Merge with Debian; remaining changes:
+    - Update the ubuntu machine types patch to reflect upstream churn
+    - debian/rules: do not drop the init scripts loading kvm modules
+      (still needed in precise in cloud archive)
+    - qemu-system-common.postinst:
+      * remove acl placed by udev, and add udevadm trigger.
+      * reload kvm_intel if needed to set nested=1
+    - qemu-system-common.preinst: add kvm group if needed
+    - add qemu-kvm upstart job and defaults file (rules,
+      qemu-system-x86.qemu-kvm.default, qemu-system-x86.qemu-kvm.upstart)
+    - rules,qemu-system-x86.modprobe: support use under older udevs which
+      do not auto-load the kvm kernel module.  Enable nesting by default
+      on intel.
+    - d/p/ubuntu/expose-vmx_qemu64cpu.patch: enable nested kvm by default
+      in qemu64 cpu type.
+    - d/p/ubuntu/define-trusty-machine-type.patch: define a default trusty
+      machine type to ease future live vm migration.
+    - apport hook for qemu source package: d/source_qemu-kvm.py,
+      d/qemu-system-common.install
+    - Make qemu-system-common and qemu-utils depend on qemu-block-extra
+      to fix errors with missing block backends. (LP: #1495895)
+    - control-in: build with libseccomp an all architectures
+    - Add vGICv3 support
+
+ -- Matthias Klose <doko@ubuntu.com>  Wed, 02 Dec 2015 21:31:36 +0100
+
+qemu (1:2.4+dfsg-5) unstable; urgency=medium
+
+  * trace-remove-malloc-tracing.patch from upstream.
+    (Closes: #802633)
+  * stop building libcacard, as it is now in its own separate
+    source package and has been removed from upstream qemu in 2.5.
+    Here we just stop producing libcacard binaries, but still use
+    embedded libcacard source to link with it statically.  In 2.5
+    we will switch to external libcacard. (Closes: #805410)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 29 Nov 2015 12:22:52 +0300
+
+qemu (1:2.4+dfsg-4ubuntu3) xenial; urgency=medium
+
   * SECURITY UPDATE: loopback mode heap overflow vulnerability in pcnet
     - debian/patches/CVE-2015-7504.patch: leave room for CRC code in
       hw/net/pcnet.c.
@@ -106,7 +413,125 @@ qemu (1:2.3+dfsg-5ubuntu9.1) wily-security; urgency=medium
       hw/net/eepro100.c.
     - CVE-2015-8345
 
- -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 01 Dec 2015 14:06:11 -0500
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 01 Dec 2015 13:36:40 -0500
+
+qemu (1:2.4+dfsg-4ubuntu2) xenial; urgency=medium
+
+  * d/p/u/define-ubuntu-machine-type.patch: Fix typo in utopic definition.
+
+ -- dann frazier <dann.frazier@canonical.com>  Tue, 03 Nov 2015 08:05:46 -0700
+
+qemu (1:2.4+dfsg-4ubuntu1) xenial; urgency=medium
+
+  * Merge 2.4 from unstable.  Remaining changes:
+    - Update the ubuntu machine types patch to reflect upstream churn
+    - debian/rules: do not drop the init scripts loading kvm modules
+      (still needed in precise in cloud archive)
+    - qemu-system-common.postinst:
+      * remove acl placed by udev, and add udevadm trigger.
+      * reload kvm_intel if needed to set nested=1
+    - qemu-system-common.preinst: add kvm group if needed
+    - add qemu-kvm upstart job and defaults file (rules,
+      qemu-system-x86.qemu-kvm.default, qemu-system-x86.qemu-kvm.upstart)
+    - rules,qemu-system-x86.modprobe: support use under older udevs which
+      do not auto-load the kvm kernel module.  Enable nesting by default
+      on intel.
+    - d/p/ubuntu/expose-vmx_qemu64cpu.patch: enable nested kvm by default
+      in qemu64 cpu type.
+    - d/p/ubuntu/define-trusty-machine-type.patch: define a default trusty
+      machine type to ease future live vm migration.
+    - apport hook for qemu source package: d/source_qemu-kvm.py,
+      d/qemu-system-common.install
+    - Make qemu-system-common and qemu-utils depend on qemu-block-extra
+      to fix errors with missing block backends. (LP: #1495895)
+    - control-in: build with libseccomp an all architectures.
+  * Add vGICv3 support
+
+ -- Serge Hallyn <serge.hallyn@ubuntu.com>  Tue, 27 Oct 2015 13:28:58 -0500
+
+qemu (1:2.4+dfsg-4) unstable; urgency=medium
+
+  * applied 3 patches from upstream to fix virtio-net
+    possible remote DoS (Closes: #799452 CVE-2015-7295)
+  * remove now-unused /etc/qemu too (Closes: #797608)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 08 Oct 2015 20:30:03 +0300
+
+qemu (1:2.4+dfsg-3) unstable; urgency=high
+
+  * ne2000-add-checks-to-validate-ring-buffer-pointers-CVE-2015-5279.patch
+    fix for Heap overflow vulnerability in ne2000_receive() function
+    (Closes: #799074 CVE-2015-5279)
+  * ne2000-avoid-infinite-loop-when-receiving-packets-CVE-2015-5278.patch
+    (Closes: #799073 CVE-2015-5278) 
+  * some binfmt reorg:
+   - extend aarch64 to include one more byte as other arches do
+   - set OSABI mask to 0xfc for i386, ppc*, s390x, sparc*, to recognize
+     OSABI=3 (GNU/Linux) in addition to NONE/SysV
+     (Closes: #784605, #794737)
+   - tighten sh4 & sh4eb, fixing OSABI mask to be \xfc not 0
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Tue, 15 Sep 2015 19:30:18 +0300
+
+qemu (1:2.4+dfsg-2) unstable; urgency=high
+
+  * Add e1000-avoid-infinite-loop-in-transmit-CVE-2015-6815.patch.
+    CVE-2015-6815: net: e1000 infinite loop issue in processing transmit
+    descriptor.  (Closes: #798101 CVE-2015-6815)
+  * Add ide-fix-ATAPI-command-permissions-CVE-2015-6855.patch.
+    CVE-2015-6855: ide: qemu allows arbitrary commands to be sent to an ATAPI
+    device from guest, while illegal comands might have security impact,
+    f.e. WIN_READ_NATIVE_MAX results in divide by zero error.
+    (Closes: CVE-2015-6855)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Fri, 11 Sep 2015 19:54:07 +0300
+
+qemu (1:2.4+dfsg-1a) unstable; urgency=medium
+
+  * new upstream (2.4.0) release
+    Closes: #795461, #793811, #794610, #795087, #794611, #793388
+    CVE-2015-3214 CVE-2015-5154 CVE-2015-5165 CVE-2015-5745
+    CVE-2015-5166 CVE-2015-5158
+    Closes: #793817
+  * removed all upstreamed patches
+  * remove --enable-vnc-ws option (not used anymore)
+  * update mjt-set-oem-in-rsdt-like-slic.diff
+  * vnc-fix-memory-corruption-CVE-2015-5225.patch from upstream
+    Closes: #796465 CVE-2015-5225
+  * remove now-unused /etc/qemu/target-x86_64.conf
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 31 Aug 2015 16:28:08 +0300
+
+qemu (1:2.3+dfsg-6a) unstable; urgency=medium
+
+  * fix d/copyright leftover in previous upload
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 11 Jun 2015 20:31:07 +0300
+
+qemu (1:2.3+dfsg-6) unstable; urgency=high
+
+  * pcnet-force-buffer-access-to-be-in-bounds-CVE-2015-3209.patch
+    from upstream (Closes: #788460 CVE-2015-3209)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 11 Jun 2015 20:03:40 +0300
+
+qemu (1:2.3+dfsg-5ubuntu10) xenial; urgency=medium
+
+  * debian/patches/fix-curses-with-xterm-256.patch (LP: #1508466)
+
+ -- Ryan Harper <ryan.harper@canonical.com>  Wed, 21 Oct 2015 08:59:29 -0500
+
+qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.3) unstable; urgency=medium
+
+  * Update to use libovsvolumedriver 6.0.0
+
+ -- Arne Redlich <arne.redlich@openvstorage.com>  Fri, 17 Jun 2016 11:01:39 +0200
+
+qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.2) unstable; urgency=medium
+
+  * OpenvStorage block backend support
+
+ -- Chrysostomos Nanakos <cnanakos@openvstorage.com>  Mon, 15 Feb 2016 15:30:01 -0500
 
 qemu (1:2.3+dfsg-5ubuntu9) wily; urgency=low
 

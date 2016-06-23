@@ -1,0 +1,194 @@
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 30 Mar 2016 17:27:24 +0100
+Subject: [PATCH] arm: qmp: add query-gic-capabilities interface
+
+This patch add "query-gic-capabilities" but does not implement it. The
+command is ARM-only. The command will return a list of GICCapability
+structs that describes all GIC versions that current QEMU and system
+support.
+
+Libvirt is possibly the first consumer of this new command.
+
+Before this patch, a libvirt user can successfully configure all kinds
+of GIC devices for ARM guests, no matter whether current QEMU/kernel
+supports them. If the specified GIC version/type is not supported, the
+user will get an ambiguous "QEMU boot failure" error when trying to start
+the VM. This is not user-friendly.
+
+With this patch, libvirt should be able to query which type (and which
+version) of GIC device is supported. Using this information, libvirt
+can warn the user during configuration of guests when specified GIC
+device type is not supported. Or better, we can just list those versions
+that we support, and filter out the unsupported ones.
+
+For example, if we got the query result:
+
+{"return": [{"emulated": false, "version": 3, "kernel": true},
+            {"emulated": true, "version": 2, "kernel": false}]}
+
+then it means that we support emulated GIC version 2 using:
+
+  qemu-system-aarch64 -M virt,accel=tcg,gic-version=2 ...
+
+or KVM-accelerated GIC version 3 using:
+
+  qemu-system-aarch64 -M virt,accel=kvm,gic-version=3 ...
+
+If we specify other explicit GIC versions rather than the above, QEMU
+will not be able to boot.
+
+The community is working on a more generic way to query these kinds of
+information about valid values of machine properties. However, due to
+the importance of supporting this specific use case, weecided to first
+implement this ad-hoc one; then when the generic method is ready, we
+can move on to that one smoothly.
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Message-id: 1458788142-17509-2-git-send-email-peterx@redhat.com
+[PMM: tweaked commit message a bit; monitor.o is CONFIG_SOFTMMU only]
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+
+Origin: http://git.qemu.org/?p=qemu.git;a=commitdiff;h=ae50a7702c871638c5b650f501325031dfc511cb
+Bug-Ubuntu: http://bugs.launchpad.net/bugs/1566564
+Last-Updated: 2016-05-19
+
+Index: qemu.debian/monitor.c
+===================================================================
+--- qemu.debian.orig/monitor.c
++++ qemu.debian/monitor.c
+@@ -4243,3 +4243,11 @@ void qmp_dump_skeys(const char *filename
+     error_setg(errp, QERR_FEATURE_DISABLED, "dump-skeys");
+ }
+ #endif
++
++#ifndef TARGET_ARM
++GICCapabilityList *qmp_query_gic_capabilities(Error **errp)
++{
++    error_setg(errp, QERR_FEATURE_DISABLED, "query-gic-capabilities");
++    return NULL;
++}
++#endif
+Index: qemu.debian/qapi-schema.json
+===================================================================
+--- qemu.debian.orig/qapi-schema.json
++++ qemu.debian/qapi-schema.json
+@@ -3971,3 +3971,39 @@
+ ##
+ { 'enum': 'ReplayMode',
+   'data': [ 'none', 'record', 'play' ] }
++
++##
++# @GICCapability:
++#
++# The struct describes capability for a specific GIC (Generic
++# Interrupt Controller) version. These bits are not only decided by
++# QEMU/KVM software version, but also decided by the hardware that
++# the program is running upon.
++#
++# @version:  version of GIC to be described. Currently, only 2 and 3
++#            are supported.
++#
++# @emulated: whether current QEMU/hardware supports emulated GIC
++#            device in user space.
++#
++# @kernel:   whether current QEMU/hardware supports hardware
++#            accelerated GIC device in kernel.
++#
++# Since: 2.6
++##
++{ 'struct': 'GICCapability',
++  'data': { 'version': 'int',
++            'emulated': 'bool',
++            'kernel': 'bool' } }
++
++##
++# @query-gic-capabilities:
++#
++# This command is ARM-only. It will return a list of GICCapability
++# objects that describe its capability bits.
++#
++# Returns: a list of GICCapability objects.
++#
++# Since: 2.6
++##
++{ 'command': 'query-gic-capabilities', 'returns': ['GICCapability'] }
+Index: qemu.debian/qmp-commands.hx
+===================================================================
+--- qemu.debian.orig/qmp-commands.hx
++++ qemu.debian/qmp-commands.hx
+@@ -4745,3 +4745,30 @@ Example:
+                  {"type": 0, "out-pport": 0, "pport": 0, "vlan-id": 3840,
+                   "pop-vlan": 1, "id": 251658240}
+    ]}
++
++EQMP
++
++#if defined TARGET_ARM
++    {
++        .name       = "query-gic-capabilities",
++        .args_type  = "",
++        .mhandler.cmd_new = qmp_marshal_query_gic_capabilities,
++    },
++#endif
++
++SQMP
++query-gic-capabilities
++---------------
++
++Return a list of GICCapability objects, describing supported GIC
++(Generic Interrupt Controller) versions.
++
++Arguments: None
++
++Example:
++
++-> { "execute": "query-gic-capabilities" }
++<- { "return": [{ "version": 2, "emulated": true, "kernel": false },
++                { "version": 3, "emulated": false, "kernel": true } ] }
++
++EQMP
+Index: qemu.debian/target-arm/monitor.c
+===================================================================
+--- /dev/null
++++ qemu.debian/target-arm/monitor.c
+@@ -0,0 +1,28 @@
++/*
++ * QEMU monitor.c for ARM.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++ * THE SOFTWARE.
++ */
++#include "qemu/osdep.h"
++#include "qmp-commands.h"
++
++GICCapabilityList *qmp_query_gic_capabilities(Error **errp)
++{
++    return NULL;
++}
+Index: qemu.debian/target-arm/Makefile.objs
+===================================================================
+--- qemu.debian.orig/target-arm/Makefile.objs
++++ qemu.debian/target-arm/Makefile.objs
+@@ -1,5 +1,5 @@
+ obj-y += arm-semi.o
+-obj-$(CONFIG_SOFTMMU) += machine.o
++obj-$(CONFIG_SOFTMMU) += machine.o monitor.o
+ obj-$(CONFIG_KVM) += kvm.o
+ obj-$(call land,$(CONFIG_KVM),$(call lnot,$(TARGET_AARCH64))) += kvm32.o
+ obj-$(call land,$(CONFIG_KVM),$(TARGET_AARCH64)) += kvm64.o

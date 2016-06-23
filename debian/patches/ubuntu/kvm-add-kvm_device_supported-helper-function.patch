@@ -1,0 +1,63 @@
+From: Peter Xu <peterx@redhat.com>
+Date: Wed, 30 Mar 2016 17:27:24 +0100
+Subject: [PATCH] kvm: add kvm_device_supported() helper function
+
+This can be used when probing whether KVM support specific device. Here,
+a raw vmfd is used.
+
+Signed-off-by: Peter Xu <peterx@redhat.com>
+Acked-by: Sergey Fedorov <serge.fdrv@gmail.com>
+Message-id: 1458788142-17509-4-git-send-email-peterx@redhat.com
+Reviewed-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+
+Origin: http://git.qemu.org/?p=qemu.git;a=commitdiff;h=29039acf585615c6c37f8a1863a0a318ddd455cc
+Bug-Ubuntu: http://bugs.launchpad.net/bugs/1566564
+Last-Updated: 2016-05-19
+
+diff --git a/include/sysemu/kvm.h b/include/sysemu/kvm.h
+index 6695fa7..0e18f15 100644
+--- a/include/sysemu/kvm.h
++++ b/include/sysemu/kvm.h
+@@ -306,6 +306,15 @@ void kvm_device_access(int fd, int group, uint64_t attr,
+  */
+ int kvm_create_device(KVMState *s, uint64_t type, bool test);
+ 
++/**
++ * kvm_device_supported - probe whether KVM supports specific device
++ *
++ * @vmfd: The fd handler for VM
++ * @type: type of device
++ *
++ * @return: true if supported, otherwise false.
++ */
++bool kvm_device_supported(int vmfd, uint64_t type);
+ 
+ /* Arch specific hooks */
+ 
+diff --git a/kvm-all.c b/kvm-all.c
+index 44c0464..e7b66df 100644
+--- a/kvm-all.c
++++ b/kvm-all.c
+@@ -2339,6 +2339,21 @@ int kvm_create_device(KVMState *s, uint64_t type, bool test)
+     return test ? 0 : create_dev.fd;
+ }
+ 
++bool kvm_device_supported(int vmfd, uint64_t type)
++{
++    struct kvm_create_device create_dev = {
++        .type = type,
++        .fd = -1,
++        .flags = KVM_CREATE_DEVICE_TEST,
++    };
++
++    if (ioctl(vmfd, KVM_CHECK_EXTENSION, KVM_CAP_DEVICE_CTRL) <= 0) {
++        return false;
++    }
++
++    return (ioctl(vmfd, KVM_CREATE_DEVICE, &create_dev) >= 0);
++}
++
+ int kvm_set_one_reg(CPUState *cs, uint64_t id, void *source)
+ {
+     struct kvm_one_reg reg;

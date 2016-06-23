@@ -38,7 +38,7 @@ start() {
         modprobe -b $modlist || true
     fi
 
-    if running-in-container; then
+    if systemd-detect-virt --quiet --container; then
         mknod /dev/kvm c 10 232 || true
         chown root:kvm /dev/kvm || true
         chmod g+rw /dev/kvm || true
@@ -79,7 +79,7 @@ start() {
     fi
 
     # mount hugepages if available and requested
-    if [ "$KVM_HUGEPAGES" -eq "1" ]; then
+    if [ "x$KVM_HUGEPAGES" = "x1" ]; then
         if ! grep -q hugetlbfs /proc/filesystems; then
             logger -t qemu-kvm "Error: hugepages not available in the kernel!"
         elif grep -q /run/hugepages/kvm /proc/mounts; then
