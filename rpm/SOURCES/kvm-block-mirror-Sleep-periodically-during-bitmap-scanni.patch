@@ -1,0 +1,78 @@
+From 51b5e87448f2fc4cefcb4adb2ee12c31c37332ff Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 16 Jul 2015 08:31:28 +0200
+Subject: [PATCH 27/58] block/mirror: Sleep periodically during bitmap scanning
+
+Message-id: <1437035488-26250-1-git-send-email-famz@redhat.com>
+Patchwork-id: 67035
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH] block/mirror: Sleep periodically during bitmap scanning
+Bugzilla: 1233826
+RH-Acked-by: Jeffrey Cody <jcody@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1233826
+Brew: http://brewweb.devel.redhat.com/brew/taskinfo?taskID=9526602
+
+Before, we only yield after initializing dirty bitmap, where the QMP
+command would return. That may take very long, and guest IO will be
+blocked.
+
+Add sleep points like the later mirror iterations.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Reviewed-by: Wen Congyang <wency@cn.fujitsu.com>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-id: 1431486673-19280-1-git-send-email-famz@redhat.com
+Signed-off-by: Jeff Cody <jcody@redhat.com>
+(cherry picked from commit 4c0cbd6fec7db182a6deb52d5a8a8e7b0c5cbe64)
+
+Context is slightly different due to an irrelevant parameter change of
+bdrv_dirty_iter_init.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block/mirror.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index bd079a4..775f48e 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -449,11 +449,23 @@ static void coroutine_fn mirror_run(void *opaque)
+     sectors_per_chunk = s->granularity >> BDRV_SECTOR_BITS;
+     mirror_free_init(s);
+ 
++    last_pause_ns = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+     if (!s->is_none_mode) {
+         /* First part, loop on the sectors and initialize the dirty bitmap.  */
+         BlockDriverState *base = s->base;
+         for (sector_num = 0; sector_num < end; ) {
+             int64_t next = (sector_num | (sectors_per_chunk - 1)) + 1;
++            int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
++
++            if (now - last_pause_ns > SLICE_TIME) {
++                last_pause_ns = now;
++                block_job_sleep_ns(&s->common, QEMU_CLOCK_REALTIME, 0);
++            }
++
++            if (block_job_is_cancelled(&s->common)) {
++                goto immediate_exit;
++            }
++
+             ret = bdrv_is_allocated_above(bs, base,
+                                           sector_num, next - sector_num, &n);
+ 
+@@ -472,7 +484,6 @@ static void coroutine_fn mirror_run(void *opaque)
+     }
+ 
+     bdrv_dirty_iter_init(bs, s->dirty_bitmap, &s->hbi);
+-    last_pause_ns = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+     for (;;) {
+         uint64_t delay_ns = 0;
+         int64_t cnt;
+-- 
+1.8.3.1
+

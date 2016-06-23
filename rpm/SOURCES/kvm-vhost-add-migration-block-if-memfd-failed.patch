@@ -1,0 +1,97 @@
+From 2ccae02d5ac419dee8527cea58a848a9fc2ffe4b Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:51 +0100
+Subject: [PATCH 27/44] vhost: add migration block if memfd failed
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-21-git-send-email-mst@redhat.com>
+Patchwork-id: 68380
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 20/36] vhost: add migration block if memfd failed
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit 31190ed781a81d2de65cea405e4cb3441ab929fc)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost.c    |  3 +++
+ include/qemu/memfd.h |  2 ++
+ util/memfd.c         | 22 ++++++++++++++++++++++
+ 3 files changed, 27 insertions(+)
+
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index a5fee9b..200ec45 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -991,6 +991,9 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
+         if (!(hdev->features & (0x1ULL << VHOST_F_LOG_ALL))) {
+             error_setg(&hdev->migration_blocker,
+                        "Migration disabled: vhost lacks VHOST_F_LOG_ALL feature.");
++        } else if (!qemu_memfd_check()) {
++            error_setg(&hdev->migration_blocker,
++                       "Migration disabled: failed to allocate shared memory");
+         }
+     }
+ 
+diff --git a/include/qemu/memfd.h b/include/qemu/memfd.h
+index 950fb88..53858ed 100644
+--- a/include/qemu/memfd.h
++++ b/include/qemu/memfd.h
+@@ -2,6 +2,7 @@
+ #define QEMU_MEMFD_H
+ 
+ #include "config-host.h"
++#include <stdbool.h>
+ 
+ #ifndef F_LINUX_SPECIFIC_BASE
+ #define F_LINUX_SPECIFIC_BASE 1024
+@@ -20,5 +21,6 @@
+ void *qemu_memfd_alloc(const char *name, size_t size, unsigned int seals,
+                        int *fd);
+ void qemu_memfd_free(void *ptr, size_t size, int fd);
++bool qemu_memfd_check(void);
+ 
+ #endif /* QEMU_MEMFD_H */
+diff --git a/util/memfd.c b/util/memfd.c
+index 53dd38d..7f7b947 100644
+--- a/util/memfd.c
++++ b/util/memfd.c
+@@ -141,3 +141,25 @@ void qemu_memfd_free(void *ptr, size_t size, int fd)
+         close(fd);
+     }
+ }
++
++enum {
++    MEMFD_KO,
++    MEMFD_OK,
++    MEMFD_TODO
++};
++
++bool qemu_memfd_check(void)
++{
++    static int memfd_check = MEMFD_TODO;
++
++    if (memfd_check == MEMFD_TODO) {
++        int fd;
++        void *ptr;
++
++        ptr = qemu_memfd_alloc("test", 4096, 0, &fd);
++        memfd_check = ptr ? MEMFD_OK : MEMFD_KO;
++        qemu_memfd_free(ptr, 4096, fd);
++    }
++
++    return memfd_check == MEMFD_OK;
++}
+-- 
+1.8.3.1
+

@@ -1,0 +1,95 @@
+From ffbd33f190376357a0417337b18941f7705e8a0d Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:23 +0200
+Subject: [PATCH 14/31] hw/i386: query only for q35/pc when looking for pci
+ host bridge
+
+Message-id: <1435154016-26233-31-git-send-email-marcel@redhat.com>
+Patchwork-id: 66457
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 30/43] hw/i386: query only for q35/pc when looking for pci host bridge
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Because of the PXB hosts we cannot simply query TYPE_PCI_HOST_BRIDGE anymore.
+On i386 arch we only have two pci hosts, so we can look only for them.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit ca6c18556c5e9c4aac12489b960c3e4601e183bf)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c | 34 +++++++++++++++++++++++++---------
+ 1 file changed, 25 insertions(+), 9 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index da9b588..ea77a3f 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -239,13 +239,32 @@ static void acpi_get_misc_info(AcpiMiscInfo *info)
+     info->applesmc_io_base = applesmc_port();
+ }
+ 
++/*
++ * Because of the PXB hosts we cannot simply query TYPE_PCI_HOST_BRIDGE.
++ * On i386 arch we only have two pci hosts, so we can look only for them.
++ */
++static Object *acpi_get_i386_pci_host(void)
++{
++    PCIHostState *host;
++
++    host = OBJECT_CHECK(PCIHostState,
++                        object_resolve_path("/machine/i440fx", NULL),
++                        TYPE_PCI_HOST_BRIDGE);
++    if (!host) {
++        host = OBJECT_CHECK(PCIHostState,
++                            object_resolve_path("/machine/q35", NULL),
++                            TYPE_PCI_HOST_BRIDGE);
++    }
++
++    return OBJECT(host);
++}
++
+ static void acpi_get_pci_info(PcPciInfo *info)
+ {
+     Object *pci_host;
+-    bool ambiguous;
+ 
+-    pci_host = object_resolve_path_type("", TYPE_PCI_HOST_BRIDGE, &ambiguous);
+-    g_assert(!ambiguous);
++
++    pci_host = acpi_get_i386_pci_host();
+     g_assert(pci_host);
+ 
+     info->w32.begin = object_property_get_int(pci_host,
+@@ -955,10 +974,9 @@ build_ssdt(GArray *table_data, GArray *linker,
+         {
+             Object *pci_host;
+             PCIBus *bus = NULL;
+-            bool ambiguous;
+ 
+-            pci_host = object_resolve_path_type("", TYPE_PCI_HOST_BRIDGE, &ambiguous);
+-            if (!ambiguous && pci_host) {
++            pci_host = acpi_get_i386_pci_host();
++            if (pci_host) {
+                 bus = PCI_HOST_BRIDGE(pci_host)->bus;
+             }
+ 
+@@ -1251,10 +1269,8 @@ static bool acpi_get_mcfg(AcpiMcfgInfo *mcfg)
+ {
+     Object *pci_host;
+     QObject *o;
+-    bool ambiguous;
+ 
+-    pci_host = object_resolve_path_type("", TYPE_PCI_HOST_BRIDGE, &ambiguous);
+-    g_assert(!ambiguous);
++    pci_host = acpi_get_i386_pci_host();
+     g_assert(pci_host);
+ 
+     o = object_property_get_qobject(pci_host, PCIE_HOST_MCFG_BASE, NULL);
+-- 
+1.8.3.1
+

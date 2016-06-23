@@ -1,0 +1,460 @@
+From 85c2b4e4fbae03798ccabb4d16537178a40f06fc Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Wed, 30 Sep 2015 10:25:45 +0200
+Subject: [PATCH 08/11] vhost-user: add multiple queue support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1443608650-22364-9-git-send-email-mst@redhat.com>
+Patchwork-id: 68004
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 8/9] vhost-user: add multiple queue support
+Bugzilla: 1276100
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+
+From: Changchun Ouyang <changchun.ouyang@intel.com>
+
+This patch is initially based a patch from Nikolay Nikolaev.
+
+This patch adds vhost-user multiple queue support, by creating a nc
+and vhost_net pair for each queue.
+
+Qemu exits if find that the backend can't support the number of requested
+queues (by providing queues=# option). The max number is queried by a
+new message, VHOST_USER_GET_QUEUE_NUM, and is sent only when protocol
+feature VHOST_USER_PROTOCOL_F_MQ is present first.
+
+The max queue check is done at vhost-user initiation stage. We initiate
+one queue first, which, in the meantime, also gets the max_queues the
+backend supports.
+
+In older version, it was reported that some messages are sent more times
+than necessary. Here we came an agreement with Michael that we could
+categorize vhost user messages to 2 types: non-vring specific messages,
+which should be sent only once, and vring specific messages, which should
+be sent per queue.
+
+Here I introduced a helper function vhost_user_one_time_request(), which
+lists following messages as non-vring specific messages:
+
+        VHOST_USER_SET_OWNER
+        VHOST_USER_RESET_DEVICE
+        VHOST_USER_SET_MEM_TABLE
+        VHOST_USER_GET_QUEUE_NUM
+
+For above messages, we simply ignore them when they are not sent the first
+time.
+
+Notes on backport:
+   I dropped VHOST_USER_RESET_DEVICE since patch
+   introducing that was not backported (causes regressions).
+
+Signed-off-by: Nikolay Nikolaev <n.nikolaev@virtualopensystems.com>
+Signed-off-by: Changchun Ouyang <changchun.ouyang@intel.com>
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Jason Wang <jasowang@redhat.com>
+Tested-by: Marcel Apfelbaum <marcel@redhat.com>
+(cherry picked from commit b931bfbf042983f311b3b09894d8030b2755a638)
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/vhost-user.txt |  15 +++++
+ hw/net/vhost_net.c        |  10 ++--
+ hw/virtio/vhost-user.c    |  22 ++++++++
+ hw/virtio/vhost.c         |   5 +-
+ net/vhost-user.c          | 141 ++++++++++++++++++++++++++++++----------------
+ qapi-schema.json          |   6 +-
+ qemu-options.hx           |   5 +-
+ 7 files changed, 147 insertions(+), 57 deletions(-)
+
+diff --git a/docs/specs/vhost-user.txt b/docs/specs/vhost-user.txt
+index 4b9d5bc..62f7bcf 100644
+--- a/docs/specs/vhost-user.txt
++++ b/docs/specs/vhost-user.txt
+@@ -135,6 +135,21 @@ As older slaves don't support negotiating protocol features,
+ a feature bit was dedicated for this purpose:
+ #define VHOST_USER_F_PROTOCOL_FEATURES 30
+ 
++Multiple queue support
++----------------------
++
++Multiple queue is treated as a protocol extension, hence the slave has to
++implement protocol features first. The multiple queues feature is supported
++only when the protocol feature VHOST_USER_PROTOCOL_F_MQ (bit 0) is set:
++#define VHOST_USER_PROTOCOL_F_MQ    0
++
++The max number of queues the slave supports can be queried with message
++VHOST_USER_GET_PROTOCOL_FEATURES. Master should stop when the number of
++requested queues is bigger than that.
++
++As all queues share one connection, the master uses a unique index for each
++queue in the sent message to identify a specified queue.
++
+ Message types
+ -------------
+ 
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index 19c31a4..f40c9d3 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -148,8 +148,11 @@ struct vhost_net *vhost_net_init(VhostNetOptions *options)
+         fprintf(stderr, "vhost-net requires net backend to be setup\n");
+         goto fail;
+     }
++    net->nc = options->net_backend;
+ 
+     net->dev.max_queues = 1;
++    net->dev.nvqs = 2;
++    net->dev.vqs = net->vqs;
+ 
+     if (backend_kernel) {
+         r = vhost_net_get_fd(options->net_backend);
+@@ -164,11 +167,10 @@ struct vhost_net *vhost_net_init(VhostNetOptions *options)
+         net->dev.backend_features = 0;
+         net->dev.protocol_features = 0;
+         net->backend = -1;
+-    }
+-    net->nc = options->net_backend;
+ 
+-    net->dev.nvqs = 2;
+-    net->dev.vqs = net->vqs;
++        /* vhost-user needs vq_index to initiate a specific queue pair */
++        net->dev.vq_index = net->nc->queue_index * net->dev.nvqs;
++    }
+ 
+     r = vhost_dev_init(&net->dev, options->opaque,
+                        options->backend_type);
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index f8673fa..0a27b36 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -187,6 +187,19 @@ static int vhost_user_write(struct vhost_dev *dev, VhostUserMsg *msg,
+             0 : -1;
+ }
+ 
++static bool vhost_user_one_time_request(VhostUserRequest request)
++{
++    switch (request) {
++    case VHOST_USER_SET_OWNER:
++    /* case VHOST_USER_RESET_DEVICE: */
++    case VHOST_USER_SET_MEM_TABLE:
++    case VHOST_USER_GET_QUEUE_NUM:
++        return true;
++    default:
++        return false;
++    }
++}
++
+ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+         void *arg)
+ {
+@@ -207,6 +220,15 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+         msg_request = request;
+     }
+ 
++    /*
++     * For non-vring specific requests, like VHOST_USER_SET_MEM_TABLE,
++     * we just need send it once in the first time. For later such
++     * request, we just ignore it.
++     */
++    if (vhost_user_one_time_request(msg_request) && dev->vq_index != 0) {
++        return 0;
++    }
++
+     msg.request = msg_request;
+     msg.flags = VHOST_USER_VERSION;
+     msg.size = 0;
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index 5432fa3..5df6a54 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -832,8 +832,9 @@ static void vhost_eventfd_del(MemoryListener *listener,
+ static int vhost_virtqueue_init(struct vhost_dev *dev,
+                                 struct vhost_virtqueue *vq, int n)
+ {
++    int vhost_vq_index = dev->vhost_ops->vhost_backend_get_vq_index(dev, n);
+     struct vhost_vring_file file = {
+-        .index = n,
++        .index = vhost_vq_index,
+     };
+     int r = event_notifier_init(&vq->masked_notifier, 0);
+     if (r < 0) {
+@@ -884,7 +885,7 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
+     }
+ 
+     for (i = 0; i < hdev->nvqs; ++i) {
+-        r = vhost_virtqueue_init(hdev, hdev->vqs + i, i);
++        r = vhost_virtqueue_init(hdev, hdev->vqs + i, hdev->vq_index + i);
+         if (r < 0) {
+             goto fail_vq;
+         }
+diff --git a/net/vhost-user.c b/net/vhost-user.c
+index 4865615..ee479ce 100644
+--- a/net/vhost-user.c
++++ b/net/vhost-user.c
+@@ -14,6 +14,7 @@
+ #include "sysemu/char.h"
+ #include "qemu/config-file.h"
+ #include "qemu/error-report.h"
++#include "qmp-commands.h"
+ 
+ typedef struct VhostUserState {
+     NetClientState nc;
+@@ -39,37 +40,77 @@ static int vhost_user_running(VhostUserState *s)
+     return (s->vhost_net) ? 1 : 0;
+ }
+ 
+-static int vhost_user_start(VhostUserState *s)
++static void vhost_user_stop(int queues, NetClientState *ncs[])
+ {
+-    VhostNetOptions options;
+-
+-    if (vhost_user_running(s)) {
+-        return 0;
+-    }
++    VhostUserState *s;
++    int i;
+ 
+-    options.backend_type = VHOST_BACKEND_TYPE_USER;
+-    options.net_backend = &s->nc;
+-    options.opaque = s->chr;
++    for (i = 0; i < queues; i++) {
++        assert (ncs[i]->info->type == NET_CLIENT_OPTIONS_KIND_VHOST_USER);
+ 
+-    s->vhost_net = vhost_net_init(&options);
++        s = DO_UPCAST(VhostUserState, nc, ncs[i]);
++        if (!vhost_user_running(s)) {
++            continue;
++        }
+ 
+-    return vhost_user_running(s) ? 0 : -1;
++        if (s->vhost_net) {
++            vhost_net_cleanup(s->vhost_net);
++            s->vhost_net = NULL;
++        }
++    }
+ }
+ 
+-static void vhost_user_stop(VhostUserState *s)
++static int vhost_user_start(int queues, NetClientState *ncs[])
+ {
+-    if (vhost_user_running(s)) {
+-        vhost_net_cleanup(s->vhost_net);
++    VhostNetOptions options;
++    VhostUserState *s;
++    int max_queues;
++    int i;
++
++    options.backend_type = VHOST_BACKEND_TYPE_USER;
++
++    for (i = 0; i < queues; i++) {
++        assert (ncs[i]->info->type == NET_CLIENT_OPTIONS_KIND_VHOST_USER);
++
++        s = DO_UPCAST(VhostUserState, nc, ncs[i]);
++        if (vhost_user_running(s)) {
++            continue;
++        }
++
++        options.net_backend = ncs[i];
++        options.opaque      = s->chr;
++        s->vhost_net = vhost_net_init(&options);
++        if (!s->vhost_net) {
++            error_report("failed to init vhost_net for queue %d\n", i);
++            goto err;
++        }
++
++        if (i == 0) {
++            max_queues = vhost_net_get_max_queues(s->vhost_net);
++            if (queues > max_queues) {
++                error_report("you are asking more queues than "
++                             "supported: %d\n", max_queues);
++                goto err;
++            }
++        }
+     }
+ 
+-    s->vhost_net = 0;
++    return 0;
++
++err:
++    vhost_user_stop(i + 1, ncs);
++    return -1;
+ }
+ 
+ static void vhost_user_cleanup(NetClientState *nc)
+ {
+     VhostUserState *s = DO_UPCAST(VhostUserState, nc, nc);
+ 
+-    vhost_user_stop(s);
++    if (s->vhost_net) {
++        vhost_net_cleanup(s->vhost_net);
++        s->vhost_net = NULL;
++    }
++
+     qemu_purge_queued_packets(nc);
+ }
+ 
+@@ -95,59 +136,61 @@ static NetClientInfo net_vhost_user_info = {
+         .has_ufo = vhost_user_has_ufo,
+ };
+ 
+-static void net_vhost_link_down(VhostUserState *s, bool link_down)
+-{
+-    s->nc.link_down = link_down;
+-
+-    if (s->nc.peer) {
+-        s->nc.peer->link_down = link_down;
+-    }
+-
+-    if (s->nc.info->link_status_changed) {
+-        s->nc.info->link_status_changed(&s->nc);
+-    }
+-
+-    if (s->nc.peer && s->nc.peer->info->link_status_changed) {
+-        s->nc.peer->info->link_status_changed(s->nc.peer);
+-    }
+-}
+-
+ static void net_vhost_user_event(void *opaque, int event)
+ {
+-    VhostUserState *s = opaque;
++    const char *name = opaque;
++    NetClientState *ncs[MAX_QUEUE_NUM];
++    VhostUserState *s;
++    Error *err = NULL;
++    int queues;
+ 
++    queues = qemu_find_net_clients_except(name, ncs,
++                                          NET_CLIENT_OPTIONS_KIND_NIC,
++                                          MAX_QUEUE_NUM);
++    s = DO_UPCAST(VhostUserState, nc, ncs[0]);
+     switch (event) {
+     case CHR_EVENT_OPENED:
+-        vhost_user_start(s);
+-        net_vhost_link_down(s, false);
++        if (vhost_user_start(queues, ncs) < 0) {
++            exit(1);
++        }
++        qmp_set_link(name, true, &err);
+         error_report("chardev \"%s\" went up", s->chr->label);
+         break;
+     case CHR_EVENT_CLOSED:
+-        net_vhost_link_down(s, true);
+-        vhost_user_stop(s);
++        qmp_set_link(name, true, &err);
++        vhost_user_stop(queues, ncs);
+         error_report("chardev \"%s\" went down", s->chr->label);
+         break;
+     }
++
++    if (err) {
++        error_report_err(err);
++    }
+ }
+ 
+ static int net_vhost_user_init(NetClientState *peer, const char *device,
+-                               const char *name, CharDriverState *chr)
++                               const char *name, CharDriverState *chr,
++                               int queues)
+ {
+     NetClientState *nc;
+     VhostUserState *s;
++    int i;
+ 
+-    nc = qemu_new_net_client(&net_vhost_user_info, peer, device, name);
++    for (i = 0; i < queues; i++) {
++        nc = qemu_new_net_client(&net_vhost_user_info, peer, device, name);
+ 
+-    snprintf(nc->info_str, sizeof(nc->info_str), "vhost-user to %s",
+-             chr->label);
++        snprintf(nc->info_str, sizeof(nc->info_str), "vhost-user%d to %s",
++                 i, chr->label);
+ 
+-    s = DO_UPCAST(VhostUserState, nc, nc);
++        /* We don't provide a receive callback */
++        nc->receive_disabled = 1;
++        nc->queue_index = i;
+ 
+-    /* We don't provide a receive callback */
+-    s->nc.receive_disabled = 1;
+-    s->chr = chr;
++        s = DO_UPCAST(VhostUserState, nc, nc);
++        s->chr = chr;
++    }
+ 
+-    qemu_chr_add_handlers(s->chr, NULL, NULL, net_vhost_user_event, s);
++    qemu_chr_add_handlers(chr, NULL, NULL, net_vhost_user_event, (void*)name);
+ 
+     return 0;
+ }
+@@ -224,6 +267,7 @@ static int net_vhost_check_net(QemuOpts *opts, void *opaque)
+ int net_init_vhost_user(const NetClientOptions *opts, const char *name,
+                         NetClientState *peer)
+ {
++    int queues;
+     const NetdevVhostUserOptions *vhost_user_opts;
+     CharDriverState *chr;
+ 
+@@ -242,6 +286,7 @@ int net_init_vhost_user(const NetClientOptions *opts, const char *name,
+         return -1;
+     }
+ 
++    queues = vhost_user_opts->has_queues ? vhost_user_opts->queues : 1;
+ 
+-    return net_vhost_user_init(peer, "vhost_user", name, chr);
++    return net_vhost_user_init(peer, "vhost_user", name, chr, queues);
+ }
+diff --git a/qapi-schema.json b/qapi-schema.json
+index af457c3..851c4a4 100644
+--- a/qapi-schema.json
++++ b/qapi-schema.json
+@@ -2333,12 +2333,16 @@
+ #
+ # @vhostforce: #optional vhost on for non-MSIX virtio guests (default: false).
+ #
++# @queues: #optional number of queues to be created for multiqueue vhost-user
++#          (default: 1) (Since 2.5)
++#
+ # Since 2.1
+ ##
+ { 'type': 'NetdevVhostUserOptions',
+   'data': {
+     'chardev':        'str',
+-    '*vhostforce':    'bool' } }
++    '*vhostforce':    'bool',
++    '*queues':        'int' } }
+ 
+ ##
+ # @NetClientOptions
+diff --git a/qemu-options.hx b/qemu-options.hx
+index b7c4c7d..2179d03 100644
+--- a/qemu-options.hx
++++ b/qemu-options.hx
+@@ -1937,13 +1937,14 @@ The hubport netdev lets you connect a NIC to a QEMU "vlan" instead of a single
+ netdev.  @code{-net} and @code{-device} with parameter @option{vlan} create the
+ required hub automatically.
+ 
+-@item -netdev vhost-user,chardev=@var{id}[,vhostforce=on|off]
++@item -netdev vhost-user,chardev=@var{id}[,vhostforce=on|off][,queues=n]
+ 
+ Establish a vhost-user netdev, backed by a chardev @var{id}. The chardev should
+ be a unix domain socket backed one. The vhost-user uses a specifically defined
+ protocol to pass vhost ioctl replacement messages to an application on the other
+ end of the socket. On non-MSIX guests, the feature can be forced with
+-@var{vhostforce}.
++@var{vhostforce}. Use 'queues=@var{n}' to specify the number of queues to
++be created for multiqueue vhost-user.
+ 
+ Example:
+ @example
+-- 
+1.8.3.1
+

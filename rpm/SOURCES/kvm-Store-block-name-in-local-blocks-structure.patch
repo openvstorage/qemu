@@ -1,0 +1,130 @@
+From 5dcbe1be95c5e2707f29907b0e0148e3e3c1210e Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:41:57 +0200
+Subject: [PATCH 17/58] Store block name in local blocks structure
+
+Message-id: <1436794926-1598-9-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66978
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 08/17] Store block name in local blocks structure
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+In a later patch the block name will be used to match up two views
+of the block list.  Keep a copy of the block name with the local block
+list.
+
+(At some point it could be argued that it would be best just to let
+migration see the innards of RAMBlock and avoid the need to use
+foreach).
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Reviewed-by: Michael R. Hines <mrhines@us.ibm.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 4fb5364b9096d6110c46604dbf1e19b7e766e757)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/rdma.c | 35 +++++++++++++++++++++--------------
+ trace-events     |  2 +-
+ 2 files changed, 22 insertions(+), 15 deletions(-)
+
+diff --git a/migration/rdma.c b/migration/rdma.c
+index ff9cc8a..62d2bc6 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -214,17 +214,18 @@ static void network_to_caps(RDMACapabilities *cap)
+  * the information. It's small anyway, so a list is overkill.
+  */
+ typedef struct RDMALocalBlock {
+-    uint8_t  *local_host_addr; /* local virtual address */
+-    uint64_t remote_host_addr; /* remote virtual address */
+-    uint64_t offset;
+-    uint64_t length;
+-    struct   ibv_mr **pmr;     /* MRs for chunk-level registration */
+-    struct   ibv_mr *mr;       /* MR for non-chunk-level registration */
+-    uint32_t *remote_keys;     /* rkeys for chunk-level registration */
+-    uint32_t remote_rkey;      /* rkeys for non-chunk-level registration */
+-    int      index;            /* which block are we */
+-    bool     is_ram_block;
+-    int      nb_chunks;
++    char          *block_name;
++    uint8_t       *local_host_addr; /* local virtual address */
++    uint64_t       remote_host_addr; /* remote virtual address */
++    uint64_t       offset;
++    uint64_t       length;
++    struct         ibv_mr **pmr;    /* MRs for chunk-level registration */
++    struct         ibv_mr *mr;      /* MR for non-chunk-level registration */
++    uint32_t      *remote_keys;     /* rkeys for chunk-level registration */
++    uint32_t       remote_rkey;     /* rkeys for non-chunk-level registration */
++    int            index;           /* which block are we */
++    bool           is_ram_block;
++    int            nb_chunks;
+     unsigned long *transit_bitmap;
+     unsigned long *unregister_bitmap;
+ } RDMALocalBlock;
+@@ -510,7 +511,8 @@ static inline uint8_t *ram_chunk_end(const RDMALocalBlock *rdma_ram_block,
+     return result;
+ }
+ 
+-static int rdma_add_block(RDMAContext *rdma, void *host_addr,
++static int rdma_add_block(RDMAContext *rdma, const char *block_name,
++                         void *host_addr,
+                          ram_addr_t block_offset, uint64_t length)
+ {
+     RDMALocalBlocks *local = &rdma->local_ram_blocks;
+@@ -538,6 +540,7 @@ static int rdma_add_block(RDMAContext *rdma, void *host_addr,
+ 
+     block = &local->block[local->nb_blocks];
+ 
++    block->block_name = g_strdup(block_name);
+     block->local_host_addr = host_addr;
+     block->offset = block_offset;
+     block->length = length;
+@@ -553,7 +556,8 @@ static int rdma_add_block(RDMAContext *rdma, void *host_addr,
+ 
+     g_hash_table_insert(rdma->blockmap, (void *) block_offset, block);
+ 
+-    trace_rdma_add_block(local->nb_blocks, (uintptr_t) block->local_host_addr,
++    trace_rdma_add_block(block_name, local->nb_blocks,
++                         (uintptr_t) block->local_host_addr,
+                          block->offset, block->length,
+                          (uintptr_t) (block->local_host_addr + block->length),
+                          BITS_TO_LONGS(block->nb_chunks) *
+@@ -573,7 +577,7 @@ static int rdma_add_block(RDMAContext *rdma, void *host_addr,
+ static int qemu_rdma_init_one_block(const char *block_name, void *host_addr,
+     ram_addr_t block_offset, ram_addr_t length, void *opaque)
+ {
+-    return rdma_add_block(opaque, host_addr, block_offset, length);
++    return rdma_add_block(opaque, block_name, host_addr, block_offset, length);
+ }
+ 
+ /*
+@@ -635,6 +639,9 @@ static int rdma_delete_block(RDMAContext *rdma, ram_addr_t block_offset)
+     g_free(block->remote_keys);
+     block->remote_keys = NULL;
+ 
++    g_free(block->block_name);
++    block->block_name = NULL;
++
+     for (x = 0; x < local->nb_blocks; x++) {
+         g_hash_table_remove(rdma->blockmap, (void *)(uintptr_t)old[x].offset);
+     }
+diff --git a/trace-events b/trace-events
+index 3ac990b..04c5ef9 100644
+--- a/trace-events
++++ b/trace-events
+@@ -1435,7 +1435,7 @@ qemu_rdma_write_one_recvregres(int mykey, int theirkey, uint64_t chunk) "Receive
+ qemu_rdma_write_one_sendreg(uint64_t chunk, int len, int index, int64_t offset) "Sending registration request chunk %" PRIu64 " for %d bytes, index: %d, offset: %" PRId64
+ qemu_rdma_write_one_top(uint64_t chunks, uint64_t size) "Writing %" PRIu64 " chunks, (%" PRIu64 " MB)"
+ qemu_rdma_write_one_zero(uint64_t chunk, int len, int index, int64_t offset) "Entire chunk is zero, sending compress: %" PRIu64 " for %d bytes, index: %d, offset: %" PRId64
+-rdma_add_block(int block, uint64_t addr, uint64_t offset, uint64_t len, uint64_t end, uint64_t bits, int chunks) "Added Block: %d, addr: %" PRIu64 ", offset: %" PRIu64 " length: %" PRIu64 " end: %" PRIu64 " bits %" PRIu64 " chunks %d"
++rdma_add_block(const char *block_name, int block, uint64_t addr, uint64_t offset, uint64_t len, uint64_t end, uint64_t bits, int chunks) "Added Block: '%s':%d, addr: %" PRIu64 ", offset: %" PRIu64 " length: %" PRIu64 " end: %" PRIu64 " bits %" PRIu64 " chunks %d"
+ rdma_delete_block(int block, uint64_t addr, uint64_t offset, uint64_t len, uint64_t end, uint64_t bits, int chunks) "Deleted Block: %d, addr: %" PRIu64 ", offset: %" PRIu64 " length: %" PRIu64 " end: %" PRIu64 " bits %" PRIu64 " chunks %d"
+ rdma_start_incoming_migration(void) ""
+ rdma_start_incoming_migration_after_dest_init(void) ""
+-- 
+1.8.3.1
+

@@ -1,0 +1,72 @@
+From 7e49c70e036e7c4fe483ab702eecd507bf215d85 Mon Sep 17 00:00:00 2001
+From: Eduardo Habkost <ehabkost@redhat.com>
+Date: Thu, 23 Jul 2015 19:18:19 +0200
+Subject: [PATCH 30/58] hostmem: Fix qemu_opt_get_bool() crash in
+ host_memory_backend_init()
+
+Message-id: <1437679099-27098-1-git-send-email-ehabkost@redhat.com>
+Patchwork-id: 67114
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH] hostmem: Fix qemu_opt_get_bool() crash in host_memory_backend_init()
+Bugzilla: 1237220
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+
+This fixes the following crash, introduced by commit
+49d2e648e8087d154d8bf8b91f27c8e05e79d5a6:
+
+  $ gdb --args qemu-system-x86_64 -machine pc,mem-merge=off -object memory-backend-ram,id=ram-node0,size=1024
+  [...]
+  Program received signal SIGABRT, Aborted.
+  (gdb) bt
+  #0  0x00007ffff253b8c7 in raise () at /lib64/libc.so.6
+  #1  0x00007ffff253d52a in abort () at /lib64/libc.so.6
+  #2  0x00007ffff253446d in __assert_fail_base () at /lib64/libc.so.6
+  #3  0x00007ffff2534522 in  () at /lib64/libc.so.6
+  #4  0x00005555558bb80a in qemu_opt_get_bool_helper (opts=0x55555621b650, name=name@entry=0x5555558ec922 "mem-merge", defval=defval@entry=true, del=del@entry=false) at qemu/util/qemu-option.c:388
+  #5  0x00005555558bbb5a in qemu_opt_get_bool (opts=<optimized out>, name=name@entry=0x5555558ec922 "mem-merge", defval=defval@entry=true) at qemu/util/qemu-option.c:398
+  #6  0x0000555555720a24 in host_memory_backend_init (obj=0x5555562ac970) at qemu/backends/hostmem.c:226
+
+Instead of using qemu_opt_get_bool(), that didn't work with
+qemu_machine_opts for a long time, we can use the corresponding
+MachineState fields.
+
+Reviewed-by: Marcel Apfelbaum <marcel@redhat.com>
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+(cherry picked from commit 6b2699672d5b56f8c2902fb9db9879e8cafb2afe)
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ backends/hostmem.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/backends/hostmem.c b/backends/hostmem.c
+index b7b6cf8..3e9c544 100644
+--- a/backends/hostmem.c
++++ b/backends/hostmem.c
+@@ -10,6 +10,7 @@
+  * See the COPYING file in the top-level directory.
+  */
+ #include "sysemu/hostmem.h"
++#include "hw/boards.h"
+ #include "qapi/visitor.h"
+ #include "qapi-types.h"
+ #include "qapi-visit.h"
+@@ -230,11 +231,10 @@ static void host_memory_backend_set_prealloc(Object *obj, bool value,
+ static void host_memory_backend_init(Object *obj)
+ {
+     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
++    MachineState *machine = MACHINE(qdev_get_machine());
+ 
+-    backend->merge = qemu_opt_get_bool(qemu_get_machine_opts(),
+-                                       "mem-merge", true);
+-    backend->dump = qemu_opt_get_bool(qemu_get_machine_opts(),
+-                                      "dump-guest-core", true);
++    backend->merge = machine_mem_merge(machine);
++    backend->dump = machine_dump_guest_core(machine);
+     backend->prealloc = mem_prealloc;
+ 
+     object_property_add_bool(obj, "merge",
+-- 
+1.8.3.1
+

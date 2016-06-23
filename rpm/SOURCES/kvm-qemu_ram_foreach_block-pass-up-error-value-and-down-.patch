@@ -1,0 +1,100 @@
+From fefe2f14c989eb931051bc769ac8dcd22be11384 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:41:52 +0200
+Subject: [PATCH 12/58] qemu_ram_foreach_block: pass up error value, and down
+ the ramblock name
+
+Message-id: <1436794926-1598-4-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66973
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 03/17] qemu_ram_foreach_block: pass up error value, and down the ramblock name
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+check the return value of the function it calls and error if it's non-0
+Fixup qemu_rdma_init_one_block that is the only current caller,
+  and rdma_add_block the only function it calls using it.
+
+Pass the name of the ramblock to the function; helps in debugging.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Amit Shah <amit.shah@redhat.com>
+Reviewed-by: Michael R. Hines <mrhines@us.ibm.com>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit e3807054e20fb3b94d18cb751c437ee2f43b6fac)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ exec.c                    | 10 ++++++++--
+ include/exec/cpu-common.h |  4 ++--
+ migration/rdma.c          |  4 ++--
+ 3 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/exec.c b/exec.c
+index 399543e..157b24f 100644
+--- a/exec.c
++++ b/exec.c
+@@ -3293,14 +3293,20 @@ bool cpu_physical_memory_is_io(hwaddr phys_addr)
+              memory_region_is_romd(mr));
+ }
+ 
+-void qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque)
++int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque)
+ {
+     RAMBlock *block;
++    int ret = 0;
+ 
+     rcu_read_lock();
+     QLIST_FOREACH_RCU(block, &ram_list.blocks, next) {
+-        func(block->host, block->offset, block->used_length, opaque);
++        ret = func(block->idstr, block->host, block->offset,
++                   block->used_length, opaque);
++        if (ret) {
++            break;
++        }
+     }
+     rcu_read_unlock();
++    return ret;
+ }
+ #endif
+diff --git a/include/exec/cpu-common.h b/include/exec/cpu-common.h
+index fcc3162..2abecac 100644
+--- a/include/exec/cpu-common.h
++++ b/include/exec/cpu-common.h
+@@ -125,10 +125,10 @@ void cpu_flush_icache_range(hwaddr start, int len);
+ extern struct MemoryRegion io_mem_rom;
+ extern struct MemoryRegion io_mem_notdirty;
+ 
+-typedef void (RAMBlockIterFunc)(void *host_addr,
++typedef int (RAMBlockIterFunc)(const char *block_name, void *host_addr,
+     ram_addr_t offset, ram_addr_t length, void *opaque);
+ 
+-void qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque);
++int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque);
+ 
+ #endif
+ 
+diff --git a/migration/rdma.c b/migration/rdma.c
+index ec52f1d..b1b803c 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -570,10 +570,10 @@ static int rdma_add_block(RDMAContext *rdma, void *host_addr,
+  * in advanced before the migration starts. This tells us where the RAM blocks
+  * are so that we can register them individually.
+  */
+-static void qemu_rdma_init_one_block(void *host_addr,
++static int qemu_rdma_init_one_block(const char *block_name, void *host_addr,
+     ram_addr_t block_offset, ram_addr_t length, void *opaque)
+ {
+-    rdma_add_block(opaque, host_addr, block_offset, length);
++    return rdma_add_block(opaque, host_addr, block_offset, length);
+ }
+ 
+ /*
+-- 
+1.8.3.1
+

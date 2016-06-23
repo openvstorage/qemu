@@ -1,0 +1,60 @@
+From 84bd9f53088d7edbbb3152d4fa1a38ab6ef6bc37 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 20 Nov 2015 10:44:39 +0100
+Subject: [PATCH 6/9] virtio: drop virtqueue_map_sg
+
+Message-id: <1448016282-257478-7-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68410
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 6/9] virtio: drop virtqueue_map_sg
+Bugzilla: 1288096
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Michael S. Tsirkin <mst@redhat.com>
+
+Deprecated in favor of virtqueue_map.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+(cherry picked from commit 3945ecf1ec4f6e6aa28d0c396a7f5d983c6810d8)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio.c         | 7 -------
+ include/hw/virtio/virtio.h | 2 --
+ 2 files changed, 9 deletions(-)
+
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 4ab0014..05346be 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -477,13 +477,6 @@ static void virtqueue_map_iovec(struct iovec *sg, hwaddr *addr,
+     }
+ }
+ 
+-/* Deprecated: don't use in new code */
+-void virtqueue_map_sg(struct iovec *sg, hwaddr *addr,
+-                      size_t num_sg, int is_write)
+-{
+-    virtqueue_map_iovec(sg, addr, &num_sg, num_sg, is_write);
+-}
+-
+ void virtqueue_map(VirtQueueElement *elem)
+ {
+     virtqueue_map_iovec(elem->in_sg, elem->in_addr, &elem->in_num,
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index f5c5086..794c4f3 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -149,8 +149,6 @@ void virtqueue_flush(VirtQueue *vq, unsigned int count);
+ void virtqueue_fill(VirtQueue *vq, const VirtQueueElement *elem,
+                     unsigned int len, unsigned int idx);
+ 
+-void virtqueue_map_sg(struct iovec *sg, hwaddr *addr,
+-    size_t num_sg, int is_write);
+ void virtqueue_map(VirtQueueElement *elem);
+ int virtqueue_pop(VirtQueue *vq, VirtQueueElement *elem);
+ int virtqueue_avail_bytes(VirtQueue *vq, unsigned int in_bytes,
+-- 
+1.8.3.1
+

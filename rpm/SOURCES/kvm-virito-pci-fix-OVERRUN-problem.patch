@@ -1,0 +1,59 @@
+From 1864c7d06b6c966141f1c049a79bba5b77d21b4e Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:06 +0200
+Subject: [PATCH 092/100] virito-pci: fix OVERRUN problem
+
+Message-id: <1436260751-25015-64-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66838
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 63/68] virito-pci: fix OVERRUN problem
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gonglei <arei.gonglei@huawei.com>
+
+Overrunning array "proxy->guest_features" of 2 4-byte
+elements at element index 2 (byte offset 8) using index
+"proxy->gfselect" (which evaluates to 2). Normally, the
+Linux kernel driver just read/write '0' or '1' as the
+"proxy->gfselect" values, so using '<' instead of '=<' to
+make coverity happy and avoid potential harm.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Gonglei <arei.gonglei@huawei.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 3750dabc69d76f0938cc726a64a70e4ae2fe21df)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 1aba4e2..9b5f009 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -977,7 +977,7 @@ static uint64_t virtio_pci_common_read(void *opaque, hwaddr addr,
+         val = proxy->gfselect;
+         break;
+     case VIRTIO_PCI_COMMON_GF:
+-        if (proxy->gfselect <= ARRAY_SIZE(proxy->guest_features)) {
++        if (proxy->gfselect < ARRAY_SIZE(proxy->guest_features)) {
+             val = proxy->guest_features[proxy->gfselect];
+         }
+         break;
+@@ -1052,7 +1052,7 @@ static void virtio_pci_common_write(void *opaque, hwaddr addr,
+         proxy->gfselect = val;
+         break;
+     case VIRTIO_PCI_COMMON_GF:
+-        if (proxy->gfselect <= ARRAY_SIZE(proxy->guest_features)) {
++        if (proxy->gfselect < ARRAY_SIZE(proxy->guest_features)) {
+             proxy->guest_features[proxy->gfselect] = val;
+             virtio_set_features(vdev,
+                                 (((uint64_t)proxy->guest_features[1]) << 32) |
+-- 
+1.8.3.1
+

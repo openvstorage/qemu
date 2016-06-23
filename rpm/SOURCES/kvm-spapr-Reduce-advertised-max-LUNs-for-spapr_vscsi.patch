@@ -1,0 +1,53 @@
+From 74f299f41496906454c0295f7a645a8cc27bc480 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 9 Sep 2015 02:03:04 +0200
+Subject: [PATCH 4/8] spapr: Reduce advertised max LUNs for spapr_vscsi
+
+Message-id: <1441764184-8351-1-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67711
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] spapr: Reduce advertised max LUNs for spapr_vscsi
+Bugzilla: 1260464
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+The implementation of the PAPR paravirtual SCSI adapter currently
+allows up to 32 LUNs (max_lun == 31).  However the adapter isn't really
+designed to support lots of devices - the PowerVM implementation only
+ever puts one disk per vSCSI controller.
+
+More specifically, the Linux guest side vscsi driver (the only one we
+really care about) is hardcoded to allow a maximum of 8 LUNs.
+
+So, reduce the number of LUNs on the qemu side to 8, so we don't
+falsely advertise that more LUNs can work.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1260464
+Upstream: Posted, not merged.  Trivial enough applying downstream only
+          shouldn't be too bad.
+Brew: http://brewweb.devel.redhat.com/brew/taskinfo?taskID=9812826
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/scsi/spapr_vscsi.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/scsi/spapr_vscsi.c b/hw/scsi/spapr_vscsi.c
+index 891424f..bb1dd6f 100644
+--- a/hw/scsi/spapr_vscsi.c
++++ b/hw/scsi/spapr_vscsi.c
+@@ -1192,7 +1192,7 @@ static const struct SCSIBusInfo vscsi_scsi_info = {
+     .tcq = true,
+     .max_channel = 7, /* logical unit addressing format */
+     .max_target = 63,
+-    .max_lun = 31,
++    .max_lun = 7,
+ 
+     .transfer_data = vscsi_transfer_data,
+     .complete = vscsi_command_complete,
+-- 
+1.8.3.1
+

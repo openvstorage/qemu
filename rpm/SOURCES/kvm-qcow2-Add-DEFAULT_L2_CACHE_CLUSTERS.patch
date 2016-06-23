@@ -1,0 +1,91 @@
+From 2ea467357b7ee54c8e9c9c2f079f41c91bd7701f Mon Sep 17 00:00:00 2001
+From: Max Reitz <mreitz@redhat.com>
+Date: Wed, 17 Jun 2015 12:42:56 +0200
+Subject: [PATCH 8/9] qcow2: Add DEFAULT_L2_CACHE_CLUSTERS
+
+Message-id: <1434544976-15816-4-git-send-email-mreitz@redhat.com>
+Patchwork-id: 66283
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 3/3] qcow2: Add DEFAULT_L2_CACHE_CLUSTERS
+Bugzilla: 1226996
+RH-Acked-by: Fam Zheng <famz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+BZ: 1226996
+
+If a relatively large cluster size is chosen, the default of 1 MB L2
+cache is not really appropriate. In this case, unless overridden by the
+user, the default cache size should not be determined by its size in
+bytes but by the number of L2 tables (clusters) it is supposed to
+contain.
+
+Note that without this patch, MIN_L2_CACHE_SIZE will effectively take
+over the same role. However, providing space for just two L2 tables is
+not enough to be the default.
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Reviewed-by: Alberto Garcia <berto@igalia.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit bc85ef265a0118d044ff62ae217c186cb08e0866)
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block/qcow2.c | 11 ++++++++---
+ block/qcow2.h |  2 ++
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/block/qcow2.c b/block/qcow2.c
+index 316a8db..cab8450 100644
+--- a/block/qcow2.c
++++ b/block/qcow2.c
+@@ -483,9 +483,11 @@ static const char *overlap_bool_option_names[QCOW2_OL_MAX_BITNR] = {
+     [QCOW2_OL_INACTIVE_L2_BITNR]    = QCOW2_OPT_OVERLAP_INACTIVE_L2,
+ };
+ 
+-static void read_cache_sizes(QemuOpts *opts, uint64_t *l2_cache_size,
++static void read_cache_sizes(BlockDriverState *bs, QemuOpts *opts,
++                             uint64_t *l2_cache_size,
+                              uint64_t *refcount_cache_size, Error **errp)
+ {
++    BDRVQcowState *s = bs->opaque;
+     uint64_t combined_cache_size;
+     bool l2_cache_size_set, refcount_cache_size_set, combined_cache_size_set;
+ 
+@@ -525,7 +527,9 @@ static void read_cache_sizes(QemuOpts *opts, uint64_t *l2_cache_size,
+         }
+     } else {
+         if (!l2_cache_size_set && !refcount_cache_size_set) {
+-            *l2_cache_size = DEFAULT_L2_CACHE_BYTE_SIZE;
++            *l2_cache_size = MAX(DEFAULT_L2_CACHE_BYTE_SIZE,
++                                 (uint64_t)DEFAULT_L2_CACHE_CLUSTERS
++                                 * s->cluster_size);
+             *refcount_cache_size = *l2_cache_size
+                                  / DEFAULT_L2_REFCOUNT_SIZE_RATIO;
+         } else if (!l2_cache_size_set) {
+@@ -803,7 +807,8 @@ static int qcow2_open(BlockDriverState *bs, QDict *options, int flags,
+         goto fail;
+     }
+ 
+-    read_cache_sizes(opts, &l2_cache_size, &refcount_cache_size, &local_err);
++    read_cache_sizes(bs, opts, &l2_cache_size, &refcount_cache_size,
++                     &local_err);
+     if (local_err) {
+         error_propagate(errp, local_err);
+         ret = -EINVAL;
+diff --git a/block/qcow2.h b/block/qcow2.h
+index 2f20949..22f9ac2 100644
+--- a/block/qcow2.h
++++ b/block/qcow2.h
+@@ -68,6 +68,8 @@
+ /* Must be at least 4 to cover all cases of refcount table growth */
+ #define MIN_REFCOUNT_CACHE_SIZE 4 /* clusters */
+ 
++/* Whichever is more */
++#define DEFAULT_L2_CACHE_CLUSTERS 8 /* clusters */
+ #define DEFAULT_L2_CACHE_BYTE_SIZE 1048576 /* bytes */
+ 
+ /* The refblock cache needs only a fourth of the L2 cache size to cover as many
+-- 
+1.8.3.1
+

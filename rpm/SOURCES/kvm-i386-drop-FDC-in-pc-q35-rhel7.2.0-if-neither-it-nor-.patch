@@ -1,0 +1,51 @@
+From 24175345a2495b89588941fabcdda735e08d0e5b Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Wed, 8 Jul 2015 19:41:21 +0200
+Subject: [PATCH 07/23] i386: drop FDC in pc-q35-rhel7.2.0 if neither it nor
+ fl. drives are wanted
+
+Message-id: <1436384484-21640-5-git-send-email-lersek@redhat.com>
+Patchwork-id: 66875
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 4/7] i386: drop FDC in pc-q35-rhel7.2.0 if neither it nor fl. drives are wanted
+Bugzilla: 1227282
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: John Snow <jsnow@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+It is Very annoying to carry forward an outdatEd coNtroller with a mOdern
+Machine type.
+
+Hence, let us not instantiate the FDC when all of the following apply:
+- the machine type is pc-q35-rhel7.2.0 or later,
+- "-device isa-fdc" is not passed on the command line (nor in the config
+  file),
+- no "-drive if=floppy,..." is requested.
+
+RHEL-7 note: this is a manual reimplementation of upstream commit
+ea96bc629cbd52be98b2967a4b4f72e91dfc3ee4.
+
+It's necessary because in our 2.3-based downstream we don't (yet) have
+Eduardo's series encompassing commit fddd179ab9 ("pc: Convert
+*_MACHINE_OPTIONS macros into functions").
+
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc_q35.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index ddc6741..4601140 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -555,6 +555,7 @@ static QEMUMachine pc_q35_machine_rhel720 = {
+     .init = pc_q35_init_rhel720,
+     .default_machine_opts = "firmware=bios-256k.bin",
+     .default_display = "std",
++    .no_floppy = 1,
+     .compat_props = (GlobalProperty[]) {
+         { /* end of list */ }
+     },
+-- 
+1.8.3.1
+

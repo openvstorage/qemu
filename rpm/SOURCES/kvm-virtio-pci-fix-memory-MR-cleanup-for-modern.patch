@@ -1,0 +1,64 @@
+From a2439fccd3db40abfd3854373c165a44a364ccc1 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Mon, 10 Aug 2015 05:09:29 +0200
+Subject: [PATCH 08/16] virtio-pci: fix memory MR cleanup for modern
+
+Message-id: <1439183375-4841-9-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67435
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 08/14] virtio-pci: fix memory MR cleanup for modern
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+Each memory_region_add_subregion must be paired with
+memory_region_del_subregion.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 27462695cde2a2208b1ff8074c2e917b8203590b)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index c8bf6b9..35bf709 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1289,6 +1289,13 @@ static void virtio_pci_modern_region_map(VirtIOPCIProxy *proxy,
+     virtio_pci_add_mem_cap(proxy, cap);
+ }
+ 
++static void virtio_pci_modern_region_unmap(VirtIOPCIProxy *proxy,
++                                           VirtIOPCIRegion *region)
++{
++    memory_region_del_subregion(&proxy->modern_bar,
++                                &region->mr);
++}
++
+ /* This is called by virtio-bus just after the device is plugged. */
+ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+ {
+@@ -1381,8 +1388,16 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+ static void virtio_pci_device_unplugged(DeviceState *d)
+ {
+     VirtIOPCIProxy *proxy = VIRTIO_PCI(d);
++    bool modern = !(proxy->flags & VIRTIO_PCI_FLAG_DISABLE_MODERN);
+ 
+     virtio_pci_stop_ioeventfd(proxy);
++
++    if (modern) {
++        virtio_pci_modern_region_unmap(proxy, &proxy->common);
++        virtio_pci_modern_region_unmap(proxy, &proxy->isr);
++        virtio_pci_modern_region_unmap(proxy, &proxy->device);
++        virtio_pci_modern_region_unmap(proxy, &proxy->notify);
++    }
+ }
+ 
+ static void virtio_pci_realize(PCIDevice *pci_dev, Error **errp)
+-- 
+1.8.3.1
+

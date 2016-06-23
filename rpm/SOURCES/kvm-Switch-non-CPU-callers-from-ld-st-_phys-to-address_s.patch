@@ -1,0 +1,797 @@
+From 41e074c445f8bf5fd2702510a5241287c60c349b Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:17 +0200
+Subject: [PATCH 043/100] Switch non-CPU callers from ld/st*_phys to
+ address_space_ld/st*
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1436260751-25015-15-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66790
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 14/68] Switch non-CPU callers from ld/st*_phys to address_space_ld/st*
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Peter Maydell <peter.maydell@linaro.org>
+
+Notes: conflicts since commit 8dfbaa6ac450c4ec2646b1ca08a4017052a90c1d
+       ("virtio-ccw: introduce ccw specific queue limit") was
+       backported before this commit.
+
+Switch all the uses of ld/st*_phys to address_space_ld/st*,
+except for those cases where the address space is the CPU's
+(ie cs->as). This was done with the following script which
+generates a Coccinelle patch.
+
+A few over-80-columns lines in the result were rewrapped by
+hand where Coccinelle failed to do the wrapping automatically,
+as well as one location where it didn't put a line-continuation
+'\' when wrapping lines on a change made to a match inside
+a macro definition.
+
+===begin===
+#!/bin/sh -e
+# Usage:
+# ./ldst-phys.spatch.sh > ldst-phys.spatch
+# spatch -sp_file ldst-phys.spatch -dir . | sed -e '/^+/s/\t/        /g' > out.patch
+# patch -p1 < out.patch
+
+for FN in ub uw_le uw_be l_le l_be q_le q_be uw l q; do
+cat <<EOF
+@ cpu_matches_ld_${FN} @
+expression E1,E2;
+identifier as;
+@@
+
+ld${FN}_phys(E1->as,E2)
+
+@ other_matches_ld_${FN} depends on !cpu_matches_ld_${FN} @
+expression E1,E2;
+@@
+
+-ld${FN}_phys(E1,E2)
++address_space_ld${FN}(E1,E2, MEMTXATTRS_UNSPECIFIED, NULL)
+
+EOF
+
+done
+
+for FN in b w_le w_be l_le l_be q_le q_be w l q; do
+cat <<EOF
+@ cpu_matches_st_${FN} @
+expression E1,E2,E3;
+identifier as;
+@@
+
+st${FN}_phys(E1->as,E2,E3)
+
+@ other_matches_st_${FN} depends on !cpu_matches_st_${FN} @
+expression E1,E2,E3;
+@@
+
+-st${FN}_phys(E1,E2,E3)
++address_space_st${FN}(E1,E2,E3, MEMTXATTRS_UNSPECIFIED, NULL)
+
+EOF
+
+done
+===endit===
+
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Edgar E. Iglesias <edgar.iglesias@xilinx.com>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+(cherry picked from commit 42874d3a8c6267ff7789a0396843c884b1d0933a)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/s390x/virtio-ccw.c
+---
+ hw/alpha/dp264.c                  |  9 ++--
+ hw/alpha/typhoon.c                |  3 +-
+ hw/arm/boot.c                     |  6 ++-
+ hw/arm/highbank.c                 | 12 ++++--
+ hw/dma/pl080.c                    | 20 +++++++--
+ hw/dma/sun4m_iommu.c              |  3 +-
+ hw/i386/intel_iommu.c             |  3 +-
+ hw/pci-host/apb.c                 |  3 +-
+ hw/pci/msi.c                      |  3 +-
+ hw/pci/msix.c                     |  3 +-
+ hw/s390x/css.c                    | 19 ++++++---
+ hw/s390x/s390-pci-bus.c           |  9 ++--
+ hw/s390x/s390-virtio-bus.c        | 73 +++++++++++++++++++++-----------
+ hw/s390x/s390-virtio.c            |  4 +-
+ hw/s390x/virtio-ccw.c             | 87 +++++++++++++++++++++++++++------------
+ hw/sh4/r2d.c                      |  6 ++-
+ hw/timer/hpet.c                   |  5 ++-
+ monitor.c                         |  3 +-
+ target-i386/arch_memory_mapping.c | 15 +++----
+ 19 files changed, 195 insertions(+), 91 deletions(-)
+
+diff --git a/hw/alpha/dp264.c b/hw/alpha/dp264.c
+index e82d61d..9fe7e8b 100644
+--- a/hw/alpha/dp264.c
++++ b/hw/alpha/dp264.c
+@@ -157,9 +157,12 @@ static void clipper_init(MachineState *machine)
+             load_image_targphys(initrd_filename, initrd_base,
+                                 ram_size - initrd_base);
+ 
+-            stq_phys(&address_space_memory,
+-                     param_offset + 0x100, initrd_base + 0xfffffc0000000000ULL);
+-            stq_phys(&address_space_memory, param_offset + 0x108, initrd_size);
++            address_space_stq(&address_space_memory, param_offset + 0x100,
++                              initrd_base + 0xfffffc0000000000ULL,
++                              MEMTXATTRS_UNSPECIFIED,
++                              NULL);
++            address_space_stq(&address_space_memory, param_offset + 0x108,
++                              initrd_size, MEMTXATTRS_UNSPECIFIED, NULL);
+         }
+     }
+ }
+diff --git a/hw/alpha/typhoon.c b/hw/alpha/typhoon.c
+index a6044f2..7df842d 100644
+--- a/hw/alpha/typhoon.c
++++ b/hw/alpha/typhoon.c
+@@ -613,7 +613,8 @@ static bool make_iommu_tlbe(hwaddr taddr, hwaddr mask, IOMMUTLBEntry *ret)
+    translation, given the address of the PTE.  */
+ static bool pte_translate(hwaddr pte_addr, IOMMUTLBEntry *ret)
+ {
+-    uint64_t pte = ldq_phys(&address_space_memory, pte_addr);
++    uint64_t pte = address_space_ldq(&address_space_memory, pte_addr,
++                                     MEMTXATTRS_UNSPECIFIED, NULL);
+ 
+     /* Check valid bit.  */
+     if ((pte & 1) == 0) {
+diff --git a/hw/arm/boot.c b/hw/arm/boot.c
+index a48d1b2..fa69503 100644
+--- a/hw/arm/boot.c
++++ b/hw/arm/boot.c
+@@ -170,7 +170,8 @@ static void default_reset_secondary(ARMCPU *cpu,
+ {
+     CPUARMState *env = &cpu->env;
+ 
+-    stl_phys_notdirty(&address_space_memory, info->smp_bootreg_addr, 0);
++    address_space_stl_notdirty(&address_space_memory, info->smp_bootreg_addr,
++                               0, MEMTXATTRS_UNSPECIFIED, NULL);
+     env->regs[15] = info->smp_loader_start;
+ }
+ 
+@@ -180,7 +181,8 @@ static inline bool have_dtb(const struct arm_boot_info *info)
+ }
+ 
+ #define WRITE_WORD(p, value) do { \
+-    stl_phys_notdirty(&address_space_memory, p, value);  \
++    address_space_stl_notdirty(&address_space_memory, p, value, \
++                               MEMTXATTRS_UNSPECIFIED, NULL);  \
+     p += 4;                       \
+ } while (0)
+ 
+diff --git a/hw/arm/highbank.c b/hw/arm/highbank.c
+index dd2a67b..b2d048b 100644
+--- a/hw/arm/highbank.c
++++ b/hw/arm/highbank.c
+@@ -69,11 +69,17 @@ static void hb_reset_secondary(ARMCPU *cpu, const struct arm_boot_info *info)
+ 
+     switch (info->nb_cpus) {
+     case 4:
+-        stl_phys_notdirty(&address_space_memory, SMP_BOOT_REG + 0x30, 0);
++        address_space_stl_notdirty(&address_space_memory,
++                                   SMP_BOOT_REG + 0x30, 0,
++                                   MEMTXATTRS_UNSPECIFIED, NULL);
+     case 3:
+-        stl_phys_notdirty(&address_space_memory, SMP_BOOT_REG + 0x20, 0);
++        address_space_stl_notdirty(&address_space_memory,
++                                   SMP_BOOT_REG + 0x20, 0,
++                                   MEMTXATTRS_UNSPECIFIED, NULL);
+     case 2:
+-        stl_phys_notdirty(&address_space_memory, SMP_BOOT_REG + 0x10, 0);
++        address_space_stl_notdirty(&address_space_memory,
++                                   SMP_BOOT_REG + 0x10, 0,
++                                   MEMTXATTRS_UNSPECIFIED, NULL);
+         env->regs[15] = SMP_BOOT_ADDR;
+         break;
+     default:
+diff --git a/hw/dma/pl080.c b/hw/dma/pl080.c
+index 741dd20..b89b474 100644
+--- a/hw/dma/pl080.c
++++ b/hw/dma/pl080.c
+@@ -205,10 +205,22 @@ again:
+             if (size == 0) {
+                 /* Transfer complete.  */
+                 if (ch->lli) {
+-                    ch->src = ldl_le_phys(&address_space_memory, ch->lli);
+-                    ch->dest = ldl_le_phys(&address_space_memory, ch->lli + 4);
+-                    ch->ctrl = ldl_le_phys(&address_space_memory, ch->lli + 12);
+-                    ch->lli = ldl_le_phys(&address_space_memory, ch->lli + 8);
++                    ch->src = address_space_ldl_le(&address_space_memory,
++                                                   ch->lli,
++                                                   MEMTXATTRS_UNSPECIFIED,
++                                                   NULL);
++                    ch->dest = address_space_ldl_le(&address_space_memory,
++                                                    ch->lli + 4,
++                                                    MEMTXATTRS_UNSPECIFIED,
++                                                    NULL);
++                    ch->ctrl = address_space_ldl_le(&address_space_memory,
++                                                    ch->lli + 12,
++                                                    MEMTXATTRS_UNSPECIFIED,
++                                                    NULL);
++                    ch->lli = address_space_ldl_le(&address_space_memory,
++                                                   ch->lli + 8,
++                                                   MEMTXATTRS_UNSPECIFIED,
++                                                   NULL);
+                 } else {
+                     ch->conf &= ~PL080_CCONF_E;
+                 }
+diff --git a/hw/dma/sun4m_iommu.c b/hw/dma/sun4m_iommu.c
+index ec7c2ef..9a488bc 100644
+--- a/hw/dma/sun4m_iommu.c
++++ b/hw/dma/sun4m_iommu.c
+@@ -263,7 +263,8 @@ static uint32_t iommu_page_get_flags(IOMMUState *s, hwaddr addr)
+     iopte = s->regs[IOMMU_BASE] << 4;
+     addr &= ~s->iostart;
+     iopte += (addr >> (IOMMU_PAGE_SHIFT - 2)) & ~3;
+-    ret = ldl_be_phys(&address_space_memory, iopte);
++    ret = address_space_ldl_be(&address_space_memory, iopte,
++                               MEMTXATTRS_UNSPECIFIED, NULL);
+     trace_sun4m_iommu_page_get_flags(pa, iopte, ret);
+     return ret;
+ }
+diff --git a/hw/i386/intel_iommu.c b/hw/i386/intel_iommu.c
+index 7da70ff..08055a8 100644
+--- a/hw/i386/intel_iommu.c
++++ b/hw/i386/intel_iommu.c
+@@ -246,7 +246,8 @@ static void vtd_generate_interrupt(IntelIOMMUState *s, hwaddr mesg_addr_reg,
+     data = vtd_get_long_raw(s, mesg_data_reg);
+ 
+     VTD_DPRINTF(FLOG, "msi: addr 0x%"PRIx64 " data 0x%"PRIx32, addr, data);
+-    stl_le_phys(&address_space_memory, addr, data);
++    address_space_stl_le(&address_space_memory, addr, data,
++                         MEMTXATTRS_UNSPECIFIED, NULL);
+ }
+ 
+ /* Generate a fault event to software via MSI if conditions are met.
+diff --git a/hw/pci-host/apb.c b/hw/pci-host/apb.c
+index 312fa70..599768e 100644
+--- a/hw/pci-host/apb.c
++++ b/hw/pci-host/apb.c
+@@ -289,7 +289,8 @@ static IOMMUTLBEntry pbm_translate_iommu(MemoryRegion *iommu, hwaddr addr,
+         }
+     }
+ 
+-    tte = ldq_be_phys(&address_space_memory, baseaddr + offset);
++    tte = address_space_ldq_be(&address_space_memory, baseaddr + offset,
++                               MEMTXATTRS_UNSPECIFIED, NULL);
+ 
+     if (!(tte & IOMMU_TTE_DATA_V)) {
+         /* Invalid mapping */
+diff --git a/hw/pci/msi.c b/hw/pci/msi.c
+index 52d2313..916e1a1 100644
+--- a/hw/pci/msi.c
++++ b/hw/pci/msi.c
+@@ -291,7 +291,8 @@ void msi_notify(PCIDevice *dev, unsigned int vector)
+                    "notify vector 0x%x"
+                    " address: 0x%"PRIx64" data: 0x%"PRIx32"\n",
+                    vector, msg.address, msg.data);
+-    stl_le_phys(&dev->bus_master_as, msg.address, msg.data);
++    address_space_stl_le(&dev->bus_master_as, msg.address, msg.data,
++                         MEMTXATTRS_UNSPECIFIED, NULL);
+ }
+ 
+ /* Normally called by pci_default_write_config(). */
+diff --git a/hw/pci/msix.c b/hw/pci/msix.c
+index f8748cf..9935f98 100644
+--- a/hw/pci/msix.c
++++ b/hw/pci/msix.c
+@@ -443,7 +443,8 @@ void msix_notify(PCIDevice *dev, unsigned vector)
+ 
+     msg = msix_get_message(dev, vector);
+ 
+-    stl_le_phys(&dev->bus_master_as, msg.address, msg.data);
++    address_space_stl_le(&dev->bus_master_as, msg.address, msg.data,
++                         MEMTXATTRS_UNSPECIFIED, NULL);
+ }
+ 
+ void msix_reset(PCIDevice *dev)
+diff --git a/hw/s390x/css.c b/hw/s390x/css.c
+index 9a13b00..5561d80 100644
+--- a/hw/s390x/css.c
++++ b/hw/s390x/css.c
+@@ -745,20 +745,27 @@ static void css_update_chnmon(SubchDev *sch)
+         /* Format 1, per-subchannel area. */
+         uint32_t count;
+ 
+-        count = ldl_phys(&address_space_memory, sch->curr_status.mba);
++        count = address_space_ldl(&address_space_memory,
++                                  sch->curr_status.mba,
++                                  MEMTXATTRS_UNSPECIFIED,
++                                  NULL);
+         count++;
+-        stl_phys(&address_space_memory, sch->curr_status.mba, count);
++        address_space_stl(&address_space_memory, sch->curr_status.mba, count,
++                          MEMTXATTRS_UNSPECIFIED, NULL);
+     } else {
+         /* Format 0, global area. */
+         uint32_t offset;
+         uint16_t count;
+ 
+         offset = sch->curr_status.pmcw.mbi << 5;
+-        count = lduw_phys(&address_space_memory,
+-                          channel_subsys->chnmon_area + offset);
++        count = address_space_lduw(&address_space_memory,
++                                   channel_subsys->chnmon_area + offset,
++                                   MEMTXATTRS_UNSPECIFIED,
++                                   NULL);
+         count++;
+-        stw_phys(&address_space_memory,
+-                 channel_subsys->chnmon_area + offset, count);
++        address_space_stw(&address_space_memory,
++                          channel_subsys->chnmon_area + offset, count,
++                          MEMTXATTRS_UNSPECIFIED, NULL);
+     }
+ }
+ 
+diff --git a/hw/s390x/s390-pci-bus.c b/hw/s390x/s390-pci-bus.c
+index 3c086f6..560b66a 100644
+--- a/hw/s390x/s390-pci-bus.c
++++ b/hw/s390x/s390-pci-bus.c
+@@ -278,7 +278,8 @@ static uint64_t s390_guest_io_table_walk(uint64_t guest_iota,
+     px = calc_px(guest_dma_address);
+ 
+     sto_a = guest_iota + rtx * sizeof(uint64_t);
+-    sto = ldq_phys(&address_space_memory, sto_a);
++    sto = address_space_ldq(&address_space_memory, sto_a,
++                            MEMTXATTRS_UNSPECIFIED, NULL);
+     sto = get_rt_sto(sto);
+     if (!sto) {
+         pte = 0;
+@@ -286,7 +287,8 @@ static uint64_t s390_guest_io_table_walk(uint64_t guest_iota,
+     }
+ 
+     pto_a = sto + sx * sizeof(uint64_t);
+-    pto = ldq_phys(&address_space_memory, pto_a);
++    pto = address_space_ldq(&address_space_memory, pto_a,
++                            MEMTXATTRS_UNSPECIFIED, NULL);
+     pto = get_st_pto(pto);
+     if (!pto) {
+         pte = 0;
+@@ -294,7 +296,8 @@ static uint64_t s390_guest_io_table_walk(uint64_t guest_iota,
+     }
+ 
+     px_a = pto + px * sizeof(uint64_t);
+-    pte = ldq_phys(&address_space_memory, px_a);
++    pte = address_space_ldq(&address_space_memory, px_a,
++                            MEMTXATTRS_UNSPECIFIED, NULL);
+ 
+ out:
+     return pte;
+diff --git a/hw/s390x/s390-virtio-bus.c b/hw/s390x/s390-virtio-bus.c
+index 04ed89f..5a96ecc 100644
+--- a/hw/s390x/s390-virtio-bus.c
++++ b/hw/s390x/s390-virtio-bus.c
+@@ -77,10 +77,12 @@ void s390_virtio_reset_idx(VirtIOS390Device *dev)
+     for (i = 0; i < num_vq; i++) {
+         idx_addr = virtio_queue_get_avail_addr(dev->vdev, i) +
+             VIRTIO_VRING_AVAIL_IDX_OFFS;
+-        stw_phys(&address_space_memory, idx_addr, 0);
++        address_space_stw(&address_space_memory, idx_addr, 0,
++                          MEMTXATTRS_UNSPECIFIED, NULL);
+         idx_addr = virtio_queue_get_used_addr(dev->vdev, i) +
+             VIRTIO_VRING_USED_IDX_OFFS;
+-        stw_phys(&address_space_memory, idx_addr, 0);
++        address_space_stw(&address_space_memory, idx_addr, 0,
++                          MEMTXATTRS_UNSPECIFIED, NULL);
+     }
+ }
+ 
+@@ -337,7 +339,8 @@ static uint64_t s390_virtio_device_vq_token(VirtIOS390Device *dev, int vq)
+                 (vq * VIRTIO_VQCONFIG_LEN) +
+                 VIRTIO_VQCONFIG_OFFS_TOKEN;
+ 
+-    return ldq_be_phys(&address_space_memory, token_off);
++    return address_space_ldq_be(&address_space_memory, token_off,
++                                MEMTXATTRS_UNSPECIFIED, NULL);
+ }
+ 
+ static ram_addr_t s390_virtio_device_num_vq(VirtIOS390Device *dev)
+@@ -372,21 +375,33 @@ void s390_virtio_device_sync(VirtIOS390Device *dev)
+     virtio_reset(dev->vdev);
+ 
+     /* Sync dev space */
+-    stb_phys(&address_space_memory,
+-             dev->dev_offs + VIRTIO_DEV_OFFS_TYPE, dev->vdev->device_id);
+-
+-    stb_phys(&address_space_memory,
+-             dev->dev_offs + VIRTIO_DEV_OFFS_NUM_VQ,
+-             s390_virtio_device_num_vq(dev));
+-    stb_phys(&address_space_memory,
+-             dev->dev_offs + VIRTIO_DEV_OFFS_FEATURE_LEN, dev->feat_len);
+-
+-    stb_phys(&address_space_memory,
+-             dev->dev_offs + VIRTIO_DEV_OFFS_CONFIG_LEN, dev->vdev->config_len);
++    address_space_stb(&address_space_memory,
++                      dev->dev_offs + VIRTIO_DEV_OFFS_TYPE,
++                      dev->vdev->device_id,
++                      MEMTXATTRS_UNSPECIFIED,
++                      NULL);
++
++    address_space_stb(&address_space_memory,
++                      dev->dev_offs + VIRTIO_DEV_OFFS_NUM_VQ,
++                      s390_virtio_device_num_vq(dev),
++                      MEMTXATTRS_UNSPECIFIED,
++                      NULL);
++    address_space_stb(&address_space_memory,
++                      dev->dev_offs + VIRTIO_DEV_OFFS_FEATURE_LEN,
++                      dev->feat_len,
++                      MEMTXATTRS_UNSPECIFIED,
++                      NULL);
++
++    address_space_stb(&address_space_memory,
++                      dev->dev_offs + VIRTIO_DEV_OFFS_CONFIG_LEN,
++                      dev->vdev->config_len,
++                      MEMTXATTRS_UNSPECIFIED,
++                      NULL);
+ 
+     num_vq = s390_virtio_device_num_vq(dev);
+-    stb_phys(&address_space_memory,
+-             dev->dev_offs + VIRTIO_DEV_OFFS_NUM_VQ, num_vq);
++    address_space_stb(&address_space_memory,
++                      dev->dev_offs + VIRTIO_DEV_OFFS_NUM_VQ, num_vq,
++                      MEMTXATTRS_UNSPECIFIED, NULL);
+ 
+     /* Sync virtqueues */
+     for (i = 0; i < num_vq; i++) {
+@@ -397,11 +412,14 @@ void s390_virtio_device_sync(VirtIOS390Device *dev)
+         vring = s390_virtio_next_ring(bus);
+         virtio_queue_set_addr(dev->vdev, i, vring);
+         virtio_queue_set_vector(dev->vdev, i, i);
+-        stq_be_phys(&address_space_memory,
+-                    vq + VIRTIO_VQCONFIG_OFFS_ADDRESS, vring);
+-        stw_be_phys(&address_space_memory,
+-                    vq + VIRTIO_VQCONFIG_OFFS_NUM,
+-                    virtio_queue_get_num(dev->vdev, i));
++        address_space_stq_be(&address_space_memory,
++                             vq + VIRTIO_VQCONFIG_OFFS_ADDRESS, vring,
++                             MEMTXATTRS_UNSPECIFIED, NULL);
++        address_space_stw_be(&address_space_memory,
++                             vq + VIRTIO_VQCONFIG_OFFS_NUM,
++                             virtio_queue_get_num(dev->vdev, i),
++                             MEMTXATTRS_UNSPECIFIED,
++                             NULL);
+     }
+ 
+     cur_offs = dev->dev_offs;
+@@ -409,7 +427,8 @@ void s390_virtio_device_sync(VirtIOS390Device *dev)
+     cur_offs += num_vq * VIRTIO_VQCONFIG_LEN;
+ 
+     /* Sync feature bitmap */
+-    stl_le_phys(&address_space_memory, cur_offs, dev->host_features);
++    address_space_stl_le(&address_space_memory, cur_offs, dev->host_features,
++                         MEMTXATTRS_UNSPECIFIED, NULL);
+ 
+     dev->feat_offs = cur_offs + dev->feat_len;
+     cur_offs += dev->feat_len * 2;
+@@ -427,12 +446,16 @@ void s390_virtio_device_update_status(VirtIOS390Device *dev)
+     VirtIODevice *vdev = dev->vdev;
+     uint32_t features;
+ 
+-    virtio_set_status(vdev, ldub_phys(&address_space_memory,
+-                                      dev->dev_offs + VIRTIO_DEV_OFFS_STATUS));
++    virtio_set_status(vdev,
++                      address_space_ldub(&address_space_memory,
++                                         dev->dev_offs + VIRTIO_DEV_OFFS_STATUS,
++                                         MEMTXATTRS_UNSPECIFIED, NULL));
+ 
+     /* Update guest supported feature bitmap */
+ 
+-    features = bswap32(ldl_be_phys(&address_space_memory, dev->feat_offs));
++    features = bswap32(address_space_ldl_be(&address_space_memory,
++                                            dev->feat_offs,
++                                            MEMTXATTRS_UNSPECIFIED, NULL));
+     virtio_set_features(vdev, features);
+ }
+ 
+diff --git a/hw/s390x/s390-virtio.c b/hw/s390x/s390-virtio.c
+index bdb5388..3a1b9ee 100644
+--- a/hw/s390x/s390-virtio.c
++++ b/hw/s390x/s390-virtio.c
+@@ -97,7 +97,9 @@ static int s390_virtio_hcall_reset(const uint64_t *args)
+         return -EINVAL;
+     }
+     virtio_reset(dev->vdev);
+-    stb_phys(&address_space_memory, dev->dev_offs + VIRTIO_DEV_OFFS_STATUS, 0);
++    address_space_stb(&address_space_memory,
++                      dev->dev_offs + VIRTIO_DEV_OFFS_STATUS, 0,
++                      MEMTXATTRS_UNSPECIFIED, NULL);
+     s390_virtio_device_sync(dev);
+     s390_virtio_reset_idx(dev);
+ 
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index e15e2b3..18fc697 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -335,16 +335,23 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+         if (!ccw.cda) {
+             ret = -EFAULT;
+         } else {
+-            info.queue = ldq_phys(&address_space_memory, ccw.cda);
+-            info.align = ldl_phys(&address_space_memory,
+-                                  ccw.cda + sizeof(info.queue));
+-            info.index = lduw_phys(&address_space_memory,
+-                                   ccw.cda + sizeof(info.queue)
+-                                   + sizeof(info.align));
+-            info.num = lduw_phys(&address_space_memory,
+-                                 ccw.cda + sizeof(info.queue)
+-                                 + sizeof(info.align)
+-                                 + sizeof(info.index));
++            info.queue = address_space_ldq(&address_space_memory, ccw.cda,
++                                           MEMTXATTRS_UNSPECIFIED, NULL);
++            info.align = address_space_ldl(&address_space_memory,
++                                           ccw.cda + sizeof(info.queue),
++                                           MEMTXATTRS_UNSPECIFIED,
++                                           NULL);
++            info.index = address_space_lduw(&address_space_memory,
++                                            ccw.cda + sizeof(info.queue)
++                                            + sizeof(info.align),
++                                            MEMTXATTRS_UNSPECIFIED,
++                                            NULL);
++            info.num = address_space_lduw(&address_space_memory,
++                                          ccw.cda + sizeof(info.queue)
++                                          + sizeof(info.align)
++                                          + sizeof(info.index),
++                                          MEMTXATTRS_UNSPECIFIED,
++                                          NULL);
+             ret = virtio_ccw_set_vqs(sch, info.queue, info.align, info.index,
+                                      info.num);
+             sch->curr_status.scsw.count = 0;
+@@ -369,15 +376,20 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+         if (!ccw.cda) {
+             ret = -EFAULT;
+         } else {
+-            features.index = ldub_phys(&address_space_memory,
+-                                       ccw.cda + sizeof(features.features));
++            features.index = address_space_ldub(&address_space_memory,
++                                                ccw.cda
++                                                + sizeof(features.features),
++                                                MEMTXATTRS_UNSPECIFIED,
++                                                NULL);
+             if (features.index < ARRAY_SIZE(dev->host_features)) {
+                 features.features = dev->host_features[features.index];
+             } else {
+                 /* Return zeroes if the guest supports more feature bits. */
+                 features.features = 0;
+             }
+-            stl_le_phys(&address_space_memory, ccw.cda, features.features);
++            address_space_stl_le(&address_space_memory, ccw.cda,
++                                 features.features, MEMTXATTRS_UNSPECIFIED,
++                                 NULL);
+             sch->curr_status.scsw.count = ccw.count - sizeof(features);
+             ret = 0;
+         }
+@@ -396,9 +408,15 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+         if (!ccw.cda) {
+             ret = -EFAULT;
+         } else {
+-            features.index = ldub_phys(&address_space_memory,
+-                                       ccw.cda + sizeof(features.features));
+-            features.features = ldl_le_phys(&address_space_memory, ccw.cda);
++            features.index = address_space_ldub(&address_space_memory,
++                                                ccw.cda
++                                                + sizeof(features.features),
++                                                MEMTXATTRS_UNSPECIFIED,
++                                                NULL);
++            features.features = address_space_ldl_le(&address_space_memory,
++                                                     ccw.cda,
++                                                     MEMTXATTRS_UNSPECIFIED,
++                                                     NULL);
+             if (features.index < ARRAY_SIZE(dev->host_features)) {
+                 virtio_set_features(vdev, features.features);
+             } else {
+@@ -474,7 +492,8 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+         if (!ccw.cda) {
+             ret = -EFAULT;
+         } else {
+-            status = ldub_phys(&address_space_memory, ccw.cda);
++            status = address_space_ldub(&address_space_memory, ccw.cda,
++                                        MEMTXATTRS_UNSPECIFIED, NULL);
+             if (!(status & VIRTIO_CONFIG_S_DRIVER_OK)) {
+                 virtio_ccw_stop_ioeventfd(dev);
+             }
+@@ -508,7 +527,8 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+         if (!ccw.cda) {
+             ret = -EFAULT;
+         } else {
+-            indicators = ldq_be_phys(&address_space_memory, ccw.cda);
++            indicators = address_space_ldq_be(&address_space_memory, ccw.cda,
++                                              MEMTXATTRS_UNSPECIFIED, NULL);
+             dev->indicators = get_indicator(indicators, sizeof(uint64_t));
+             sch->curr_status.scsw.count = ccw.count - sizeof(indicators);
+             ret = 0;
+@@ -528,7 +548,8 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+         if (!ccw.cda) {
+             ret = -EFAULT;
+         } else {
+-            indicators = ldq_be_phys(&address_space_memory, ccw.cda);
++            indicators = address_space_ldq_be(&address_space_memory, ccw.cda,
++                                              MEMTXATTRS_UNSPECIFIED, NULL);
+             dev->indicators2 = get_indicator(indicators, sizeof(uint64_t));
+             sch->curr_status.scsw.count = ccw.count - sizeof(indicators);
+             ret = 0;
+@@ -548,15 +569,21 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+         if (!ccw.cda) {
+             ret = -EFAULT;
+         } else {
+-            vq_config.index = lduw_be_phys(&address_space_memory, ccw.cda);
++            vq_config.index = address_space_lduw_be(&address_space_memory,
++                                                    ccw.cda,
++                                                    MEMTXATTRS_UNSPECIFIED,
++                                                    NULL);
+             if (vq_config.index >= VIRTIO_CCW_QUEUE_MAX) {
+                 ret = -EINVAL;
+                 break;
+             }
+             vq_config.num_max = virtio_queue_get_num(vdev,
+                                                      vq_config.index);
+-            stw_be_phys(&address_space_memory,
+-                        ccw.cda + sizeof(vq_config.index), vq_config.num_max);
++            address_space_stw_be(&address_space_memory,
++                                 ccw.cda + sizeof(vq_config.index),
++                                 vq_config.num_max,
++                                 MEMTXATTRS_UNSPECIFIED,
++                                 NULL);
+             sch->curr_status.scsw.count = ccw.count - sizeof(vq_config);
+             ret = 0;
+         }
+@@ -1046,9 +1073,13 @@ static void virtio_ccw_notify(DeviceState *d, uint16_t vector)
+                 css_adapter_interrupt(dev->thinint_isc);
+             }
+         } else {
+-            indicators = ldq_phys(&address_space_memory, dev->indicators->addr);
++            indicators = address_space_ldq(&address_space_memory,
++                                           dev->indicators->addr,
++                                           MEMTXATTRS_UNSPECIFIED,
++                                           NULL);
+             indicators |= 1ULL << vector;
+-            stq_phys(&address_space_memory, dev->indicators->addr, indicators);
++            address_space_stq(&address_space_memory, dev->indicators->addr,
++                              indicators, MEMTXATTRS_UNSPECIFIED, NULL);
+             css_conditional_io_interrupt(sch);
+         }
+     } else {
+@@ -1056,9 +1087,13 @@ static void virtio_ccw_notify(DeviceState *d, uint16_t vector)
+             return;
+         }
+         vector = 0;
+-        indicators = ldq_phys(&address_space_memory, dev->indicators2->addr);
++        indicators = address_space_ldq(&address_space_memory,
++                                       dev->indicators2->addr,
++                                       MEMTXATTRS_UNSPECIFIED,
++                                       NULL);
+         indicators |= 1ULL << vector;
+-        stq_phys(&address_space_memory, dev->indicators2->addr, indicators);
++        address_space_stq(&address_space_memory, dev->indicators2->addr,
++                          indicators, MEMTXATTRS_UNSPECIFIED, NULL);
+         css_conditional_io_interrupt(sch);
+     }
+ }
+diff --git a/hw/sh4/r2d.c b/hw/sh4/r2d.c
+index d1d0847..4221060 100644
+--- a/hw/sh4/r2d.c
++++ b/hw/sh4/r2d.c
+@@ -318,8 +318,10 @@ static void r2d_init(MachineState *machine)
+         }
+ 
+         /* initialization which should be done by firmware */
+-        stl_phys(&address_space_memory, SH7750_BCR1, 1<<3); /* cs3 SDRAM */
+-        stw_phys(&address_space_memory, SH7750_BCR2, 3<<(3*2)); /* cs3 32bit */
++        address_space_stl(&address_space_memory, SH7750_BCR1, 1 << 3,
++                          MEMTXATTRS_UNSPECIFIED, NULL); /* cs3 SDRAM */
++        address_space_stw(&address_space_memory, SH7750_BCR2, 3 << (3 * 2),
++                          MEMTXATTRS_UNSPECIFIED, NULL); /* cs3 32bit */
+         reset_info->vector = (SDRAM_BASE + LINUX_LOAD_OFFSET) | 0xa0000000; /* Start from P2 area */
+     }
+ 
+diff --git a/hw/timer/hpet.c b/hw/timer/hpet.c
+index 78d86be..b6b8a20 100644
+--- a/hw/timer/hpet.c
++++ b/hw/timer/hpet.c
+@@ -206,8 +206,9 @@ static void update_irq(struct HPETTimer *timer, int set)
+             }
+         }
+     } else if (timer_fsb_route(timer)) {
+-        stl_le_phys(&address_space_memory,
+-                    timer->fsb >> 32, timer->fsb & 0xffffffff);
++        address_space_stl_le(&address_space_memory, timer->fsb >> 32,
++                             timer->fsb & 0xffffffff, MEMTXATTRS_UNSPECIFIED,
++                             NULL);
+     } else if (timer->config & HPET_TN_TYPE_LEVEL) {
+         s->isr |= mask;
+         /* fold the ICH PIRQ# pin's internal inversion logic into hpet */
+diff --git a/monitor.c b/monitor.c
+index 060248a..9aaae88 100644
+--- a/monitor.c
++++ b/monitor.c
+@@ -1385,7 +1385,8 @@ static void hmp_sum(Monitor *mon, const QDict *qdict)
+ 
+     sum = 0;
+     for(addr = start; addr < (start + size); addr++) {
+-        uint8_t val = ldub_phys(&address_space_memory, addr);
++        uint8_t val = address_space_ldub(&address_space_memory, addr,
++                                         MEMTXATTRS_UNSPECIFIED, NULL);
+         /* BSD sum algorithm ('sum' Unix command) */
+         sum = (sum >> 1) | (sum << 15);
+         sum += val;
+diff --git a/target-i386/arch_memory_mapping.c b/target-i386/arch_memory_mapping.c
+index 2d35f63..01563fe 100644
+--- a/target-i386/arch_memory_mapping.c
++++ b/target-i386/arch_memory_mapping.c
+@@ -27,7 +27,7 @@ static void walk_pte(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pte_addr = (pte_start_addr + i * 8) & a20_mask;
+-        pte = ldq_phys(as, pte_addr);
++        pte = address_space_ldq(as, pte_addr, MEMTXATTRS_UNSPECIFIED, NULL);
+         if (!(pte & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -57,7 +57,7 @@ static void walk_pte2(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 1024; i++) {
+         pte_addr = (pte_start_addr + i * 4) & a20_mask;
+-        pte = ldl_phys(as, pte_addr);
++        pte = address_space_ldl(as, pte_addr, MEMTXATTRS_UNSPECIFIED, NULL);
+         if (!(pte & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -89,7 +89,7 @@ static void walk_pde(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pde_addr = (pde_start_addr + i * 8) & a20_mask;
+-        pde = ldq_phys(as, pde_addr);
++        pde = address_space_ldq(as, pde_addr, MEMTXATTRS_UNSPECIFIED, NULL);
+         if (!(pde & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -126,7 +126,7 @@ static void walk_pde2(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 1024; i++) {
+         pde_addr = (pde_start_addr + i * 4) & a20_mask;
+-        pde = ldl_phys(as, pde_addr);
++        pde = address_space_ldl(as, pde_addr, MEMTXATTRS_UNSPECIFIED, NULL);
+         if (!(pde & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -167,7 +167,7 @@ static void walk_pdpe2(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 4; i++) {
+         pdpe_addr = (pdpe_start_addr + i * 8) & a20_mask;
+-        pdpe = ldq_phys(as, pdpe_addr);
++        pdpe = address_space_ldq(as, pdpe_addr, MEMTXATTRS_UNSPECIFIED, NULL);
+         if (!(pdpe & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -192,7 +192,7 @@ static void walk_pdpe(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pdpe_addr = (pdpe_start_addr + i * 8) & a20_mask;
+-        pdpe = ldq_phys(as, pdpe_addr);
++        pdpe = address_space_ldq(as, pdpe_addr, MEMTXATTRS_UNSPECIFIED, NULL);
+         if (!(pdpe & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -228,7 +228,8 @@ static void walk_pml4e(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pml4e_addr = (pml4e_start_addr + i * 8) & a20_mask;
+-        pml4e = ldq_phys(as, pml4e_addr);
++        pml4e = address_space_ldq(as, pml4e_addr, MEMTXATTRS_UNSPECIFIED,
++                                  NULL);
+         if (!(pml4e & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+-- 
+1.8.3.1
+

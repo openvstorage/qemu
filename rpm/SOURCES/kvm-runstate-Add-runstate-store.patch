@@ -1,0 +1,63 @@
+From 8ce64ccce5614bb32bef6658c8e8313ef2d40e71 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:55 +0200
+Subject: [PATCH 10/28] runstate: Add runstate store
+
+Message-id: <1438098431-30847-11-git-send-email-quintela@redhat.com>
+Patchwork-id: 67167
+O-Subject: [RHEL-7 qemu-kvm PATCH 10/26] runstate: Add runstate store
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+This allows us to store the current state to send it through migration.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 5e0f1940caf49f56e3bee123aa92e42a3f7fad20)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/sysemu/sysemu.h |  1 +
+ vl.c                    | 12 ++++++++++++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/include/sysemu/sysemu.h b/include/sysemu/sysemu.h
+index fa928dd..e358f66 100644
+--- a/include/sysemu/sysemu.h
++++ b/include/sysemu/sysemu.h
+@@ -28,6 +28,7 @@ bool runstate_check(RunState state);
+ void runstate_set(RunState new_state);
+ int runstate_is_running(void);
+ bool runstate_needs_reset(void);
++bool runstate_store(char *str, size_t size);
+ typedef struct vm_change_state_entry VMChangeStateEntry;
+ typedef void VMChangeStateHandler(void *opaque, int running, RunState state);
+ 
+diff --git a/vl.c b/vl.c
+index 0444b6f..0f92d6c 100644
+--- a/vl.c
++++ b/vl.c
+@@ -606,6 +606,18 @@ bool runstate_check(RunState state)
+     return current_run_state == state;
+ }
+ 
++bool runstate_store(char *str, size_t size)
++{
++    const char *state = RunState_lookup[current_run_state];
++    size_t len = strlen(state) + 1;
++
++    if (len > size) {
++        return false;
++    }
++    memcpy(str, state, len);
++    return true;
++}
++
+ static void runstate_init(void)
+ {
+     const RunStateTransition *p;
+-- 
+1.8.3.1
+

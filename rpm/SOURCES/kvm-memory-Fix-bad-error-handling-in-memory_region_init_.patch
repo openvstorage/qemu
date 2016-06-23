@@ -1,0 +1,50 @@
+From 077f3bad784d7df463386cb396442663f1db36d6 Mon Sep 17 00:00:00 2001
+From: Markus Armbruster <armbru@redhat.com>
+Date: Mon, 21 Sep 2015 16:15:35 +0200
+Subject: [PATCH 07/10] memory: Fix bad error handling in
+ memory_region_init_ram_ptr()
+
+Message-id: <1442852135-32495-5-git-send-email-armbru@redhat.com>
+Patchwork-id: 67849
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 4/4] memory: Fix bad error handling in memory_region_init_ram_ptr()
+Bugzilla: 1232308
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+Commit ef701d7 screwed up handling of out-of-memory conditions.
+Before the commit, we report the error and exit(1), in one place.  The
+commit lifts the error handling up the call chain some, to three
+places.  Fine.  Except it uses &error_abort in these places, changing
+the behavior from exit(1) to abort(), and thus undoing the work of
+commit 3922825 "exec: Don't abort when we can't allocate guest
+memory".
+
+The previous two commits fixed one of the three places, another one
+was fixed in commit 33e0eb5.  This commit fixes the third one.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Message-Id: <1441983105-26376-5-git-send-email-armbru@redhat.com>
+Reviewed-by: Peter Crosthwaite <crosthwaite.peter@gmail.com>
+(cherry picked from commit 0bdaa3a429c6d07cd437b442a1f15f70be1addaa)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ memory.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/memory.c b/memory.c
+index 0aeb445..0717005 100644
+--- a/memory.c
++++ b/memory.c
+@@ -1251,7 +1251,7 @@ void memory_region_init_ram_ptr(MemoryRegion *mr,
+ 
+     /* qemu_ram_alloc_from_ptr cannot fail with ptr != NULL.  */
+     assert(ptr != NULL);
+-    mr->ram_addr = qemu_ram_alloc_from_ptr(size, ptr, mr, &error_abort);
++    mr->ram_addr = qemu_ram_alloc_from_ptr(size, ptr, mr, &error_fatal);
+ }
+ 
+ void memory_region_set_skip_dump(MemoryRegion *mr)
+-- 
+1.8.3.1
+

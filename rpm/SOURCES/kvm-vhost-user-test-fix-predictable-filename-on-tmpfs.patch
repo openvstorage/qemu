@@ -1,0 +1,45 @@
+From 963bad6996178082976ed43fab2df69ef09edf28 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:33:05 +0100
+Subject: [PATCH 32/44] vhost-user-test: fix predictable filename on tmpfs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-26-git-send-email-mst@redhat.com>
+Patchwork-id: 68372
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 25/36] vhost-user-test: fix predictable filename on tmpfs
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+vhost-user-test uses getpid to create a unique filename. This name is
+predictable, and a security problem.  Instead, use a tmp directory
+created by mkdtemp, which is a suggested best practice.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+(cherry picked from commit 6fdac09370530be0cc6fe9e8d425c0670ba994b1)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/vhost-user-test.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/vhost-user-test.c b/tests/vhost-user-test.c
+index 7127d9a..59a5691 100644
+--- a/tests/vhost-user-test.c
++++ b/tests/vhost-user-test.c
+@@ -340,7 +340,7 @@ int main(int argc, char **argv)
+         root = tmpfs;
+     }
+ 
+-    socket_path = g_strdup_printf("/tmp/vhost-%d.sock", getpid());
++    socket_path = g_strdup_printf("%s/vhost.sock", tmpfs);
+ 
+     /* create char dev and add read handlers */
+     qemu_add_opts(&qemu_chardev_opts);
+-- 
+1.8.3.1
+

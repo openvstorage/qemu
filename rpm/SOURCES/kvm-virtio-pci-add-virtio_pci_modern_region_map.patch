@@ -1,0 +1,101 @@
+From eb99f2cbe90f528cc6771054d3295eac91da7e7a Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:51 +0200
+Subject: [PATCH 077/100] virtio-pci: add virtio_pci_modern_region_map()
+
+Message-id: <1436260751-25015-49-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66822
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 48/68] virtio-pci: add virtio_pci_modern_region_map()
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Add function to map modern virtio regions.
+Add offset to VirtIOPCIRegion.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit a3cc2e81592aba6d818005c078b94b16ba47a02c)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 25 +++++++++++++++++++------
+ hw/virtio/virtio-pci.h |  1 +
+ 2 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 2d1059d..415660a 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1251,20 +1251,35 @@ static void virtio_pci_modern_regions_init(VirtIOPCIProxy *proxy)
+                           &common_ops,
+                           proxy,
+                           "virtio-pci-common", 0x1000);
++    proxy->common.offset = 0x0;
++
+     memory_region_init_io(&proxy->isr.mr, OBJECT(proxy),
+                           &isr_ops,
+                           proxy,
+                           "virtio-pci-isr", 0x1000);
++    proxy->isr.offset = 0x1000;
++
+     memory_region_init_io(&proxy->device.mr, OBJECT(proxy),
+                           &device_ops,
+                           virtio_bus_get_device(&proxy->bus),
+                           "virtio-pci-device", 0x1000);
++    proxy->device.offset = 0x2000;
++
+     memory_region_init_io(&proxy->notify.mr, OBJECT(proxy),
+                           &notify_ops,
+                           virtio_bus_get_device(&proxy->bus),
+                           "virtio-pci-notify",
+                           QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
+                           VIRTIO_QUEUE_MAX);
++    proxy->notify.offset = 0x3000;
++}
++
++static void virtio_pci_modern_region_map(VirtIOPCIProxy *proxy,
++                                         VirtIOPCIRegion *region)
++{
++    memory_region_add_subregion(&proxy->modern_bar,
++                                region->offset,
++                                &region->mr);
+ }
+ 
+ /* This is called by virtio-bus just after the device is plugged. */
+@@ -1359,12 +1374,10 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+                            2 * QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
+                            VIRTIO_QUEUE_MAX);
+         virtio_pci_modern_regions_init(proxy);
+-        memory_region_add_subregion(&proxy->modern_bar, 0, &proxy->common.mr);
+-        memory_region_add_subregion(&proxy->modern_bar, 0x1000, &proxy->isr.mr);
+-        memory_region_add_subregion(&proxy->modern_bar, 0x2000,
+-                                    &proxy->device.mr);
+-        memory_region_add_subregion(&proxy->modern_bar, 0x3000,
+-                                    &proxy->notify.mr);
++        virtio_pci_modern_region_map(proxy, &proxy->common);
++        virtio_pci_modern_region_map(proxy, &proxy->isr);
++        virtio_pci_modern_region_map(proxy, &proxy->device);
++        virtio_pci_modern_region_map(proxy, &proxy->notify);
+         pci_register_bar(&proxy->pci_dev, modern_mem_bar,
+                          PCI_BASE_ADDRESS_SPACE_MEMORY |
+                          PCI_BASE_ADDRESS_MEM_PREFETCH |
+diff --git a/hw/virtio/virtio-pci.h b/hw/virtio/virtio-pci.h
+index 8f1fc02..f5829b0 100644
+--- a/hw/virtio/virtio-pci.h
++++ b/hw/virtio/virtio-pci.h
+@@ -93,6 +93,7 @@ typedef struct VirtioPCIClass {
+ 
+ typedef struct VirtIOPCIRegion {
+     MemoryRegion mr;
++    uint32_t offset;
+ } VirtIOPCIRegion;
+ 
+ struct VirtIOPCIProxy {
+-- 
+1.8.3.1
+

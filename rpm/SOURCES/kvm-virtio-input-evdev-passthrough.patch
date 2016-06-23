@@ -1,0 +1,355 @@
+From cd2f8932568fc4c661753143033380b9335f4da8 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:08 +0200
+Subject: [PATCH 094/100] virtio-input: evdev passthrough
+
+Message-id: <1436260751-25015-66-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66840
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 65/68] virtio-input: evdev passthrough
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Notes: conflicts since virtio-gpu was not backported
+
+This allows to assign host input devices to the guest:
+
+qemu -device virtio-input-host-pci,evdev=/dev/input/event<nr>
+
+The guest gets exclusive access to the input device, so be careful
+with assigning the keyboard if you have only one connected to your
+machine.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit 006a5edebe656114e0e0a6fb24b8aae6401c1cf4)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/virtio/virtio-pci.h
+---
+ hw/input/Makefile.objs           |   1 +
+ hw/input/virtio-input-host.c     | 188 +++++++++++++++++++++++++++++++++++++++
+ hw/virtio/virtio-pci.c           |  16 ++++
+ hw/virtio/virtio-pci.h           |  10 +++
+ include/hw/virtio/virtio-input.h |  13 +++
+ 5 files changed, 228 insertions(+)
+ create mode 100644 hw/input/virtio-input-host.c
+
+diff --git a/hw/input/Makefile.objs b/hw/input/Makefile.objs
+index 0dae710..624ba7e 100644
+--- a/hw/input/Makefile.objs
++++ b/hw/input/Makefile.objs
+@@ -11,6 +11,7 @@ common-obj-$(CONFIG_VMMOUSE) += vmmouse.o
+ ifeq ($(CONFIG_LINUX),y)
+ common-obj-$(CONFIG_VIRTIO) += virtio-input.o
+ common-obj-$(CONFIG_VIRTIO) += virtio-input-hid.o
++common-obj-$(CONFIG_VIRTIO) += virtio-input-host.o
+ endif
+ 
+ obj-$(CONFIG_MILKYMIST) += milkymist-softusb.o
+diff --git a/hw/input/virtio-input-host.c b/hw/input/virtio-input-host.c
+new file mode 100644
+index 0000000..f7e3d84
+--- /dev/null
++++ b/hw/input/virtio-input-host.c
+@@ -0,0 +1,188 @@
++/*
++ * This work is licensed under the terms of the GNU GPL, version 2 or
++ * (at your option) any later version.  See the COPYING file in the
++ * top-level directory.
++ */
++
++#include "qemu-common.h"
++#include "qemu/sockets.h"
++
++#include "hw/qdev.h"
++#include "hw/virtio/virtio.h"
++#include "hw/virtio/virtio-input.h"
++
++#include "standard-headers/linux/input.h"
++
++/* ----------------------------------------------------------------- */
++
++static struct virtio_input_config virtio_input_host_config[] = {
++    { /* empty list */ },
++};
++
++static void virtio_input_host_event(void *opaque)
++{
++    VirtIOInputHost *vih = opaque;
++    VirtIOInput *vinput = VIRTIO_INPUT(vih);
++    struct virtio_input_event virtio;
++    struct input_event evdev;
++    int rc;
++
++    for (;;) {
++        rc = read(vih->fd, &evdev, sizeof(evdev));
++        if (rc != sizeof(evdev)) {
++            break;
++        }
++
++        virtio.type  = cpu_to_le16(evdev.type);
++        virtio.code  = cpu_to_le16(evdev.code);
++        virtio.value = cpu_to_le32(evdev.value);
++        virtio_input_send(vinput, &virtio);
++    }
++}
++
++static void virtio_input_bits_config(VirtIOInputHost *vih,
++                                     int type, int count)
++{
++    virtio_input_config bits;
++    int rc, i, size = 0;
++
++    memset(&bits, 0, sizeof(bits));
++    rc = ioctl(vih->fd, EVIOCGBIT(type, count/8), bits.u.bitmap);
++    if (rc < 0) {
++        return;
++    }
++
++    for (i = 0; i < count/8; i++) {
++        if (bits.u.bitmap[i]) {
++            size = i+1;
++        }
++    }
++    if (size == 0) {
++        return;
++    }
++
++    bits.select = VIRTIO_INPUT_CFG_EV_BITS;
++    bits.subsel = type;
++    bits.size   = size;
++    virtio_input_add_config(VIRTIO_INPUT(vih), &bits);
++}
++
++static void virtio_input_host_realize(DeviceState *dev, Error **errp)
++{
++    VirtIOInputHost *vih = VIRTIO_INPUT_HOST(dev);
++    VirtIOInput *vinput = VIRTIO_INPUT(dev);
++    virtio_input_config id;
++    struct input_id ids;
++    int rc, ver;
++
++    if (!vih->evdev) {
++        error_setg(errp, "evdev property is required");
++        return;
++    }
++
++    vih->fd = open(vih->evdev, O_RDWR);
++    if (vih->fd < 0)  {
++        error_setg_file_open(errp, errno, vih->evdev);
++        return;
++    }
++    qemu_set_nonblock(vih->fd);
++
++    rc = ioctl(vih->fd, EVIOCGVERSION, &ver);
++    if (rc < 0) {
++        error_setg(errp, "%s: is not an evdev device", vih->evdev);
++        goto err_close;
++    }
++
++    rc = ioctl(vih->fd, EVIOCGRAB, 1);
++    if (rc < 0) {
++        error_setg_errno(errp, errno, "%s: failed to get exclusive access",
++                         vih->evdev);
++        goto err_close;
++    }
++
++    memset(&id, 0, sizeof(id));
++    ioctl(vih->fd, EVIOCGNAME(sizeof(id.u.string)-1), id.u.string);
++    id.select = VIRTIO_INPUT_CFG_ID_NAME;
++    id.size = strlen(id.u.string);
++    virtio_input_add_config(vinput, &id);
++
++    if (ioctl(vih->fd, EVIOCGID, &ids) == 0) {
++        memset(&id, 0, sizeof(id));
++        id.select = VIRTIO_INPUT_CFG_ID_DEVIDS;
++        id.size = sizeof(struct virtio_input_devids);
++        id.u.ids.bustype = cpu_to_le16(ids.bustype);
++        id.u.ids.vendor  = cpu_to_le16(ids.vendor);
++        id.u.ids.product = cpu_to_le16(ids.product);
++        id.u.ids.version = cpu_to_le16(ids.version);
++        virtio_input_add_config(vinput, &id);
++    }
++
++    virtio_input_bits_config(vih, EV_KEY, KEY_CNT);
++    virtio_input_bits_config(vih, EV_REL, REL_CNT);
++    virtio_input_bits_config(vih, EV_ABS, ABS_CNT);
++    virtio_input_bits_config(vih, EV_MSC, MSC_CNT);
++    virtio_input_bits_config(vih, EV_SW,  SW_CNT);
++
++    qemu_set_fd_handler(vih->fd, virtio_input_host_event, NULL, vih);
++    return;
++
++err_close:
++    close(vih->fd);
++    vih->fd = -1;
++    return;
++}
++
++static void virtio_input_host_unrealize(DeviceState *dev, Error **errp)
++{
++    VirtIOInputHost *vih = VIRTIO_INPUT_HOST(dev);
++
++    if (vih->fd > 0) {
++        qemu_set_fd_handler(vih->fd, NULL, NULL, NULL);
++        close(vih->fd);
++    }
++}
++
++static const VMStateDescription vmstate_virtio_input_host = {
++    .name = "virtio-input-host",
++    .unmigratable = 1,
++};
++
++static Property virtio_input_host_properties[] = {
++    DEFINE_PROP_STRING("evdev", VirtIOInputHost, evdev),
++    DEFINE_PROP_END_OF_LIST(),
++};
++
++static void virtio_input_host_class_init(ObjectClass *klass, void *data)
++{
++    VirtIOInputClass *vic = VIRTIO_INPUT_CLASS(klass);
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->vmsd           = &vmstate_virtio_input_host;
++    dc->props          = virtio_input_host_properties;
++    vic->realize       = virtio_input_host_realize;
++    vic->unrealize     = virtio_input_host_unrealize;
++}
++
++static void virtio_input_host_init(Object *obj)
++{
++    VirtIOInput *vinput = VIRTIO_INPUT(obj);
++
++    virtio_input_init_config(vinput, virtio_input_host_config);
++}
++
++static const TypeInfo virtio_input_host_info = {
++    .name          = TYPE_VIRTIO_INPUT_HOST,
++    .parent        = TYPE_VIRTIO_INPUT,
++    .instance_size = sizeof(VirtIOInputHost),
++    .instance_init = virtio_input_host_init,
++    .class_init    = virtio_input_host_class_init,
++};
++
++/* ----------------------------------------------------------------- */
++
++static void virtio_register_types(void)
++{
++    type_register_static(&virtio_input_host_info);
++}
++
++type_init(virtio_register_types)
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index c69f066..e2e1eb5 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1997,6 +1997,14 @@ static void virtio_tablet_initfn(Object *obj)
+                                 TYPE_VIRTIO_TABLET);
+ }
+ 
++static void virtio_host_initfn(Object *obj)
++{
++    VirtIOInputHostPCI *dev = VIRTIO_INPUT_HOST_PCI(obj);
++
++    virtio_instance_init_common(obj, &dev->vdev, sizeof(dev->vdev),
++                                TYPE_VIRTIO_INPUT_HOST);
++}
++
+ static const TypeInfo virtio_input_pci_info = {
+     .name          = TYPE_VIRTIO_INPUT_PCI,
+     .parent        = TYPE_VIRTIO_PCI,
+@@ -2035,6 +2043,13 @@ static const TypeInfo virtio_tablet_pci_info = {
+     .instance_init = virtio_tablet_initfn,
+ };
+ 
++static const TypeInfo virtio_host_pci_info = {
++    .name          = TYPE_VIRTIO_INPUT_HOST_PCI,
++    .parent        = TYPE_VIRTIO_INPUT_PCI,
++    .instance_size = sizeof(VirtIOInputHostPCI),
++    .instance_init = virtio_host_initfn,
++};
++
+ /* virtio-pci-bus */
+ 
+ static void virtio_pci_bus_new(VirtioBusState *bus, size_t bus_size,
+@@ -2081,6 +2096,7 @@ static void virtio_pci_register_types(void)
+     type_register_static(&virtio_keyboard_pci_info);
+     type_register_static(&virtio_mouse_pci_info);
+     type_register_static(&virtio_tablet_pci_info);
++    type_register_static(&virtio_host_pci_info);
+     type_register_static(&virtio_pci_bus_info);
+     type_register_static(&virtio_pci_info);
+ #ifdef CONFIG_VIRTFS
+diff --git a/hw/virtio/virtio-pci.h b/hw/virtio/virtio-pci.h
+index d962125..e7c8f22 100644
+--- a/hw/virtio/virtio-pci.h
++++ b/hw/virtio/virtio-pci.h
+@@ -42,6 +42,7 @@ typedef struct VHostSCSIPCI VHostSCSIPCI;
+ typedef struct VirtIORngPCI VirtIORngPCI;
+ typedef struct VirtIOInputPCI VirtIOInputPCI;
+ typedef struct VirtIOInputHIDPCI VirtIOInputHIDPCI;
++typedef struct VirtIOInputHostPCI VirtIOInputHostPCI;
+ 
+ /* virtio-pci-bus */
+ 
+@@ -261,6 +262,15 @@ struct VirtIOInputHIDPCI {
+     VirtIOInputHID vdev;
+ };
+ 
++#define TYPE_VIRTIO_INPUT_HOST_PCI "virtio-input-host-pci"
++#define VIRTIO_INPUT_HOST_PCI(obj) \
++        OBJECT_CHECK(VirtIOInputHostPCI, (obj), TYPE_VIRTIO_INPUT_HOST_PCI)
++
++struct VirtIOInputHostPCI {
++    VirtIOPCIProxy parent_obj;
++    VirtIOInputHost vdev;
++};
++
+ /* Virtio ABI version, if we increment this, we break the guest driver. */
+ #define VIRTIO_PCI_ABI_VERSION          0
+ 
+diff --git a/include/hw/virtio/virtio-input.h b/include/hw/virtio/virtio-input.h
+index 8160dd6..fd5417d 100644
+--- a/include/hw/virtio/virtio-input.h
++++ b/include/hw/virtio/virtio-input.h
+@@ -50,10 +50,17 @@ typedef struct virtio_input_event virtio_input_event;
+ #define VIRTIO_INPUT_HID_GET_PARENT_CLASS(obj) \
+         OBJECT_GET_PARENT_CLASS(obj, TYPE_VIRTIO_INPUT_HID)
+ 
++#define TYPE_VIRTIO_INPUT_HOST   "virtio-input-host-device"
++#define VIRTIO_INPUT_HOST(obj) \
++        OBJECT_CHECK(VirtIOInputHost, (obj), TYPE_VIRTIO_INPUT_HOST)
++#define VIRTIO_INPUT_HOST_GET_PARENT_CLASS(obj) \
++        OBJECT_GET_PARENT_CLASS(obj, TYPE_VIRTIO_INPUT_HOST)
++
+ typedef struct VirtIOInput VirtIOInput;
+ typedef struct VirtIOInputClass VirtIOInputClass;
+ typedef struct VirtIOInputConfig VirtIOInputConfig;
+ typedef struct VirtIOInputHID VirtIOInputHID;
++typedef struct VirtIOInputHost VirtIOInputHost;
+ 
+ struct VirtIOInputConfig {
+     virtio_input_config               config;
+@@ -93,6 +100,12 @@ struct VirtIOInputHID {
+     int                               ledstate;
+ };
+ 
++struct VirtIOInputHost {
++    VirtIOInput                       parent_obj;
++    char                              *evdev;
++    int                               fd;
++};
++
+ void virtio_input_send(VirtIOInput *vinput, virtio_input_event *event);
+ void virtio_input_init_config(VirtIOInput *vinput,
+                               virtio_input_config *config);
+-- 
+1.8.3.1
+

@@ -1,0 +1,48 @@
+From b41fef08303a624de73accef3eed5e275c9a21c5 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:33:35 +0100
+Subject: [PATCH 43/44] vhost-user: print original request on error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-37-git-send-email-mst@redhat.com>
+Patchwork-id: 68391
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 36/36] vhost-user: print original request on error
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+When we get an unexpected response, print out
+the original request.
+Helps debug protocol errors tremendously.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry-picked from commit 5421f318ecc82294ad089fd54924df787b67c971)
+(in maintainer's tree)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost-user.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 192617d..c74ce4a 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -152,8 +152,8 @@ static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
+ 
+     r = qemu_chr_fe_read_all(chr, p, size);
+     if (r != size) {
+-        error_report("Failed to read msg header. Read %d instead of %d.", r,
+-                size);
++        error_report("Failed to read msg header. Read %d instead of %d."
++                     " Original request %d.", r, size, msg->request);
+         goto fail;
+     }
+ 
+-- 
+1.8.3.1
+

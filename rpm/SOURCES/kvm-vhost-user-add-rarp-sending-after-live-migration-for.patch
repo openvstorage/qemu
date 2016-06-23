@@ -1,0 +1,262 @@
+From b3aa8ea4e5e72b3f701310122af1027af059b383 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:45 +0100
+Subject: [PATCH 25/44] vhost user: add rarp sending after live migration for
+ legacy guest
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-19-git-send-email-mst@redhat.com>
+Patchwork-id: 68362
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 18/36] vhost user: add rarp sending after live migration for legacy guest
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Thibaut Collet <thibaut.collet@6wind.com>
+
+A new vhost user message is added to allow QEMU to ask to vhost user backend to
+broadcast a fake RARP after live migration for guest without GUEST_ANNOUNCE
+capability.
+
+This new message is sent only if the backend supports the new
+VHOST_USER_PROTOCOL_F_RARP protocol feature.
+The payload of this new message is the MAC address of the guest (not known by
+the backend). The MAC address is copied in the first 6 bytes of a u64 to avoid
+to create a new payload message type.
+
+This new message has no equivalent ioctl so a new callback is added in the
+userOps structure to send the request.
+
+Upon reception of this new message the vhost user backend must generate and
+broadcast a fake RARP request to notify the migration is terminated.
+
+Signed-off-by: Thibaut Collet <thibaut.collet@6wind.com>
+[Rebased and fixed checkpatch errors - Marc-André]
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+
+(cherry picked from commit 3e866365e1eb6bcfa2d01c21debb05b9e47a47f7)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/vhost-user.txt         | 15 +++++++++++++++
+ hw/net/vhost_net.c                | 17 +++++++++++++++++
+ hw/virtio/vhost-user.c            | 32 +++++++++++++++++++++++++++++++-
+ include/hw/virtio/vhost-backend.h |  3 +++
+ include/net/vhost_net.h           |  1 +
+ net/vhost-user.c                  | 24 ++++++++++++++++++++++--
+ 6 files changed, 89 insertions(+), 3 deletions(-)
+
+diff --git a/docs/specs/vhost-user.txt b/docs/specs/vhost-user.txt
+index b520bed..d319715 100644
+--- a/docs/specs/vhost-user.txt
++++ b/docs/specs/vhost-user.txt
+@@ -194,6 +194,7 @@ Protocol features
+ 
+ #define VHOST_USER_PROTOCOL_F_MQ             0
+ #define VHOST_USER_PROTOCOL_F_LOG_SHMFD      1
++#define VHOST_USER_PROTOCOL_F_RARP           2
+ 
+ Message types
+ -------------
+@@ -381,3 +382,17 @@ Message types
+       Master payload: vring state description
+ 
+       Signal slave to enable or disable corresponding vring.
++
++ * VHOST_USER_SEND_RARP
++
++      Id: 19
++      Equivalent ioctl: N/A
++      Master payload: u64
++
++      Ask vhost user backend to broadcast a fake RARP to notify the migration
++      is terminated for guest that does not support GUEST_ANNOUNCE.
++      Only legal if feature bit VHOST_USER_F_PROTOCOL_FEATURES is present in
++      VHOST_USER_GET_FEATURES and protocol feature bit VHOST_USER_PROTOCOL_F_RARP
++      is present in VHOST_USER_GET_PROTOCOL_FEATURES.
++      The first 6 bytes of the payload contain the mac address of the guest to
++      allow the vhost user backend to construct and broadcast the fake RARP.
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index f702874..04960f2 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -385,6 +385,18 @@ void vhost_net_cleanup(struct vhost_net *net)
+     g_free(net);
+ }
+ 
++int vhost_net_notify_migration_done(struct vhost_net *net, char* mac_addr)
++{
++    const VhostOps *vhost_ops = net->dev.vhost_ops;
++    int r = -1;
++
++    if (vhost_ops->vhost_migration_done) {
++        r = vhost_ops->vhost_migration_done(&net->dev, mac_addr);
++    }
++
++    return r;
++}
++
+ bool vhost_net_virtqueue_pending(VHostNetState *net, int idx)
+ {
+     return vhost_virtqueue_pending(&net->dev, idx);
+@@ -476,6 +488,11 @@ void vhost_net_virtqueue_mask(VHostNetState *net, VirtIODevice *dev,
+ {
+ }
+ 
++int vhost_net_notify_migration_done(struct vhost_net *net, char* mac_addr)
++{
++    return -1;
++}
++
+ VHostNetState *get_vhost_net(NetClientState *nc)
+ {
+     return 0;
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index bee99c7..be8fe58 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -10,6 +10,7 @@
+ 
+ #include "hw/virtio/vhost.h"
+ #include "hw/virtio/vhost-backend.h"
++#include "hw/virtio/virtio-net.h"
+ #include "sysemu/char.h"
+ #include "sysemu/kvm.h"
+ #include "qemu/error-report.h"
+@@ -27,9 +28,10 @@
+ #define VHOST_MEMORY_MAX_NREGIONS    8
+ #define VHOST_USER_F_PROTOCOL_FEATURES 30
+ 
+-#define VHOST_USER_PROTOCOL_FEATURE_MASK 0x3ULL
++#define VHOST_USER_PROTOCOL_FEATURE_MASK 0x7ULL
+ #define VHOST_USER_PROTOCOL_F_MQ         0
+ #define VHOST_USER_PROTOCOL_F_LOG_SHMFD  1
++#define VHOST_USER_PROTOCOL_F_RARP       2
+ 
+ typedef enum VhostUserRequest {
+     VHOST_USER_NONE = 0,
+@@ -51,6 +53,7 @@ typedef enum VhostUserRequest {
+     VHOST_USER_SET_PROTOCOL_FEATURES = 16,
+     VHOST_USER_GET_QUEUE_NUM = 17,
+     VHOST_USER_SET_VRING_ENABLE = 18,
++    VHOST_USER_SEND_RARP = 19,
+     VHOST_USER_MAX
+ } VhostUserRequest;
+ 
+@@ -494,6 +497,32 @@ static bool vhost_user_requires_shm_log(struct vhost_dev *dev)
+                               VHOST_USER_PROTOCOL_F_LOG_SHMFD);
+ }
+ 
++static int vhost_user_migration_done(struct vhost_dev *dev, char* mac_addr)
++{
++    VhostUserMsg msg = { 0 };
++    int err;
++
++    assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_USER);
++
++    /* If guest supports GUEST_ANNOUNCE do nothing */
++    if (virtio_has_feature(dev->acked_features, VIRTIO_NET_F_GUEST_ANNOUNCE)) {
++        return 0;
++    }
++
++    /* if backend supports VHOST_USER_PROTOCOL_F_RARP ask it to send the RARP */
++    if (virtio_has_feature(dev->protocol_features,
++                           VHOST_USER_PROTOCOL_F_RARP)) {
++        msg.request = VHOST_USER_SEND_RARP;
++        msg.flags = VHOST_USER_VERSION;
++        memcpy((char *)&msg.u64, mac_addr, 6);
++        msg.size = sizeof(m.u64);
++
++        err = vhost_user_write(dev, &msg, NULL, 0);
++        return err;
++    }
++    return -1;
++}
++
+ const VhostOps user_ops = {
+         .backend_type = VHOST_BACKEND_TYPE_USER,
+         .vhost_call = vhost_user_call,
+@@ -503,4 +532,5 @@ const VhostOps user_ops = {
+         .vhost_backend_set_vring_enable = vhost_user_set_vring_enable,
+         .vhost_set_log_base = vhost_set_log_base,
+         .vhost_requires_shm_log = vhost_user_requires_shm_log,
++        .vhost_migration_done = vhost_user_migration_done,
+ };
+diff --git a/include/hw/virtio/vhost-backend.h b/include/hw/virtio/vhost-backend.h
+index a8660bb..45a1234 100644
+--- a/include/hw/virtio/vhost-backend.h
++++ b/include/hw/virtio/vhost-backend.h
+@@ -33,6 +33,8 @@ typedef int (*vhost_backend_set_vring_enable)(struct vhost_dev *dev, int enable)
+ typedef int (*vhost_set_log_base_op)(struct vhost_dev *dev, uint64_t base,
+                                      struct vhost_log *log);
+ typedef bool (*vhost_requires_shm_log_op)(struct vhost_dev *dev);
++typedef int (*vhost_migration_done_op)(struct vhost_dev *dev,
++                                       char *mac_addr);
+ 
+ typedef struct VhostOps {
+     VhostBackendType backend_type;
+@@ -43,6 +45,7 @@ typedef struct VhostOps {
+     vhost_backend_set_vring_enable vhost_backend_set_vring_enable;
+     vhost_set_log_base_op vhost_set_log_base;
+     vhost_requires_shm_log_op vhost_requires_shm_log;
++    vhost_migration_done_op vhost_migration_done;
+ } VhostOps;
+ 
+ extern const VhostOps user_ops;
+diff --git a/include/net/vhost_net.h b/include/net/vhost_net.h
+index 0188c4d..3389b41 100644
+--- a/include/net/vhost_net.h
++++ b/include/net/vhost_net.h
+@@ -27,6 +27,7 @@ void vhost_net_ack_features(VHostNetState *net, uint64_t features);
+ bool vhost_net_virtqueue_pending(VHostNetState *net, int n);
+ void vhost_net_virtqueue_mask(VHostNetState *net, VirtIODevice *dev,
+                               int idx, bool mask);
++int vhost_net_notify_migration_done(VHostNetState *net, char* mac_addr);
+ VHostNetState *get_vhost_net(NetClientState *nc);
+ 
+ int vhost_set_vring_enable(NetClientState * nc, int enable);
+diff --git a/net/vhost-user.c b/net/vhost-user.c
+index 71b9b6c..d7d3858 100644
+--- a/net/vhost-user.c
++++ b/net/vhost-user.c
+@@ -106,9 +106,29 @@ err:
+ static ssize_t vhost_user_receive(NetClientState *nc, const uint8_t *buf,
+                                   size_t size)
+ {
+-    /* Discard the request that is received and managed by backend
+-     * by an other way.
++    /* In case of RARP (message size is 60) notify backup to send a fake RARP.
++       This fake RARP will be sent by backend only for guest
++       without GUEST_ANNOUNCE capability.
+      */
++    if (size == 60) {
++        VhostUserState *s = DO_UPCAST(VhostUserState, nc, nc);
++        int r;
++        static int display_rarp_failure = 1;
++        char mac_addr[6];
++
++        /* extract guest mac address from the RARP message */
++        memcpy(mac_addr, &buf[6], 6);
++
++        r = vhost_net_notify_migration_done(s->vhost_net, mac_addr);
++
++        if ((r != 0) && (display_rarp_failure)) {
++            fprintf(stderr,
++                    "Vhost user backend fails to broadcast fake RARP\n");
++            fflush(stderr);
++            display_rarp_failure = 0;
++        }
++    }
++
+     return size;
+ }
+ 
+-- 
+1.8.3.1
+

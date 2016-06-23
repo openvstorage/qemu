@@ -1,0 +1,127 @@
+From 894cf84bf9f723f93e056deae4c5a54c96b15303 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 8 Jun 2015 00:51:59 +0200
+Subject: [PATCH 01/44] docs: update documentation for memory hot unplug
+
+Message-id: <1433724727-46928-2-git-send-email-imammedo@redhat.com>
+Patchwork-id: 65388
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 1/9] docs: update documentation for memory hot unplug
+Bugzilla: 1120706
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+
+Add specification about how to use memory hot unplug, and add
+a flow diagram to explain memory hot unplug process.
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 4fccb4834d0455519ff6d7a81551a8dfd360fefa)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/memory-hotplug.txt         | 23 +++++++++++++++++++---
+ docs/specs/acpi_mem_hotplug.txt | 42 ++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 61 insertions(+), 4 deletions(-)
+
+diff --git a/docs/memory-hotplug.txt b/docs/memory-hotplug.txt
+index f70571d..56bdd0a 100644
+--- a/docs/memory-hotplug.txt
++++ b/docs/memory-hotplug.txt
+@@ -4,9 +4,7 @@ QEMU memory hotplug
+ This document explains how to use the memory hotplug feature in QEMU,
+ which is present since v2.1.0.
+ 
+-Please, note that memory hotunplug is not supported yet. This means
+-that you're able to add memory, but you're not able to remove it.
+-Also, proper guest support is required for memory hotplug to work.
++Guest support is required for memory hotplug to work.
+ 
+ Basic RAM hotplug
+ -----------------
+@@ -74,3 +72,22 @@ comes from regular RAM, 1GB is a 1GB hugepage page and 256MB is from
+    -device pc-dimm,id=dimm1,memdev=mem1 \
+    -object memory-backend-file,id=mem2,size=256M,mem-path=/mnt/hugepages-2MB \
+    -device pc-dimm,id=dimm2,memdev=mem2
++
++
++RAM hot-unplug
++---------------
++
++In order to be able to hot unplug pc-dimm device, QEMU has to be told the ids
++of pc-dimm device and memory backend object. The ids were assigned when you hot
++plugged memory.
++
++Two monitor commands are used to hot unplug memory:
++
++ - "device_del": deletes a front-end pc-dimm device
++ - "object_del": deletes a memory backend object
++
++For example, assuming that the pc-dimm device with id "dimm1" exists, and its memory
++backend is "mem1", the following commands tries to remove it.
++
++  (qemu) device_del dimm1
++  (qemu) object_del mem1
+diff --git a/docs/specs/acpi_mem_hotplug.txt b/docs/specs/acpi_mem_hotplug.txt
+index 1290994..dcc4808 100644
+--- a/docs/specs/acpi_mem_hotplug.txt
++++ b/docs/specs/acpi_mem_hotplug.txt
+@@ -2,7 +2,7 @@ QEMU<->ACPI BIOS memory hotplug interface
+ --------------------------------------
+ 
+ ACPI BIOS GPE.3 handler is dedicated for notifying OS about memory hot-add
+-events.
++and hot-remove events.
+ 
+ Memory hot-plug interface (IO port 0xa00-0xa17, 1-4 byte access):
+ ---------------------------------------------------------------
+@@ -42,3 +42,43 @@ Selecting memory device slot beyond present range has no effect on platform:
+      ignored
+    - read accesses to memory hot-plug registers not documented above return
+      all bits set to 1.
++
++Memory hot remove process diagram:
++----------------------------------
++ +-------------+     +-----------------------+      +------------------+     
++ |  1. QEMU    |     | 2. QEMU               |      |3. QEMU           |     
++ |  device_del +---->+ device unplug request +----->+Send SCI to guest,|     
++ |             |     |         cb            |      |return control to |     
++ +-------------+     +-----------------------+      |management        |     
++                                                    +------------------+     
++                                                                             
++ +---------------------------------------------------------------------+     
++                                                                             
++ +---------------------+              +-------------------------+            
++ | OSPM:               | remove event | OSPM:                   |            
++ | send Eject Request, |              | Scan memory devices     |            
++ | clear remove event  +<-------------+ for event flags         |            
++ |                     |              |                         |            
++ +---------------------+              +-------------------------+            
++           |                                                                 
++           |                                                                 
++ +---------v--------+            +-----------------------+                   
++ | Guest OS:        |  success   | OSPM:                 |                   
++ | process Ejection +----------->+ Execute _EJ0 method,  |                   
++ | request          |            | set eject bit in flags|                   
++ +------------------+            +-----------------------+                   
++           |failure                         |                                
++           v                                v                                
++ +------------------------+      +-----------------------+                   
++ | OSPM:                  |      | QEMU:                 |                   
++ | set OST event & status |      | call device unplug cb |                   
++ | fields                 |      |                       |                   
++ +------------------------+      +-----------------------+                   
++          |                                  |                               
++          v                                  v                               
++ +------------------+              +-------------------+                     
++ |QEMU:             |              |QEMU:              |                     
++ |Send OST QMP event|              |Send device deleted|                     
++ |                  |              |QMP event          |                     
++ +------------------+              |                   |                     
++                                   +-------------------+
+-- 
+1.8.3.1
+

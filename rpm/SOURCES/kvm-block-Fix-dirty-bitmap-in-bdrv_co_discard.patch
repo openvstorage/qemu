@@ -1,0 +1,60 @@
+From d74fe175d34c1b8ef69a8b11a585ffa87fbd69b0 Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Mon, 13 Jul 2015 03:27:22 +0200
+Subject: [PATCH 04/58] block: Fix dirty bitmap in bdrv_co_discard
+
+Message-id: <1436758047-4639-5-git-send-email-famz@redhat.com>
+Patchwork-id: 66962
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 4/9] block: Fix dirty bitmap in bdrv_co_discard
+Bugzilla: 1242316
+RH-Acked-by: Jeffrey Cody <jcody@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Unsetting dirty globally with discard is not very correct. The discard may zero
+out sectors (depending on can_write_zeroes_with_unmap), we should replicate
+this change to destination side to make sure that the guest sees the same data.
+
+Calling bdrv_reset_dirty also troubles mirror job because the hbitmap iterator
+doesn't expect unsetting of bits after current position.
+
+So let's do it the opposite way which fixes both problems: set the dirty bits
+if we are to discard it.
+
+Reported-by: wangxiaolong@ucloud.cn
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 508249952c0ea7472c62e17bf8132295dab4912d)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/block.c b/block.c
+index 0b92ecb..84aab22 100644
+--- a/block.c
++++ b/block.c
+@@ -5351,8 +5351,6 @@ int coroutine_fn bdrv_co_discard(BlockDriverState *bs, int64_t sector_num,
+         return -EROFS;
+     }
+ 
+-    bdrv_reset_dirty(bs, sector_num, nb_sectors);
+-
+     /* Do nothing if disabled.  */
+     if (!(bs->open_flags & BDRV_O_UNMAP)) {
+         return 0;
+@@ -5362,6 +5360,8 @@ int coroutine_fn bdrv_co_discard(BlockDriverState *bs, int64_t sector_num,
+         return 0;
+     }
+ 
++    bdrv_set_dirty(bs, sector_num, nb_sectors);
++
+     max_discard = MIN_NON_ZERO(bs->bl.max_discard, BDRV_REQUEST_MAX_SECTORS);
+     while (nb_sectors > 0) {
+         int ret;
+-- 
+1.8.3.1
+

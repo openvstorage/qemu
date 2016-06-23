@@ -1,0 +1,241 @@
+From 8f0aadfec0e50ab2a7f734e2b608b96813809611 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 3 Jul 2015 06:45:04 +0200
+Subject: [PATCH 020/100] Split serial-isa into its own config option
+
+Message-id: <1435905906-24552-2-git-send-email-dgibson@redhat.com>
+Patchwork-id: 66686
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 1/3] Split serial-isa into its own config option
+Bugzilla: 1191845
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+At present, the core device model code for 8250-like serial ports
+(serial.c) and the code for serial ports attached to ISA-style legacy IO
+(serial-isa.c) are both controlled by the CONFIG_SERIAL variable.
+
+There are lots and lots of embedded platforms that have 8250-like serial
+ports but have never had anything resembling ISA legacy IO.  Therefore,
+split serial-isa into its own CONFIG_SERIAL_ISA option so it can be
+disabled for platforms where it's not appropriate.
+
+For now, I enabled CONFIG_SERIAL_ISA in every default-config where
+CONFIG_SERIAL is enabled, excepting microblaze, moxie, or32, and
+xtensa.  As best as I can tell, those platforms never used legacy ISA,
+and also don't include PCI support (which would allow connection of a
+PCI->ISA bridge and/or a southbridge including legacy ISA serial
+ports).
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+
+Upstream: Pending (posted, but not merged)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	default-configs/ppc64-softmmu.mak
+	default-configs/x86_64-softmmu.mak
+
+Downstream configs are different from upstream, hence the conflicts.
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+---
+ default-configs/alpha-softmmu.mak    | 1 +
+ default-configs/arm-softmmu.mak      | 1 +
+ default-configs/i386-softmmu.mak     | 1 +
+ default-configs/mips-softmmu.mak     | 1 +
+ default-configs/mips64-softmmu.mak   | 1 +
+ default-configs/mips64el-softmmu.mak | 1 +
+ default-configs/mipsel-softmmu.mak   | 1 +
+ default-configs/ppc-softmmu.mak      | 1 +
+ default-configs/ppc64-softmmu.mak    | 1 +
+ default-configs/ppcemb-softmmu.mak   | 1 +
+ default-configs/sh4-softmmu.mak      | 1 +
+ default-configs/sh4eb-softmmu.mak    | 1 +
+ default-configs/sparc64-softmmu.mak  | 1 +
+ default-configs/x86_64-softmmu.mak   | 1 +
+ hw/char/Makefile.objs                | 3 ++-
+ 15 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/default-configs/alpha-softmmu.mak b/default-configs/alpha-softmmu.mak
+index 7f6161e..e0d75e3 100644
+--- a/default-configs/alpha-softmmu.mak
++++ b/default-configs/alpha-softmmu.mak
+@@ -3,6 +3,7 @@
+ include pci.mak
+ include usb.mak
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_I8254=y
+ CONFIG_PCKBD=y
+ CONFIG_VGA_CIRRUS=y
+diff --git a/default-configs/arm-softmmu.mak b/default-configs/arm-softmmu.mak
+index deb788d..f8a24d8 100644
+--- a/default-configs/arm-softmmu.mak
++++ b/default-configs/arm-softmmu.mak
+@@ -7,6 +7,7 @@ CONFIG_ISA_MMIO=y
+ CONFIG_NAND=y
+ CONFIG_ECC=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PTIMER=y
+ CONFIG_SD=y
+ CONFIG_MAX7310=y
+diff --git a/default-configs/i386-softmmu.mak b/default-configs/i386-softmmu.mak
+index c2b82de..34c1725 100644
+--- a/default-configs/i386-softmmu.mak
++++ b/default-configs/i386-softmmu.mak
+@@ -9,6 +9,7 @@ CONFIG_VGA_CIRRUS=y
+ CONFIG_VMWARE_VGA=y
+ CONFIG_VMMOUSE=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PARALLEL=y
+ CONFIG_I8254=y
+ CONFIG_PCSPK=y
+diff --git a/default-configs/mips-softmmu.mak b/default-configs/mips-softmmu.mak
+index 645908e..b2cc12d 100644
+--- a/default-configs/mips-softmmu.mak
++++ b/default-configs/mips-softmmu.mak
+@@ -9,6 +9,7 @@ CONFIG_VGA_ISA_MM=y
+ CONFIG_VGA_CIRRUS=y
+ CONFIG_VMWARE_VGA=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PARALLEL=y
+ CONFIG_I8254=y
+ CONFIG_PCSPK=y
+diff --git a/default-configs/mips64-softmmu.mak b/default-configs/mips64-softmmu.mak
+index 2ce9fb3..c3b1ee5 100644
+--- a/default-configs/mips64-softmmu.mak
++++ b/default-configs/mips64-softmmu.mak
+@@ -9,6 +9,7 @@ CONFIG_VGA_ISA_MM=y
+ CONFIG_VGA_CIRRUS=y
+ CONFIG_VMWARE_VGA=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PARALLEL=y
+ CONFIG_I8254=y
+ CONFIG_PCSPK=y
+diff --git a/default-configs/mips64el-softmmu.mak b/default-configs/mips64el-softmmu.mak
+index 0e978e7..b0922c1 100644
+--- a/default-configs/mips64el-softmmu.mak
++++ b/default-configs/mips64el-softmmu.mak
+@@ -9,6 +9,7 @@ CONFIG_VGA_ISA_MM=y
+ CONFIG_VGA_CIRRUS=y
+ CONFIG_VMWARE_VGA=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PARALLEL=y
+ CONFIG_I8254=y
+ CONFIG_PCSPK=y
+diff --git a/default-configs/mipsel-softmmu.mak b/default-configs/mipsel-softmmu.mak
+index 17cce79..b494ef9 100644
+--- a/default-configs/mipsel-softmmu.mak
++++ b/default-configs/mipsel-softmmu.mak
+@@ -9,6 +9,7 @@ CONFIG_VGA_ISA_MM=y
+ CONFIG_VGA_CIRRUS=y
+ CONFIG_VMWARE_VGA=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PARALLEL=y
+ CONFIG_I8254=y
+ CONFIG_PCSPK=y
+diff --git a/default-configs/ppc-softmmu.mak b/default-configs/ppc-softmmu.mak
+index ca9f50f..6ece4c6 100644
+--- a/default-configs/ppc-softmmu.mak
++++ b/default-configs/ppc-softmmu.mak
+@@ -45,5 +45,6 @@ CONFIG_PLATFORM_BUS=y
+ CONFIG_ETSEC=y
+ CONFIG_LIBDECNUMBER=y
+ # For PReP
++CONFIG_SERIAL_ISA=y
+ CONFIG_MC146818RTC=y
+ CONFIG_ISA_TESTDEV=y
+diff --git a/default-configs/ppc64-softmmu.mak b/default-configs/ppc64-softmmu.mak
+index 5a91208..e18d808 100644
+--- a/default-configs/ppc64-softmmu.mak
++++ b/default-configs/ppc64-softmmu.mak
+@@ -25,4 +25,5 @@ CONFIG_USB_OHCI=y
+ CONFIG_XICS=$(CONFIG_PSERIES)
+ CONFIG_XICS_KVM=$(and $(CONFIG_PSERIES),$(CONFIG_KVM))
+ CONFIG_I8259=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_ISA_TESTDEV=y
+diff --git a/default-configs/ppcemb-softmmu.mak b/default-configs/ppcemb-softmmu.mak
+index 4fc5464..b261e07 100644
+--- a/default-configs/ppcemb-softmmu.mak
++++ b/default-configs/ppcemb-softmmu.mak
+@@ -5,6 +5,7 @@ include sound.mak
+ include usb.mak
+ CONFIG_M48T59=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_I8257=y
+ CONFIG_OPENPIC=y
+ CONFIG_MACIO=y
+diff --git a/default-configs/sh4-softmmu.mak b/default-configs/sh4-softmmu.mak
+index 8e00390..546d855 100644
+--- a/default-configs/sh4-softmmu.mak
++++ b/default-configs/sh4-softmmu.mak
+@@ -3,6 +3,7 @@
+ include pci.mak
+ include usb.mak
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PTIMER=y
+ CONFIG_PFLASH_CFI02=y
+ CONFIG_SH4=y
+diff --git a/default-configs/sh4eb-softmmu.mak b/default-configs/sh4eb-softmmu.mak
+index efdd058..2d3fd49 100644
+--- a/default-configs/sh4eb-softmmu.mak
++++ b/default-configs/sh4eb-softmmu.mak
+@@ -3,6 +3,7 @@
+ include pci.mak
+ include usb.mak
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PTIMER=y
+ CONFIG_PFLASH_CFI02=y
+ CONFIG_SH4=y
+diff --git a/default-configs/sparc64-softmmu.mak b/default-configs/sparc64-softmmu.mak
+index 123bb99..b79272c 100644
+--- a/default-configs/sparc64-softmmu.mak
++++ b/default-configs/sparc64-softmmu.mak
+@@ -6,6 +6,7 @@ CONFIG_ISA_MMIO=y
+ CONFIG_M48T59=y
+ CONFIG_PTIMER=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_PARALLEL=y
+ CONFIG_PCKBD=y
+ CONFIG_FDC=y
+diff --git a/default-configs/x86_64-softmmu.mak b/default-configs/x86_64-softmmu.mak
+index f218e06..6f54c49 100644
+--- a/default-configs/x86_64-softmmu.mak
++++ b/default-configs/x86_64-softmmu.mak
+@@ -8,6 +8,7 @@ CONFIG_VGA_PCI=y
+ CONFIG_VGA_CIRRUS=y
+ CONFIG_VMMOUSE=y
+ CONFIG_SERIAL=y
++CONFIG_SERIAL_ISA=y
+ CONFIG_I8254=y
+ CONFIG_PCSPK=y
+ CONFIG_PCKBD=y
+diff --git a/hw/char/Makefile.objs b/hw/char/Makefile.objs
+index 5931cc8..be42d2f 100644
+--- a/hw/char/Makefile.objs
++++ b/hw/char/Makefile.objs
+@@ -2,7 +2,8 @@ common-obj-$(CONFIG_IPACK) += ipoctal232.o
+ common-obj-$(CONFIG_ESCC) += escc.o
+ common-obj-$(CONFIG_PARALLEL) += parallel.o
+ common-obj-$(CONFIG_PL011) += pl011.o
+-common-obj-$(CONFIG_SERIAL) += serial.o serial-isa.o
++common-obj-$(CONFIG_SERIAL) += serial.o
++common-obj-$(CONFIG_SERIAL_ISA) += serial-isa.o
+ common-obj-$(CONFIG_SERIAL_PCI) += serial-pci.o
+ common-obj-$(CONFIG_VIRTIO) += virtio-console.o
+ common-obj-$(CONFIG_XILINX) += xilinx_uartlite.o
+-- 
+1.8.3.1
+

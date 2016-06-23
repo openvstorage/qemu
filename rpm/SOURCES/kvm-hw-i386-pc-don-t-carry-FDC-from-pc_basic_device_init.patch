@@ -1,0 +1,156 @@
+From 968dc96774132aa0bce5827991791de8d80d50b2 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Wed, 8 Jul 2015 19:41:24 +0200
+Subject: [PATCH 10/23] hw/i386/pc: don't carry FDC from pc_basic_device_init()
+ to pc_cmos_init()
+
+Message-id: <1436384484-21640-8-git-send-email-lersek@redhat.com>
+Patchwork-id: 66878
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 7/7] hw/i386/pc: don't carry FDC from pc_basic_device_init() to pc_cmos_init()
+Bugzilla: 1227282
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: John Snow <jsnow@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Thanks to the last patch, pc_cmos_init() doesn't need the (optional)
+board-default FDC any longer as an input parameter. Update
+pc_basic_device_init() not to hand it back to pc_init1() / pc_q35_init(),
+and update the latter not to carry the FDC to pc_cmos_init(). This
+simplifies the code.
+
+pc_init1() | pc_q35_init()
+  pc_basic_device_init()
+  pc_cmos_init()
+
+Cc: Jan Tomko <jtomko@redhat.com>
+Cc: John Snow <jsnow@redhat.com>
+Cc: Markus Armbruster <armbru@redhat.com>
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: John Snow <jsnow@redhat.com>
+Reviewed-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 220a8846429ac954932e16010efb07af0aba4529)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c         | 7 ++++---
+ hw/i386/pc_piix.c    | 5 ++---
+ hw/i386/pc_q35.c     | 5 ++---
+ include/hw/i386/pc.h | 3 +--
+ 4 files changed, 9 insertions(+), 11 deletions(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 5371728..f87ffe4 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -452,7 +452,7 @@ static void pc_cmos_init_late(void *opaque)
+ 
+ void pc_cmos_init(ram_addr_t ram_size, ram_addr_t above_4g_mem_size,
+                   const char *boot_device, MachineState *machine,
+-                  ISADevice *floppy, BusState *idebus0, BusState *idebus1,
++                  BusState *idebus0, BusState *idebus1,
+                   ISADevice *s)
+ {
+     int val;
+@@ -1479,7 +1479,6 @@ static const MemoryRegionOps ioportF0_io_ops = {
+ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+                           ISADevice **rtc_state,
+                           bool create_fdctrl,
+-                          ISADevice **floppy,
+                           bool no_vmport,
+                           uint32 hpet_irqs)
+ {
+@@ -1576,7 +1575,9 @@ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+         fd[i] = drive_get(IF_FLOPPY, 0, i);
+         create_fdctrl |= !!fd[i];
+     }
+-    *floppy = create_fdctrl ? fdctrl_init_isa(isa_bus, fd) : NULL;
++    if (create_fdctrl) {
++        fdctrl_init_isa(isa_bus, fd);
++    }
+ }
+ 
+ void pc_nic_init(ISABus *isa_bus, PCIBus *pci_bus)
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 16dbf3e..7aaa19e 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -95,7 +95,6 @@ static void pc_init1(MachineState *machine,
+     DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
+     BusState *idebus[MAX_IDE_BUS];
+     ISADevice *rtc_state;
+-    ISADevice *floppy;
+     MemoryRegion *ram_memory;
+     MemoryRegion *pci_memory;
+     MemoryRegion *rom_memory;
+@@ -242,7 +241,7 @@ static void pc_init1(MachineState *machine,
+     }
+ 
+     /* init basic PC hardware */
+-    pc_basic_device_init(isa_bus, gsi, &rtc_state, true, &floppy,
++    pc_basic_device_init(isa_bus, gsi, &rtc_state, true,
+                          (pc_machine->vmport != ON_OFF_AUTO_ON), 0x4);
+ 
+     pc_nic_init(isa_bus, pci_bus);
+@@ -274,7 +273,7 @@ static void pc_init1(MachineState *machine,
+     }
+ 
+     pc_cmos_init(below_4g_mem_size, above_4g_mem_size, machine->boot_order,
+-                 machine, floppy, idebus[0], idebus[1], rtc_state);
++                 machine, idebus[0], idebus[1], rtc_state);
+ 
+     if (pci_enabled && usb_enabled()) {
+         pci_create_simple(pci_bus, piix3_devfn + 2, "piix3-usb-uhci");
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 4601140..41c53ac 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -72,7 +72,6 @@ static void pc_q35_init(MachineState *machine)
+     PCIDevice *lpc;
+     BusState *idebus[MAX_SATA_PORTS];
+     ISADevice *rtc_state;
+-    ISADevice *floppy;
+     MemoryRegion *pci_memory;
+     MemoryRegion *rom_memory;
+     MemoryRegion *ram_memory;
+@@ -250,7 +249,7 @@ static void pc_q35_init(MachineState *machine)
+     }
+ 
+     /* init basic PC hardware */
+-    pc_basic_device_init(isa_bus, gsi, &rtc_state, !mc->no_floppy, &floppy,
++    pc_basic_device_init(isa_bus, gsi, &rtc_state, !mc->no_floppy,
+                          (pc_machine->vmport != ON_OFF_AUTO_ON), 0xff0104);
+ 
+     /* connect pm stuff to lpc */
+@@ -279,7 +278,7 @@ static void pc_q35_init(MachineState *machine)
+                       8, NULL, 0);
+ 
+     pc_cmos_init(below_4g_mem_size, above_4g_mem_size, machine->boot_order,
+-                 machine, floppy, idebus[0], idebus[1], rtc_state);
++                 machine, idebus[0], idebus[1], rtc_state);
+ 
+     /* the rest devices to which pci devfn is automatically assigned */
+     pc_vga_init(isa_bus, host_bus);
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index ce940ff..025a85c 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -200,13 +200,12 @@ DeviceState *pc_vga_init(ISABus *isa_bus, PCIBus *pci_bus);
+ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+                           ISADevice **rtc_state,
+                           bool create_fdctrl,
+-                          ISADevice **floppy,
+                           bool no_vmport,
+                           uint32 hpet_irqs);
+ void pc_init_ne2k_isa(ISABus *bus, NICInfo *nd);
+ void pc_cmos_init(ram_addr_t ram_size, ram_addr_t above_4g_mem_size,
+                   const char *boot_device, MachineState *machine,
+-                  ISADevice *floppy, BusState *ide0, BusState *ide1,
++                  BusState *ide0, BusState *ide1,
+                   ISADevice *s);
+ void pc_nic_init(ISABus *isa_bus, PCIBus *pci_bus);
+ void pc_pci_device_init(PCIBus *pci_bus);
+-- 
+1.8.3.1
+

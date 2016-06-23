@@ -1,0 +1,42 @@
+From 32cf26330aaea380d8a0bf07e973254f41fb8388 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:51 +0200
+Subject: [PATCH 06/28] migration: Remove duplicated assignment of SETUP status
+
+Message-id: <1438098431-30847-7-git-send-email-quintela@redhat.com>
+Patchwork-id: 67162
+O-Subject: [RHEL-7 qemu-kvm PATCH 06/26] migration: Remove duplicated assignment of SETUP status
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+We assign the MIGRATION_STATUS_SETUP status in two places.  Just in
+succession.  Just remove the second one.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit e45a1ebfc65fb23be8cddb684d97eaa92725484d)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/migration.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index eefbd18..67f34ef 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -726,9 +726,6 @@ static void *migration_thread(void *opaque)
+ 
+ void migrate_fd_connect(MigrationState *s)
+ {
+-    s->state = MIGRATION_STATUS_SETUP;
+-    trace_migrate_set_state(MIGRATION_STATUS_SETUP);
+-
+     /* This is a best 1st approximation. ns to ms */
+     s->expected_downtime = max_downtime/1000000;
+     s->cleanup_bh = qemu_bh_new(migrate_fd_cleanup, s);
+-- 
+1.8.3.1
+

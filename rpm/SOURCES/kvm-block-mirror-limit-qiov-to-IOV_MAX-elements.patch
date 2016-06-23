@@ -1,0 +1,74 @@
+From 598c0b45b72d7ff313249ea3f9b2713edf6fa818 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 6 Aug 2015 13:18:17 +0200
+Subject: [PATCH 27/28] block/mirror: limit qiov to IOV_MAX elements
+
+Message-id: <1438867097-4840-2-git-send-email-stefanha@redhat.com>
+Patchwork-id: 67380
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 1/1] block/mirror: limit qiov to IOV_MAX elements
+Bugzilla: 1238585
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Fam Zheng <famz@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+If mirror has more free buffers than IOV_MAX, preadv(2)/pwritev(2)
+EINVAL failures may be encountered.
+
+It is possible to trigger this by setting granularity to a low value
+like 8192.
+
+This patch stops appending chunks once IOV_MAX is reached.
+
+The spurious EINVAL failure can be reproduced with a qcow2 image file
+and the following QMP invocation:
+
+  qmp.command('drive-mirror', device='virtio0', target='/tmp/r7.s1',
+              granularity=8192, sync='full', mode='absolute-paths',
+              format='raw')
+
+While the guest is running dd if=/dev/zero of=/var/tmp/foo oflag=direct
+bs=4k.
+
+Cc: Jeff Cody <jcody@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Message-id: 1435761950-26714-1-git-send-email-stefanha@redhat.com
+Signed-off-by: Jeff Cody <jcody@redhat.com>
+(cherry picked from commit cae98cb87d269c33d23b2bccd79bb8d99a60d811)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block/mirror.c | 4 ++++
+ trace-events   | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index 775f48e..6f1bc3c 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -248,6 +248,10 @@ static uint64_t coroutine_fn mirror_iteration(MirrorBlockJob *s)
+             trace_mirror_break_buf_busy(s, nb_chunks, s->in_flight);
+             break;
+         }
++        if (IOV_MAX < nb_chunks + added_chunks) {
++            trace_mirror_break_iov_max(s, nb_chunks, added_chunks);
++            break;
++        }
+ 
+         /* We have enough free space to copy these sectors.  */
+         bitmap_set(s->in_flight_bitmap, next_chunk, added_chunks);
+diff --git a/trace-events b/trace-events
+index 360b0fa..b94bdbf 100644
+--- a/trace-events
++++ b/trace-events
+@@ -94,6 +94,7 @@ mirror_yield(void *s, int64_t cnt, int buf_free_count, int in_flight) "s %p dirt
+ mirror_yield_in_flight(void *s, int64_t sector_num, int in_flight) "s %p sector_num %"PRId64" in_flight %d"
+ mirror_yield_buf_busy(void *s, int nb_chunks, int in_flight) "s %p requested chunks %d in_flight %d"
+ mirror_break_buf_busy(void *s, int nb_chunks, int in_flight) "s %p requested chunks %d in_flight %d"
++mirror_break_iov_max(void *s, int nb_chunks, int added_chunks) "s %p requested chunks %d added_chunks %d"
+ 
+ # block/backup.c
+ backup_do_cow_enter(void *job, int64_t start, int64_t sector_num, int nb_sectors) "job %p start %"PRId64" sector_num %"PRId64" nb_sectors %d"
+-- 
+1.8.3.1
+

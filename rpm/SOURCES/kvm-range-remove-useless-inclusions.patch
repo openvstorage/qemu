@@ -1,0 +1,91 @@
+From 7b8e91f2ebab476e30fd80610b71d44dced73eb1 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:52:59 +0200
+Subject: [PATCH 02/31] range: remove useless inclusions
+
+Message-id: <1435154016-26233-7-git-send-email-marcel@redhat.com>
+Patchwork-id: 66434
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 06/43] range: remove useless inclusions
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+From: Paolo Bonzini <pbonzini@redhat.com>
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Michael Tokarev <mjt@tls.msk.ru>
+(cherry picked from commit f2fbb40ea32445b281696a1b3f16de670951de2e)
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ dma-helpers.c             | 1 -
+ hw/acpi/pcihp.c           | 1 -
+ hw/i386/acpi-build.c      | 1 -
+ include/hw/i386/ich9.h    | 1 -
+ include/hw/pci-host/q35.h | 1 -
+ 5 files changed, 5 deletions(-)
+
+diff --git a/dma-helpers.c b/dma-helpers.c
+index 33b1983..4b51425 100644
+--- a/dma-helpers.c
++++ b/dma-helpers.c
+@@ -10,7 +10,6 @@
+ #include "sysemu/block-backend.h"
+ #include "sysemu/dma.h"
+ #include "trace.h"
+-#include "qemu/range.h"
+ #include "qemu/thread.h"
+ #include "qemu/main-loop.h"
+ 
+diff --git a/hw/acpi/pcihp.c b/hw/acpi/pcihp.c
+index 612fec0..422603d 100644
+--- a/hw/acpi/pcihp.c
++++ b/hw/acpi/pcihp.c
+@@ -31,7 +31,6 @@
+ #include "hw/pci/pci.h"
+ #include "hw/acpi/acpi.h"
+ #include "sysemu/sysemu.h"
+-#include "qemu/range.h"
+ #include "exec/ioport.h"
+ #include "exec/address-spaces.h"
+ #include "hw/pci/pci_bus.h"
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index c9d4545..da9b588 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -26,7 +26,6 @@
+ #include "qemu-common.h"
+ #include "qemu/bitmap.h"
+ #include "qemu/osdep.h"
+-#include "qemu/range.h"
+ #include "qemu/error-report.h"
+ #include "hw/pci/pci.h"
+ #include "qom/cpu.h"
+diff --git a/include/hw/i386/ich9.h b/include/hw/i386/ich9.h
+index 59ea25b..c171578 100644
+--- a/include/hw/i386/ich9.h
++++ b/include/hw/i386/ich9.h
+@@ -2,7 +2,6 @@
+ #define HW_ICH9_H
+ 
+ #include "hw/hw.h"
+-#include "qemu/range.h"
+ #include "hw/isa/isa.h"
+ #include "hw/sysbus.h"
+ #include "hw/i386/pc.h"
+diff --git a/include/hw/pci-host/q35.h b/include/hw/pci-host/q35.h
+index 025d6e6..96d4cdc 100644
+--- a/include/hw/pci-host/q35.h
++++ b/include/hw/pci-host/q35.h
+@@ -23,7 +23,6 @@
+ #define HW_Q35_H
+ 
+ #include "hw/hw.h"
+-#include "qemu/range.h"
+ #include "hw/isa/isa.h"
+ #include "hw/sysbus.h"
+ #include "hw/i386/pc.h"
+-- 
+1.8.3.1
+

@@ -1,0 +1,64 @@
+From dcf7d0e27baf192b00c79b17e22d49653eb936e7 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Mon, 13 Jul 2015 19:17:41 +0200
+Subject: [PATCH 15/23] migration: introduce VMSTATE_BUFFER_UNSAFE_INFO_TEST()
+
+Message-id: <1436815069-15106-5-git-send-email-lersek@redhat.com>
+Patchwork-id: 66995
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 04/12] migration: introduce VMSTATE_BUFFER_UNSAFE_INFO_TEST()
+Bugzilla: 1242479
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+There is no _TEST() variant of VMSTATE_BUFFER_UNSAFE_INFO() yet, but we'll
+soon need it. Introduce it and rebase the original
+VMSTATE_BUFFER_UNSAFE_INFO() on top.
+
+The parameter order of the new function-like macro follows that of
+VMSTATE_SINGLE_TEST(): "_test" is introduced between "_state" and
+"_version".
+
+Cc: Juan Quintela <quintela@redhat.com>
+Cc: Amit Shah <amit.shah@redhat.com>
+Cc: Marcel Apfelbaum <marcel@redhat.com>
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 9df0b0e09c48ad543e6d12ee0c17d1857f83d3ca)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/migration/vmstate.h | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/include/migration/vmstate.h b/include/migration/vmstate.h
+index bc7616a..2aa2ec7 100644
+--- a/include/migration/vmstate.h
++++ b/include/migration/vmstate.h
+@@ -504,9 +504,10 @@ extern const VMStateInfo vmstate_info_bitmap;
+     .start        = (_start),                                        \
+ }
+ 
+-#define VMSTATE_BUFFER_UNSAFE_INFO(_field, _state, _version, _info, _size) { \
++#define VMSTATE_BUFFER_UNSAFE_INFO_TEST(_field, _state, _test, _version, _info, _size) { \
+     .name       = (stringify(_field)),                               \
+     .version_id = (_version),                                        \
++    .field_exists = (_test),                                         \
+     .size       = (_size),                                           \
+     .info       = &(_info),                                          \
+     .flags      = VMS_BUFFER,                                        \
+@@ -566,6 +567,10 @@ extern const VMStateInfo vmstate_info_bitmap;
+     VMSTATE_STRUCT_ARRAY_TEST(_field, _state, _num, NULL, _version,   \
+             _vmsd, _type)
+ 
++#define VMSTATE_BUFFER_UNSAFE_INFO(_field, _state, _version, _info, _size) \
++    VMSTATE_BUFFER_UNSAFE_INFO_TEST(_field, _state, NULL, _version, _info, \
++            _size)
++
+ #define VMSTATE_BOOL_V(_f, _s, _v)                                    \
+     VMSTATE_SINGLE(_f, _s, _v, vmstate_info_bool, bool)
+ 
+-- 
+1.8.3.1
+

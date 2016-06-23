@@ -1,0 +1,60 @@
+From 7d7489b30d731712fc0481d3c6702f8f3fd2f7fe Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Tue, 15 Sep 2015 20:33:36 +0200
+Subject: [PATCH 04/22] spapr: Populate ibm, associativity-lookup-arrays
+ correctly for non-NUMA
+
+Message-id: <1442349217-19986-2-git-send-email-thuth@redhat.com>
+Patchwork-id: 67771
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 1/2] spapr: Populate ibm, associativity-lookup-arrays correctly for non-NUMA
+Bugzilla: 1262670
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Bharata B Rao <bharata@linux.vnet.ibm.com>
+
+When NUMA isn't configured explicitly, assume node 0 is present for
+the purpose of creating ibm,associativity-lookup-arrays property
+under ibm,dynamic-reconfiguration-memory DT node. This ensures that
+the associativity index property is correctly updated in ibm,dynamic-memory
+for the LMB that is hotplugged.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit 61ed5913ac019ae1f866cf67d4466bb9ad5bd41d)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 4c2753b..f3a0517 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -717,6 +717,7 @@ static int spapr_populate_drconf_memory(sPAPRMachineState *spapr, void *fdt)
+     uint32_t nr_lmbs = machine->maxram_size/lmb_size - nr_rma_lmbs;
+     uint32_t nr_assigned_lmbs = machine->ram_size/lmb_size - nr_rma_lmbs;
+     uint32_t *int_buf, *cur_index, buf_len;
++    int nr_nodes = nb_numa_nodes ? nb_numa_nodes : 1;
+ 
+     /* Allocate enough buffer size to fit in ibm,dynamic-memory */
+     buf_len = nr_lmbs * SPAPR_DR_LMB_LIST_ENTRY_SIZE * sizeof(uint32_t) +
+@@ -782,10 +783,10 @@ static int spapr_populate_drconf_memory(sPAPRMachineState *spapr, void *fdt)
+ 
+     /* ibm,associativity-lookup-arrays */
+     cur_index = int_buf;
+-    int_buf[0] = cpu_to_be32(nb_numa_nodes);
++    int_buf[0] = cpu_to_be32(nr_nodes);
+     int_buf[1] = cpu_to_be32(4); /* Number of entries per associativity list */
+     cur_index += 2;
+-    for (i = 0; i < nb_numa_nodes; i++) {
++    for (i = 0; i < nr_nodes; i++) {
+         uint32_t associativity[] = {
+             cpu_to_be32(0x0),
+             cpu_to_be32(0x0),
+-- 
+1.8.3.1
+

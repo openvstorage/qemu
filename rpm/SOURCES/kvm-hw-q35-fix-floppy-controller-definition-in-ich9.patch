@@ -1,0 +1,49 @@
+From 85fcd6d20b8a2ac13135c7c3da973d12d09d4fb1 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Thu, 25 Jun 2015 16:06:42 +0200
+Subject: [PATCH 42/44] hw/q35: fix floppy controller definition in ich9
+
+Message-id: <1435248402-13780-1-git-send-email-marcel@redhat.com>
+Patchwork-id: 66495
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH] hw/q35: fix floppy controller definition in ich9
+Bugzilla: 894956
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=894956
+Brew: https://brewweb.devel.redhat.com/taskinfo?taskID=9422573
+Upstream: 557772f26b361ade84acecb366fe6fdd2d55a6d9
+
+git-backport-diff:
+001/1:[----] [--] 'hw/q35: fix floppy controller definition in ich9'
+
+In DSDT FDC0 declares the IO region as IO(Decode16, 0x03F2, 0x03F2, 0x00, 0x04).
+Use the same in lpc_ich9 initialization code.
+Now the floppy drive is detected correctly on Windows.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 557772f26b361ade84acecb366fe6fdd2d55a6d9)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/isa/lpc_ich9.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/isa/lpc_ich9.c b/hw/isa/lpc_ich9.c
+index dba7585..bc9afc6 100644
+--- a/hw/isa/lpc_ich9.c
++++ b/hw/isa/lpc_ich9.c
+@@ -494,7 +494,7 @@ static void ich9_lpc_machine_ready(Notifier *n, void *opaque)
+         /* lpt */
+         pci_conf[0x82] |= 0x04;
+     }
+-    if (memory_region_present(io_as, 0x3f0)) {
++    if (memory_region_present(io_as, 0x3f2)) {
+         /* floppy */
+         pci_conf[0x82] |= 0x08;
+     }
+-- 
+1.8.3.1
+

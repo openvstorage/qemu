@@ -1,0 +1,113 @@
+From 33fa316a495c4ecba70730afa90bc4e125aeaa69 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:15 +0200
+Subject: [PATCH 53/58] spapr: Initialize hotplug memory address space
+
+Message-id: <1437715580-14817-24-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67140
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 23/28] spapr: Initialize hotplug memory address space
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Initialize a hotplug memory region under which all the hotplugged
+memory is accommodated. Also enable memory hotplug by setting
+CONFIG_MEM_HOTPLUG.
+
+Modelled on i386 memory hotplug.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit 36038bbb3cb9ed37505b98fd6625d61c4a64f209)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	default-configs/ppc64-softmmu.mak
+
+Conflicts due to substantial changes in the downstream default config.
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+---
+ default-configs/ppc64-softmmu.mak |  1 +
+ hw/ppc/spapr.c                    | 18 ++++++++++++++++++
+ include/hw/ppc/spapr.h            | 12 ++++++++++++
+ 3 files changed, 31 insertions(+)
+
+diff --git a/default-configs/ppc64-softmmu.mak b/default-configs/ppc64-softmmu.mak
+index 037064b..0f98461 100644
+--- a/default-configs/ppc64-softmmu.mak
++++ b/default-configs/ppc64-softmmu.mak
+@@ -20,3 +20,4 @@ CONFIG_USB_OHCI=y
+ # For pSeries
+ CONFIG_XICS=$(CONFIG_PSERIES)
+ CONFIG_XICS_KVM=$(and $(CONFIG_PSERIES),$(CONFIG_KVM))
++CONFIG_MEM_HOTPLUG=y
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 956f80f..a6fd7ea 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1549,6 +1549,24 @@ static void ppc_spapr_init(MachineState *machine)
+         memory_region_add_subregion(sysmem, 0, rma_region);
+     }
+ 
++    /* initialize hotplug memory address space */
++    if (machine->ram_size < machine->maxram_size) {
++        ram_addr_t hotplug_mem_size = machine->maxram_size - machine->ram_size;
++
++        if (machine->ram_slots > SPAPR_MAX_RAM_SLOTS) {
++            error_report("unsupported amount of memory slots: %"PRIu64,
++                          machine->ram_slots);
++            exit(EXIT_FAILURE);
++        }
++
++        spapr->hotplug_memory.base = ROUND_UP(machine->ram_size,
++                                              SPAPR_HOTPLUG_MEM_ALIGN);
++        memory_region_init(&spapr->hotplug_memory.mr, OBJECT(spapr),
++                           "hotplug-memory", hotplug_mem_size);
++        memory_region_add_subregion(sysmem, spapr->hotplug_memory.base,
++                                    &spapr->hotplug_memory.mr);
++    }
++
+     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, "spapr-rtas.bin");
+     if (!filename) {
+         hw_error("Could not find LPAR rtas '%s'\n", "spapr-rtas.bin");
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index 24efb7b..3671d5a 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -5,6 +5,7 @@
+ #include "hw/boards.h"
+ #include "hw/ppc/xics.h"
+ #include "hw/ppc/spapr_drc.h"
++#include "hw/mem/pc-dimm.h"
+ 
+ struct VIOsPAPRBus;
+ struct sPAPRPHBState;
+@@ -76,6 +77,7 @@ struct sPAPRMachineState {
+ 
+     /*< public >*/
+     char *kvm_type;
++    MemoryHotplugState hotplug_memory;
+ };
+ 
+ #define H_SUCCESS         0
+@@ -603,4 +605,14 @@ int spapr_rtc_import_offset(DeviceState *dev, int64_t legacy_offset);
+ 
+ #define SPAPR_MEMORY_BLOCK_SIZE (1 << 28) /* 256MB */
+ 
++/*
++ * This defines the maximum number of DIMM slots we can have for sPAPR
++ * guest. This is not defined by sPAPR but we are defining it to 32 slots
++ * based on default number of slots provided by PowerPC kernel.
++ */
++#define SPAPR_MAX_RAM_SLOTS     32
++
++/* 1GB alignment for hotplug memory region */
++#define SPAPR_HOTPLUG_MEM_ALIGN (1ULL << 30)
++
+ #endif /* !defined (__HW_SPAPR_H__) */
+-- 
+1.8.3.1
+

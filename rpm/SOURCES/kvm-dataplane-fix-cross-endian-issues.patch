@@ -1,0 +1,63 @@
+From 67986e3ba12ce33ca3cddbfd9a01e374c6ebfd20 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:11 +0200
+Subject: [PATCH 097/100] dataplane: fix cross-endian issues
+
+Message-id: <1436260751-25015-69-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66843
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 68/68] dataplane: fix cross-endian issues
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Greg Kurz <gkurz@linux.vnet.ibm.com>
+
+Accesses to vring_avail_event and vring_used_event must honor the queue
+endianness.
+
+This patch allows cross-endian setups to use dataplane (tested with ppc64
+on ppc64le, and vice-versa).
+
+Suggested-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Signed-off-by: Greg Kurz <gkurz@linux.vnet.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+(cherry picked from commit 1103bac4c86a7e9854af62a2fb10d9733db0450a
+ from Michael's tree)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/dataplane/vring.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/hw/virtio/dataplane/vring.c b/hw/virtio/dataplane/vring.c
+index 5c7b8c2..d9614da 100644
+--- a/hw/virtio/dataplane/vring.c
++++ b/hw/virtio/dataplane/vring.c
+@@ -153,7 +153,8 @@ bool vring_should_notify(VirtIODevice *vdev, Vring *vring)
+         return true;
+     }
+ 
+-    return vring_need_event(vring_used_event(&vring->vr), new, old);
++    return vring_need_event(virtio_tswap16(vdev, vring_used_event(&vring->vr)),
++                            new, old);
+ }
+ 
+ 
+@@ -402,7 +403,8 @@ int vring_pop(VirtIODevice *vdev, Vring *vring,
+     /* On success, increment avail index. */
+     vring->last_avail_idx++;
+     if (virtio_has_feature(vdev, VIRTIO_RING_F_EVENT_IDX)) {
+-        vring_avail_event(&vring->vr) = vring->last_avail_idx;
++        vring_avail_event(&vring->vr) =
++            virtio_tswap16(vdev, vring->last_avail_idx);
+     }
+ 
+     return head;
+-- 
+1.8.3.1
+

@@ -1,0 +1,45 @@
+From 27ffdaf99ae19b17d6ac66565101e52c9c4d277d Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:32 +0200
+Subject: [PATCH 058/100] virtio-net: no writeable mac for virtio-1
+
+Message-id: <1436260751-25015-30-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66804
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 29/68] virtio-net: no writeable mac for virtio-1
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+Devices operating as virtio 1.0 may not allow writes to the mac
+address in config space.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit b6a3cddb22d3f0f729e267d45f350ae31bdebbcf)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/virtio-net.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index a4397b4..2b8d019 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -87,6 +87,7 @@ static void virtio_net_set_config(VirtIODevice *vdev, const uint8_t *config)
+     memcpy(&netcfg, config, n->config_size);
+ 
+     if (!virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_MAC_ADDR) &&
++        !virtio_has_feature(vdev, VIRTIO_F_VERSION_1) &&
+         memcmp(netcfg.mac, n->mac, ETH_ALEN)) {
+         memcpy(n->mac, netcfg.mac, ETH_ALEN);
+         qemu_format_nic_info_str(qemu_get_queue(n->nic), n->mac);
+-- 
+1.8.3.1
+

@@ -1,0 +1,60 @@
+From 01bff0fcb935d73ccfe3c01138242c699708a696 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 3 Jul 2015 06:45:05 +0200
+Subject: [PATCH 021/100] rhel: Disable "info irq" and "info pic" for Power
+
+Message-id: <1435905906-24552-3-git-send-email-dgibson@redhat.com>
+Patchwork-id: 66687
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 2/3] rhel: Disable "info irq" and "info pic" for Power
+Bugzilla: 1191845
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+The "info irq" and "info pic" HMP commands are available on some, but not
+all targets, and what they do isn't terribly consistent.  For SPARC and
+LM32 they do something platform specific, but for x86, powerpc, and MIPS
+they print some information from the i8259 (and only the i8259) interrupt
+controller.
+
+It's debatable whether these commands are any use at all, but in particular
+they're no use for the RHEV configuration on Power, since the pseries
+machine type doesn't use an i8259.  It is relevant on the upstream ppc
+target, though, because the "prep" machine type does use an i8259 as its
+primary interrupt controller.
+
+The preferred upstream approach to address this is to construct new QOM and
+qapi interfaces to query information on any interrupt controller and use
+those to either replace the "info irq" and "info pic" HMP commands, or to
+make them do something useful on all platforms in a more general way.
+
+That's going to take a while, though, so this is a downstream only hack to
+remove these commands for ppc.  This isn't a regression downstream, because
+we don't support prep.  This will allow us to remove the remaining ISA
+devices, so we don't clutter qemu's advertised devices with things we don't
+support on Power.
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1191845
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ monitor.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/monitor.c b/monitor.c
+index 2b5643d..060248a 100644
+--- a/monitor.c
++++ b/monitor.c
+@@ -2659,7 +2659,7 @@ static mon_cmd_t info_cmds[] = {
+         .help       = "show the command line history",
+         .mhandler.cmd = hmp_info_history,
+     },
+-#if defined(TARGET_I386) || defined(TARGET_PPC) || defined(TARGET_MIPS) || \
++#if defined(TARGET_I386) || defined(TARGET_MIPS) || \
+     defined(TARGET_LM32) || (defined(TARGET_SPARC) && !defined(TARGET_SPARC64))
+     {
+         .name       = "irq",
+-- 
+1.8.3.1
+

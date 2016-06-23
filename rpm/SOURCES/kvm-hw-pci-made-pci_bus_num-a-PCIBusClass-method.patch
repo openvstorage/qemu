@@ -1,0 +1,82 @@
+From 15a03f34c4d492778157b973d95443d922505c94 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:22 +0200
+Subject: [PATCH 13/31] hw/pci: made pci_bus_num a PCIBusClass method
+
+Message-id: <1435154016-26233-30-git-send-email-marcel@redhat.com>
+Patchwork-id: 66459
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 29/43] hw/pci: made pci_bus_num a PCIBusClass method
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+From: Marcel Apfelbaum <marcel.a@redhat.com>
+
+Refactoring it as a method of PCIBusClass will allow
+different implementations for subclasses.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 602141d9974d726063907851528c89d617730156)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci/pci.c             | 13 ++++++++++---
+ include/hw/pci/pci_bus.h |  1 +
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index a77871b..ca6a708 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -93,6 +93,14 @@ static bool pcibus_is_root(PCIBus *bus)
+     return !bus->parent_dev;
+ }
+ 
++static int pcibus_num(PCIBus *bus)
++{
++    if (pcibus_is_root(bus)) {
++        return 0; /* pci host bridge */
++    }
++    return bus->parent_dev->config[PCI_SECONDARY_BUS];
++}
++
+ static void pci_bus_class_init(ObjectClass *klass, void *data)
+ {
+     BusClass *k = BUS_CLASS(klass);
+@@ -106,6 +114,7 @@ static void pci_bus_class_init(ObjectClass *klass, void *data)
+     k->reset = pcibus_reset;
+ 
+     pbc->is_root = pcibus_is_root;
++    pbc->bus_num = pcibus_num;
+ }
+ 
+ static const TypeInfo pci_bus_info = {
+@@ -390,9 +399,7 @@ PCIBus *pci_register_bus(DeviceState *parent, const char *name,
+ 
+ int pci_bus_num(PCIBus *s)
+ {
+-    if (pci_bus_is_root(s))
+-        return 0;       /* pci host bridge */
+-    return s->parent_dev->config[PCI_SECONDARY_BUS];
++    return PCI_BUS_GET_CLASS(s)->bus_num(s);
+ }
+ 
+ static int get_pci_config_device(QEMUFile *f, void *pv, size_t size)
+diff --git a/include/hw/pci/pci_bus.h b/include/hw/pci/pci_bus.h
+index b5ba9c4..7b9939e 100644
+--- a/include/hw/pci/pci_bus.h
++++ b/include/hw/pci/pci_bus.h
+@@ -14,6 +14,7 @@ typedef struct PCIBusClass {
+     /*< public >*/
+ 
+     bool (*is_root)(PCIBus *bus);
++    int (*bus_num)(PCIBus *bus);
+ } PCIBusClass;
+ 
+ struct PCIBus {
+-- 
+1.8.3.1
+

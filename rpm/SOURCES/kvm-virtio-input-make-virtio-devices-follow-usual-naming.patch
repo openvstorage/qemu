@@ -1,0 +1,46 @@
+From 5ed5a8202aa5639f9b240d4cfee68c365ad784c8 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:26 +0200
+Subject: [PATCH 052/100] virtio-input: make virtio devices follow usual naming
+ convention
+
+Message-id: <1436260751-25015-24-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66798
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 23/68] virtio-input: make virtio devices follow usual naming convention
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit e63d114b8a81e22ff9295674ba64b21255d589ee)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/virtio/virtio-input.h | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/include/hw/virtio/virtio-input.h b/include/hw/virtio/virtio-input.h
+index bcee355..8134178 100644
+--- a/include/hw/virtio/virtio-input.h
++++ b/include/hw/virtio/virtio-input.h
+@@ -40,10 +40,10 @@ typedef struct virtio_input_event virtio_input_event;
+ #define VIRTIO_INPUT_CLASS(klass) \
+         OBJECT_CLASS_CHECK(VirtIOInputClass, klass, TYPE_VIRTIO_INPUT)
+ 
+-#define TYPE_VIRTIO_INPUT_HID "virtio-input-hid"
+-#define TYPE_VIRTIO_KEYBOARD  "virtio-keyboard"
+-#define TYPE_VIRTIO_MOUSE     "virtio-mouse"
+-#define TYPE_VIRTIO_TABLET    "virtio-tablet"
++#define TYPE_VIRTIO_INPUT_HID "virtio-input-hid-device"
++#define TYPE_VIRTIO_KEYBOARD  "virtio-keyboard-device"
++#define TYPE_VIRTIO_MOUSE     "virtio-mouse-device"
++#define TYPE_VIRTIO_TABLET    "virtio-tablet-device"
+ 
+ #define VIRTIO_INPUT_HID(obj) \
+         OBJECT_CHECK(VirtIOInputHID, (obj), TYPE_VIRTIO_INPUT_HID)
+-- 
+1.8.3.1
+

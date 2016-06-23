@@ -1,0 +1,70 @@
+From 677ce49c04cc07d9ef2a8919988ff57cef5ea99e Mon Sep 17 00:00:00 2001
+From: Max Reitz <mreitz@redhat.com>
+Date: Wed, 17 Jun 2015 12:42:55 +0200
+Subject: [PATCH 7/9] iotests: qcow2 COW with minimal L2 cache size
+
+Message-id: <1434544976-15816-3-git-send-email-mreitz@redhat.com>
+Patchwork-id: 66282
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 2/3] iotests: qcow2 COW with minimal L2 cache size
+Bugzilla: 1226996
+RH-Acked-by: Fam Zheng <famz@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+BZ: 1226996
+
+This adds a test case to test 103 for performing a COW operation in a
+qcow2 image using an L2 cache with minimal size (which should be at
+least two clusters so the COW can access both source and destination
+simultaneously).
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Reviewed-by: Alberto Garcia <berto@igalia.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit a4291eafc597c0944057930acf3e51d899f79c2e)
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/qemu-iotests/103     | 10 ++++++++++
+ tests/qemu-iotests/103.out |  5 +++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/tests/qemu-iotests/103 b/tests/qemu-iotests/103
+index ccab551..fa9a3c1 100755
+--- a/tests/qemu-iotests/103
++++ b/tests/qemu-iotests/103
+@@ -93,6 +93,16 @@ $QEMU_IO -c "open -o l2-cache-size=1M,refcount-cache-size=0.25M $TEST_IMG" \
+          -c 'read -P 42 0 64k' \
+     | _filter_qemu_io
+ 
++echo
++echo '=== Testing minimal L2 cache and COW ==='
++echo
++
++$QEMU_IMG snapshot -c foo "$TEST_IMG"
++# This requires a COW operation, which accesses two L2 tables simultaneously
++# (COW source and destination), so there must be enough space in the cache to
++# place both tables there (and qemu should not crash)
++$QEMU_IO -c "open -o cache-size=0 $TEST_IMG" -c 'write 0 64k' | _filter_qemu_io
++
+ # success, all done
+ echo '*** done'
+ rm -f $seq.full
+diff --git a/tests/qemu-iotests/103.out b/tests/qemu-iotests/103.out
+index ee705b0..d05f49f 100644
+--- a/tests/qemu-iotests/103.out
++++ b/tests/qemu-iotests/103.out
+@@ -26,4 +26,9 @@ read 65536/65536 bytes at offset 0
+ 64 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+ read 65536/65536 bytes at offset 0
+ 64 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
++
++=== Testing minimal L2 cache and COW ===
++
++wrote 65536/65536 bytes at offset 0
++64 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+ *** done
+-- 
+1.8.3.1
+

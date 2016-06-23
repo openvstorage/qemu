@@ -1,0 +1,97 @@
+From 9fddb8cdebd6164d401b693a7e5590a2974fb9e5 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Tue, 6 Oct 2015 04:32:09 +0200
+Subject: [PATCH 09/10] spapr_iommu: Provide a function to switch a TCE table
+ to allowing VFIO
+
+Message-id: <20151006153209.4849b61b@voom.fritz.box>
+Patchwork-id: 68079
+O-Subject: Re: [RHEL7.2 qemu-kvm-rhev PATCHv4 09/10] spapr_iommu: Provide a function to switch a TCE table to allowing VFIO
+Bugzilla: 1259556
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+
+Because of the way non-VFIO guest IOMMU operations are KVM accelerated, not
+all TCE tables (guest IOMMU contexts) can support VFIO devices.  Currently,
+this is decided at creation time.
+
+To support hotplug of VFIO devices, we need to allow a TCE table which
+previously didn't allow VFIO devices to be switched so that it can.  This
+patch adds an spapr_tce_set_need_vfio() function to do this, by
+reallocating the table in userspace if necessary.
+
+Currently this doesn't allow the KVM acceleration to be re-enabled if all
+the VFIO devices are removed.  That's an optimization for another time.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Laurent Vivier <lvivier@redhat.com>
+
+Upstream: Posted, revised, not merged
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_iommu.c   | 32 ++++++++++++++++++++++++++++++++
+ include/hw/ppc/spapr.h |  2 ++
+ 2 files changed, 34 insertions(+)
+
+diff --git a/hw/ppc/spapr_iommu.c b/hw/ppc/spapr_iommu.c
+index af561e0..13d42d4 100644
+--- a/hw/ppc/spapr_iommu.c
++++ b/hw/ppc/spapr_iommu.c
+@@ -154,6 +154,38 @@ static int spapr_tce_table_realize(DeviceState *dev)
+     return 0;
+ }
+ 
++void spapr_tce_set_need_vfio(sPAPRTCETable *tcet, bool need_vfio)
++{
++    size_t table_size = tcet->nb_table * sizeof(uint64_t);
++    void *newtable;
++
++    if (need_vfio == tcet->need_vfio) {
++        /* Nothing to do */
++        return;
++    }
++
++    if (!need_vfio) {
++        /* FIXME: We don't support transition back to KVM accelerated
++         * TCEs yet */
++        return;
++    }
++
++    tcet->need_vfio = true;
++
++    if (tcet->fd < 0) {
++        /* Table is already in userspace, nothing to be do */
++        return;
++    }
++
++    newtable = g_malloc(table_size);
++    memcpy(newtable, tcet->table, table_size);
++
++    kvmppc_remove_spapr_tce(tcet->table, tcet->fd, tcet->nb_table);
++
++    tcet->fd = -1;
++    tcet->table = newtable;
++}
++
+ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn,
+                                    uint64_t bus_offset,
+                                    uint32_t page_shift,
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index acc61c3..da3e075 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -584,6 +584,8 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn,
+                                    uint32_t page_shift,
+                                    uint32_t nb_table,
+                                    bool need_vfio);
++void spapr_tce_set_need_vfio(sPAPRTCETable *tcet, bool need_vfio);
++
+ MemoryRegion *spapr_tce_get_iommu(sPAPRTCETable *tcet);
+ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
+                  uint32_t liobn, uint64_t window, uint32_t size);
+-- 
+1.8.3.1
+

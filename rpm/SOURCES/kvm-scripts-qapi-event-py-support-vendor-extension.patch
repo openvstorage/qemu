@@ -1,0 +1,74 @@
+From f720c153e1393571ade56ba36fcf96176099f18f Mon Sep 17 00:00:00 2001
+From: Luiz Capitulino <lcapitulino@redhat.com>
+Date: Wed, 9 Jul 2014 14:31:50 +0200
+Subject: scripts: qapi-event.py: support vendor extension
+
+Message-id: <1404916312-27953-2-git-send-email-lcapitulino@redhat.com>
+Patchwork-id: 59727
+O-Subject: [RHEV7.1 qemu-kvm-rhev PATCH 1/3] scripts: qapi-event.py: support vendor extension
+Bugzilla: 1116772
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eric Blake <eblake@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+The event code generator barfs when it sees a dot in an event
+argument, this makes it impossible to support vendor extensions
+in event arguments as they always contain dots. Fix this by
+replacing dots by hyphens in the generated code.
+
+PS: Event names and QMP command arguments may suffer from the
+same issue, but I'm not checking/fixing them today.
+
+Signed-off-by: Luiz Capitulino <lcapitulino@redhat.com>
+
+diff --git a/scripts/qapi-event.py b/scripts/qapi-event.py
+index 601e307..485694b 100644
+--- a/scripts/qapi-event.py
++++ b/scripts/qapi-event.py
+@@ -23,11 +23,11 @@ def _generate_event_api_name(event_name, params):
+     if params:
+         for argname, argentry, optional, structured in parse_args(params):
+             if optional:
+-                api_name += "bool has_%s,\n" % c_var(argname)
++                api_name += "bool has_%s,\n" % c_arg(argname)
+                 api_name += "".ljust(l)
+ 
+             api_name += "%s %s,\n" % (c_type(argentry, is_param=True),
+-                                      c_var(argname))
++                                      c_arg(argname))
+             api_name += "".ljust(l)
+ 
+     api_name += "Error **errp)"
+@@ -98,7 +98,7 @@ def generate_event_implement(api_name, event_name, params):
+                 ret += mcgen("""
+     if (has_%(var)s) {
+ """,
+-                             var = c_var(argname))
++                             var = c_arg(argname))
+                 push_indent()
+ 
+             if argentry == "str":
+@@ -113,7 +113,7 @@ def generate_event_implement(api_name, event_name, params):
+     }
+ """,
+                          var_type = var_type,
+-                         var = c_var(argname),
++                         var = c_arg(argname),
+                          type = type_name(argentry),
+                          name = argname)
+ 
+diff --git a/scripts/qapi.py b/scripts/qapi.py
+index 77d46aa..bfc1aaf 100644
+--- a/scripts/qapi.py
++++ b/scripts/qapi.py
+@@ -434,6 +434,10 @@ def c_var(name, protect=True):
+ def c_fun(name, protect=True):
+     return c_var(name, protect).replace('.', '_')
+ 
++# Should be used where vendor extensions are supported
++def c_arg(name):
++	return c_var(name).replace('.', '_')
++
+ def c_list_type(name):
+     return '%sList' % name
+ 

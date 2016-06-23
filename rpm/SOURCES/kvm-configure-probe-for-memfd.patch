@@ -1,0 +1,71 @@
+From 70c57b9a29fce42c3f3a8fe1bbf286da62f116f2 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:31:57 +0100
+Subject: [PATCH 09/44] configure: probe for memfd
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-3-git-send-email-mst@redhat.com>
+Patchwork-id: 68356
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 02/36] configure: probe for memfd
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Check if memfd_create() is part of system libc.
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit 751bcc3981d80594a3943166401af15b76781a5b)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ configure | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/configure b/configure
+index 280a1c2..cb4cf0b 100755
+--- a/configure
++++ b/configure
+@@ -3390,6 +3390,22 @@ if compile_prog "" "" ; then
+   eventfd=yes
+ fi
+ 
++# check if memfd is supported
++memfd=no
++cat > $TMPC << EOF
++#include <sys/memfd.h>
++
++int main(void)
++{
++    return memfd_create("foo", MFD_ALLOW_SEALING);
++}
++EOF
++if compile_prog "" "" ; then
++  memfd=yes
++fi
++
++
++
+ # check for fallocate
+ fallocate=no
+ cat > $TMPC << EOF
+@@ -4666,6 +4682,9 @@ fi
+ if test "$eventfd" = "yes" ; then
+   echo "CONFIG_EVENTFD=y" >> $config_host_mak
+ fi
++if test "$memfd" = "yes" ; then
++  echo "CONFIG_MEMFD=y" >> $config_host_mak
++fi
+ if test "$fallocate" = "yes" ; then
+   echo "CONFIG_FALLOCATE=y" >> $config_host_mak
+ fi
+-- 
+1.8.3.1
+

@@ -1,0 +1,120 @@
+From 80542faa2e4f71cbf3f5f97c3e2a20afba8c1250 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:05 +0200
+Subject: [PATCH 20/28] migration: Make events a capability
+
+Message-id: <1438098431-30847-21-git-send-email-quintela@redhat.com>
+Patchwork-id: 67185
+O-Subject: [RHEL-7 qemu-kvm PATCH 20/26] migration: Make events a capability
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Make check fails with events.  THis is due to the parser/lexer that it
+uses.  Just in case that they are more broken parsers, just only send
+events when there are capabilities.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit b05dc72342b27585909d9e99d95d17fd3dfbb269)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	include/migration/migration.h
+	migration/migration.c
+	qapi-schema.json
+
+Red Hat don't have compression code
+
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+---
+ include/migration/migration.h |  2 ++
+ migration/migration.c         | 20 ++++++++++++++++++--
+ qapi-schema.json              |  6 +++++-
+ 3 files changed, 25 insertions(+), 3 deletions(-)
+
+diff --git a/include/migration/migration.h b/include/migration/migration.h
+index d3b5fa6..b2b83c0 100644
+--- a/include/migration/migration.h
++++ b/include/migration/migration.h
+@@ -153,6 +153,8 @@ int64_t migrate_xbzrle_cache_size(void);
+ 
+ int64_t xbzrle_cache_resize(int64_t new_size);
+ 
++bool migrate_use_events(void);
++
+ void ram_control_before_iterate(QEMUFile *f, uint64_t flags);
+ void ram_control_after_iterate(QEMUFile *f, uint64_t flags);
+ void ram_control_load_hook(QEMUFile *f, uint64_t flags, void *data);
+diff --git a/migration/migration.c b/migration/migration.c
+index d7f81d7..0e7a433 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -166,6 +166,14 @@ void register_global_state(void)
+     vmstate_register(NULL, 0, &vmstate_globalstate, &global_state);
+ }
+ 
++static void migrate_generate_event(int new_state)
++{
++    if (migrate_use_events()) {
++        qapi_event_send_migration(new_state, &error_abort);
++        trace_migrate_set_state(new_state);
++    }
++}
++
+ /*
+  * Called on -incoming with a defer: uri.
+  * The migration can be started later after any parameters have been
+@@ -407,8 +415,7 @@ void qmp_migrate_set_capabilities(MigrationCapabilityStatusList *params,
+ static void migrate_set_state(MigrationState *s, int old_state, int new_state)
+ {
+     if (atomic_cmpxchg(&s->state, old_state, new_state) == old_state) {
+-        qapi_event_send_migration(new_state, &error_abort);
+-        trace_migrate_set_state(new_state);
++        migrate_generate_event(new_state);
+     }
+ }
+ 
+@@ -717,6 +724,15 @@ bool migrate_zero_blocks(void)
+     return s->enabled_capabilities[MIGRATION_CAPABILITY_ZERO_BLOCKS];
+ }
+ 
++bool migrate_use_events(void)
++{
++    MigrationState *s;
++
++    s = migrate_get_current();
++
++    return s->enabled_capabilities[MIGRATION_CAPABILITY_EVENTS];
++}
++
+ int migrate_use_xbzrle(void)
+ {
+     MigrationState *s;
+diff --git a/qapi-schema.json b/qapi-schema.json
+index 71b8ab4..af457c3 100644
+--- a/qapi-schema.json
++++ b/qapi-schema.json
+@@ -515,13 +515,17 @@
+ #          to enable the capability on the source VM. The feature is disabled by
+ #          default. (since 1.6)
+ #
++# @events: generate events for each migration state change
++#          (since 2.4 )
++#
+ # @auto-converge: If enabled, QEMU will automatically throttle down the guest
+ #          to speed up convergence of RAM migration. (since 1.6)
+ #
+ # Since: 1.2
+ ##
+ { 'enum': 'MigrationCapability',
+-  'data': ['xbzrle', 'rdma-pin-all', 'auto-converge', 'zero-blocks'] }
++  'data': ['xbzrle', 'rdma-pin-all', 'auto-converge', 'zero-blocks',
++           'events'] }
+ 
+ ##
+ # @MigrationCapabilityStatus
+-- 
+1.8.3.1
+

@@ -1,0 +1,97 @@
+From 73e9730fb1efdb52ca1eb1de4ff506d8cacf7ee4 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Mon, 13 Jul 2015 19:17:39 +0200
+Subject: [PATCH 13/23] i386/acpi-build: fix PXB workarounds for unsupported
+ BIOSes
+
+Message-id: <1436815069-15106-3-git-send-email-lersek@redhat.com>
+Patchwork-id: 66993
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 02/12] i386/acpi-build: fix PXB workarounds for unsupported BIOSes
+Bugzilla: 1242479
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+The patch
+
+  apci: fix PXB behaviour if used with unsupported BIOS
+
+uses the following condition to see if a "PXB mem/IO chunk" has *not* been
+configured by the BIOS:
+
+  (!range_base || range_base > range_limit)
+
+When this condition evaluates to true, said patch *omits* the
+corresponding entry from the _CRS.
+
+Later on the patch checks for the opposite condition (with the intent of
+*adding* entries to the _CRS if the "PXB mem/IO chunks" *have* been
+configured). Unfortunately, the condition was negated incorrectly: only
+the first ! operator was removed, which led to the nonsensical expression
+
+  (range_base || range_base > range_limit)
+
+leading to bogus entries in the _CRS, and causing BSOD in Windows Server
+2012 R2 when it runs on OVMF.
+
+The correct negative of the condition seen at the top is
+
+  (range_base && range_base <= range_limit)
+
+Fix the expressions.
+
+Cc: Marcel Apfelbaum <marcel@redhat.com>
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 4ebc736e9938a7e88ecc785734b17145bf802a56)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index b84f4e6..3bf7d4d 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -830,7 +830,7 @@ static Aml *build_crs(PCIHostState *host,
+              * Work-around for old bioses
+              * that do not support multiple root buses
+              */
+-            if (range_base || range_base > range_limit) {
++            if (range_base && range_base <= range_limit) {
+                 aml_append(crs,
+                            aml_word_io(AML_MIN_FIXED, AML_MAX_FIXED,
+                                        AML_POS_DECODE, AML_ENTIRE_RANGE,
+@@ -851,7 +851,7 @@ static Aml *build_crs(PCIHostState *host,
+              * Work-around for old bioses
+              * that do not support multiple root buses
+              */
+-            if (range_base || range_base > range_limit) {
++            if (range_base && range_base <= range_limit) {
+                 aml_append(crs,
+                            aml_dword_memory(AML_POS_DECODE, AML_MIN_FIXED,
+                                             AML_MAX_FIXED, AML_NON_CACHEABLE,
+@@ -862,7 +862,7 @@ static Aml *build_crs(PCIHostState *host,
+                                             0,
+                                             range_limit - range_base + 1));
+                 crs_range_insert(mem_ranges, range_base, range_limit);
+-          }
++            }
+ 
+             range_base =
+                 pci_bridge_get_base(dev, PCI_BASE_ADDRESS_MEM_PREFETCH);
+@@ -873,7 +873,7 @@ static Aml *build_crs(PCIHostState *host,
+              * Work-around for old bioses
+              * that do not support multiple root buses
+              */
+-            if (range_base || range_base > range_limit) {
++            if (range_base && range_base <= range_limit) {
+                 aml_append(crs,
+                            aml_dword_memory(AML_POS_DECODE, AML_MIN_FIXED,
+                                             AML_MAX_FIXED, AML_NON_CACHEABLE,
+-- 
+1.8.3.1
+

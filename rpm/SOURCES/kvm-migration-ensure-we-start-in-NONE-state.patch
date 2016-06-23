@@ -1,0 +1,50 @@
+From 150d31f7d9247bde47ced7753310553e9c78ca61 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:01 +0200
+Subject: [PATCH 16/28] migration: ensure we start in NONE state
+
+Message-id: <1438098431-30847-17-git-send-email-quintela@redhat.com>
+Patchwork-id: 67169
+O-Subject: [RHEL-7 qemu-kvm PATCH 16/26] migration: ensure we start in NONE state
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 656a233440e552230f9d1da016b94a81b86658dc)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/migration.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index 9056977..ebfb7c1 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -586,7 +586,6 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
+         error_set(errp, QERR_MIGRATION_ACTIVE);
+         return;
+     }
+-
+     if (runstate_check(RUN_STATE_INMIGRATE)) {
+         error_setg(errp, "Guest is waiting for an incoming migration");
+         return;
+@@ -601,6 +600,12 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
+         return;
+     }
+ 
++    /* We are starting a new migration, so we want to start in a clean
++       state.  This change is only needed if previous migration
++       failed/was cancelled.  We don't use migrate_set_state() because
++       we are setting the initial state, not changing it. */
++    s->state = MIGRATION_STATUS_NONE;
++
+     s = migrate_init(&params);
+ 
+     if (strstart(uri, "tcp:", &p)) {
+-- 
+1.8.3.1
+

@@ -1,0 +1,37 @@
+From 9e091bc4ce5cbbdfc79ba7b2b95eb0d451096c92 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:09 +0200
+Subject: [PATCH 24/28] migration: Write documetation for events capabilites
+
+Message-id: <1438098431-30847-25-git-send-email-quintela@redhat.com>
+Patchwork-id: 67183
+O-Subject: [RHEL-7 qemu-kvm PATCH 24/26] migration: Write documetation for events capabilites
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+Reported-by: Jiri Denemark <jdenemar@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 72e72e1a71e5e67a11204606a5c09f6cc3089a53)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ qmp-commands.hx | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/qmp-commands.hx b/qmp-commands.hx
+index a835f9f..19d4bab 100644
+--- a/qmp-commands.hx
++++ b/qmp-commands.hx
+@@ -3376,6 +3376,7 @@ Enable/Disable migration capabilities
+ - "rdma-pin-all": pin all pages when using RDMA during migration
+ - "auto-converge": throttle down guest to help convergence of migration
+ - "zero-blocks": compress zero blocks during block migration
++- "events": generate events for each migration state change
+ 
+ Arguments:
+ 
+-- 
+1.8.3.1
+

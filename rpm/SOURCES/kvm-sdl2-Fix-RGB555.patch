@@ -1,0 +1,77 @@
+From 522156622fefa7baf08c3d9342586de84dc8c518 Mon Sep 17 00:00:00 2001
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Tue, 22 Sep 2015 12:16:36 +0200
+Subject: [PATCH 01/13] sdl2: Fix RGB555
+
+Message-id: <1442924197-25734-2-git-send-email-kraxel@redhat.com>
+Patchwork-id: 67863
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 1/2] sdl2: Fix RGB555
+Bugzilla: 1247479
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Bandan Das <bsd@redhat.com>
+RH-Acked-by: Max Reitz <mreitz@redhat.com>
+
+From: Max Reitz <mreitz@redhat.com>
+
+Reproducable with:
+
+$ x86_64-softmmu/qemu-system-x86_64 \
+    -kernel $vmlinuz_of_your_choice \
+    -append vga=0x313 -sdl
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit e444ea34f8ec27acfa9ead7eaa9904238c831e69)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/ui/console.h |  5 +++++
+ ui/sdl2-2d.c         | 15 +++++++++++++--
+ 2 files changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/include/ui/console.h b/include/ui/console.h
+index 2f5b9f0..2b397ce 100644
+--- a/include/ui/console.h
++++ b/include/ui/console.h
+@@ -270,6 +270,11 @@ static inline int surface_bytes_per_pixel(DisplaySurface *s)
+     return (bits + 7) / 8;
+ }
+ 
++static inline pixman_format_code_t surface_format(DisplaySurface *s)
++{
++    return s->format;
++}
++
+ #ifdef CONFIG_CURSES
+ #include <curses.h>
+ typedef chtype console_ch_t;
+diff --git a/ui/sdl2-2d.c b/ui/sdl2-2d.c
+index f907c21..d279d53 100644
+--- a/ui/sdl2-2d.c
++++ b/ui/sdl2-2d.c
+@@ -91,10 +91,21 @@ void sdl2_2d_switch(DisplayChangeListener *dcl,
+                              surface_width(new_surface),
+                              surface_height(new_surface));
+ 
+-    if (surface_bits_per_pixel(scon->surface) == 16) {
++    switch (surface_format(scon->surface)) {
++    case PIXMAN_x1r5g5b5:
++        format = SDL_PIXELFORMAT_ARGB1555;
++        break;
++    case PIXMAN_r5g6b5:
+         format = SDL_PIXELFORMAT_RGB565;
+-    } else if (surface_bits_per_pixel(scon->surface) == 32) {
++        break;
++    case PIXMAN_x8r8g8b8:
+         format = SDL_PIXELFORMAT_ARGB8888;
++        break;
++    case PIXMAN_r8g8b8x8:
++        format = SDL_PIXELFORMAT_RGBA8888;
++        break;
++    default:
++        g_assert_not_reached();
+     }
+     scon->texture = SDL_CreateTexture(scon->real_renderer, format,
+                                       SDL_TEXTUREACCESS_STREAMING,
+-- 
+1.8.3.1
+

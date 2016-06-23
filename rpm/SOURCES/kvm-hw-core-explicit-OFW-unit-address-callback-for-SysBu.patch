@@ -1,0 +1,104 @@
+From 541159bb3b82a18da3f5ad371a3dd4dcb09b47ec Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Mon, 13 Jul 2015 19:17:48 +0200
+Subject: [PATCH 22/23] hw/core: explicit OFW unit address callback for
+ SysBusDeviceClass
+
+Message-id: <1436815069-15106-12-git-send-email-lersek@redhat.com>
+Patchwork-id: 67002
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 11/12] hw/core: explicit OFW unit address callback for SysBusDeviceClass
+Bugzilla: 1242479
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+The sysbus_get_fw_dev_path() function formats OpenFirmware device path
+nodes ("driver-name@unit-address") for sysbus devices. The first choice
+for "unit-address" is the base address of the device's first MMIO region.
+The second choice is its first IO port.
+
+However, if two sysbus devices with the same "driver-name" lack both MMIO
+and PIO resources, then there is no good way to distinguish them based on
+their OFW nodes, because in this case unit-address is omitted completely
+for both devices. An example is TYPE_PXB_HOST ("pxb-host").
+
+For the sake of such devices, introduce the explicit_ofw_unit_address()
+"virtual member function". With this function, each sysbus device in the
+same SysBusDeviceClass can state its own address.
+
+Cc: Markus Armbruster <armbru@redhat.com>
+Cc: Marcel Apfelbaum <marcel@redhat.com>
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Marcel Apfelbaum <marcel@redhat.com>
+Tested-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 0b336b3b98d8983d821ef9b0f159acc7c77cbac7)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/core/sysbus.c    | 11 +++++++++++
+ include/hw/sysbus.h | 17 +++++++++++++++++
+ 2 files changed, 28 insertions(+)
+
+diff --git a/hw/core/sysbus.c b/hw/core/sysbus.c
+index 92eced9..278a2d1 100644
+--- a/hw/core/sysbus.c
++++ b/hw/core/sysbus.c
+@@ -281,6 +281,9 @@ static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent)
+ static char *sysbus_get_fw_dev_path(DeviceState *dev)
+ {
+     SysBusDevice *s = SYS_BUS_DEVICE(dev);
++    SysBusDeviceClass *sbc = SYS_BUS_DEVICE_GET_CLASS(s);
++    /* for the explicit unit address fallback case: */
++    char *addr, *fw_dev_path;
+ 
+     if (s->num_mmio) {
+         return g_strdup_printf("%s@" TARGET_FMT_plx, qdev_fw_name(dev),
+@@ -289,6 +292,14 @@ static char *sysbus_get_fw_dev_path(DeviceState *dev)
+     if (s->num_pio) {
+         return g_strdup_printf("%s@i%04x", qdev_fw_name(dev), s->pio[0]);
+     }
++    if (sbc->explicit_ofw_unit_address) {
++        addr = sbc->explicit_ofw_unit_address(s);
++        if (addr) {
++            fw_dev_path = g_strdup_printf("%s@%s", qdev_fw_name(dev), addr);
++            g_free(addr);
++            return fw_dev_path;
++        }
++    }
+     return g_strdup(qdev_fw_name(dev));
+ }
+ 
+diff --git a/include/hw/sysbus.h b/include/hw/sysbus.h
+index d1f3f00..34f93c3 100644
+--- a/include/hw/sysbus.h
++++ b/include/hw/sysbus.h
+@@ -41,6 +41,23 @@ typedef struct SysBusDeviceClass {
+     /*< public >*/
+ 
+     int (*init)(SysBusDevice *dev);
++
++    /*
++     * Let the sysbus device format its own non-PIO, non-MMIO unit address.
++     *
++     * Sometimes a class of SysBusDevices has neither MMIO nor PIO resources,
++     * yet instances of it would like to distinguish themselves, in
++     * OpenFirmware device paths, from other instances of the same class on the
++     * sysbus. For that end we expose this callback.
++     *
++     * The implementation is not supposed to change *@dev, or incur other
++     * observable change.
++     *
++     * The function returns a dynamically allocated string. On error, NULL
++     * should be returned; the unit address portion of the OFW node will be
++     * omitted then. (This is not considered a fatal error.)
++     */
++    char *(*explicit_ofw_unit_address)(const SysBusDevice *dev);
+ } SysBusDeviceClass;
+ 
+ struct SysBusDevice {
+-- 
+1.8.3.1
+

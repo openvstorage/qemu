@@ -1,0 +1,47 @@
+From 7be43cf6f9b2644b91b7e8d683226d5f5e8988e7 Mon Sep 17 00:00:00 2001
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Tue, 22 Sep 2015 12:16:37 +0200
+Subject: [PATCH 02/13] spice: surface switch fast path requires same format
+ too.
+
+Message-id: <1442924197-25734-3-git-send-email-kraxel@redhat.com>
+Patchwork-id: 67862
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 2/2] spice: surface switch fast path requires same format too.
+Bugzilla: 1247479
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Bandan Das <bsd@redhat.com>
+RH-Acked-by: Max Reitz <mreitz@redhat.com>
+
+Commit "555e72f spice: rework mirror allocation, add no-resize fast path"
+adds a fast path for surface switches which does't go through the full
+primary surface destroy and re-recreation in case the new surface is
+identical to the old one (page-flip).  It checks the size only though,
+but the format must be identical too.  This patch adds the format check.
+
+Commit "0002a51 ui/spice: Support shared surface for most pixman
+formats" increases the chance to actually trigger this.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit b2af43cc379e1d4c30d92af257bedebf0e3f618a)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ ui/spice-display.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/ui/spice-display.c b/ui/spice-display.c
+index 5935564..e409de7 100644
+--- a/ui/spice-display.c
++++ b/ui/spice-display.c
+@@ -406,7 +406,8 @@ void qemu_spice_display_switch(SimpleSpiceDisplay *ssd,
+ 
+     if (surface && ssd->surface &&
+         surface_width(surface) == pixman_image_get_width(ssd->surface) &&
+-        surface_height(surface) == pixman_image_get_height(ssd->surface)) {
++        surface_height(surface) == pixman_image_get_height(ssd->surface) &&
++        surface_format(surface) == pixman_image_get_format(ssd->surface)) {
+         /* no-resize fast path: just swap backing store */
+         dprint(1, "%s/%d: fast (%dx%d)\n", __func__, ssd->qxl.id,
+                surface_width(surface), surface_height(surface));
+-- 
+1.8.3.1
+

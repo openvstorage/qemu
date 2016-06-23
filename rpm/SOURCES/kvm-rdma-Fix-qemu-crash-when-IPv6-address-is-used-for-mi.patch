@@ -1,0 +1,50 @@
+From 68279b69380c1f5c42807c0be2259153f285e067 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:41:53 +0200
+Subject: [PATCH 13/58] rdma: Fix qemu crash when IPv6 address is used for
+ migration
+
+Message-id: <1436794926-1598-5-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66975
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 04/17] rdma: Fix qemu crash when IPv6 address is used for migration
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: Padmanabh Ratnakar <padmanabh.ratnakar@avagotech.com>
+
+Qemu crashes when IPv6 address is specified for migration and access
+to any RDMA uverbs device available on the system is blocked using cgroups.
+Fix the crash by checking the return value of ibv_open_device routine.
+
+Signed-off-by: Meghana Cheripady <meghana.cheripady@avagotech.com>
+Signed-off-by: Padmanabh Ratnakar <padmanabh.ratnakar@avagotech.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 5b61d5752156dcbbe2bf1366c877a676ed9f8f51)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/rdma.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/migration/rdma.c b/migration/rdma.c
+index b1b803c..f106a52 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -790,6 +790,13 @@ static int qemu_rdma_broken_ipv6_kernel(Error **errp, struct ibv_context *verbs)
+ 
+         for (x = 0; x < num_devices; x++) {
+             verbs = ibv_open_device(dev_list[x]);
++            if (!verbs) {
++                if (errno == EPERM) {
++                    continue;
++                } else {
++                    return -EINVAL;
++                }
++            }
+ 
+             if (ibv_query_port(verbs, 1, &port_attr)) {
+                 ibv_close_device(verbs);
+-- 
+1.8.3.1
+

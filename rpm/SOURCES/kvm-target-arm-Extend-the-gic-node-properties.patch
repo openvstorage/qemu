@@ -1,0 +1,80 @@
+From 48def407c3c26a8abab8446304a781396ea9a325 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 30 Jun 2015 14:14:35 +0200
+Subject: [PATCH 06/11] target-arm: Extend the gic node properties
+
+Message-id: <1435673680-9996-4-git-send-email-drjones@redhat.com>
+Patchwork-id: 66571
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 3/8] target-arm: Extend the gic node properties
+Bugzilla: 1231929
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Author: Christoffer Dall <christoffer.dall@linaro.org>
+
+In preparation for adding the GICv2m which requires address specifiers
+and is a subnode of the gic, we extend the gic DT definition to specify
+the #address-cells and #size-cells properties and add an empty ranges
+property properties of the DT node, since this is required to add the
+v2m node as a child of the gic node.
+
+Note that we must also expand the irq-map to reference the gic with the
+right address-cells as a consequence of this change.
+
+Reviewed-by: Eric Auger <eric.auger@linaro.org>
+Signed-off-by: Christoffer Dall <christoffer.dall@linaro.org>
+Message-id: 1432897270-7780-4-git-send-email-christoffer.dall@linaro.org
+Suggested-by: Shanker Donthineni <shankerd@codeaurora.org>
+Signed-off-by: Christoffer Dall <christoffer.dall@linaro.org>
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit dfd90a87155882d92a3efa6da9afc773fd8c6796)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/arm/virt.c | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 0e5e3df..579ac56 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -322,6 +322,9 @@ static void fdt_add_gic_node(VirtBoardInfo *vbi)
+                                      2, vbi->memmap[VIRT_GIC_DIST].size,
+                                      2, vbi->memmap[VIRT_GIC_CPU].base,
+                                      2, vbi->memmap[VIRT_GIC_CPU].size);
++    qemu_fdt_setprop_cell(vbi->fdt, "/intc", "#address-cells", 0x2);
++    qemu_fdt_setprop_cell(vbi->fdt, "/intc", "#size-cells", 0x2);
++    qemu_fdt_setprop(vbi->fdt, "/intc", "ranges", NULL, 0);
+     qemu_fdt_setprop_cell(vbi->fdt, "/intc", "phandle", vbi->gic_phandle);
+ }
+ 
+@@ -588,7 +591,7 @@ static void create_pcie_irq_map(const VirtBoardInfo *vbi, uint32_t gic_phandle,
+                                 int first_irq, const char *nodename)
+ {
+     int devfn, pin;
+-    uint32_t full_irq_map[4 * 4 * 8] = { 0 };
++    uint32_t full_irq_map[4 * 4 * 10] = { 0 };
+     uint32_t *irq_map = full_irq_map;
+ 
+     for (devfn = 0; devfn <= 0x18; devfn += 0x8) {
+@@ -601,13 +604,13 @@ static void create_pcie_irq_map(const VirtBoardInfo *vbi, uint32_t gic_phandle,
+             uint32_t map[] = {
+                 devfn << 8, 0, 0,                           /* devfn */
+                 pin + 1,                                    /* PCI pin */
+-                gic_phandle, irq_type, irq_nr, irq_level }; /* GIC irq */
++                gic_phandle, 0, 0, irq_type, irq_nr, irq_level }; /* GIC irq */
+ 
+             /* Convert map to big endian */
+-            for (i = 0; i < 8; i++) {
++            for (i = 0; i < 10; i++) {
+                 irq_map[i] = cpu_to_be32(map[i]);
+             }
+-            irq_map += 8;
++            irq_map += 10;
+         }
+     }
+ 
+-- 
+1.8.3.1
+

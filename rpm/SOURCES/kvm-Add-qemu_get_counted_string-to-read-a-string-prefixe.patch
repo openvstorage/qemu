@@ -1,0 +1,113 @@
+From ce254c58b8a9e7a3e69ede931a588555756b7c12 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:54 +0200
+Subject: [PATCH 09/28] Add qemu_get_counted_string to read a string prefixed
+ by a count byte
+
+Message-id: <1438098431-30847-10-git-send-email-quintela@redhat.com>
+Patchwork-id: 67166
+O-Subject: [RHEL-7 qemu-kvm PATCH 09/26] Add qemu_get_counted_string to read a string prefixed by a count byte
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+and use it in loadvm_state and ram_load.
+
+Where ever it's used, check the return and error if it failed.
+
+Minor: ram_load was using a 257 byte array for its string, the
+       maximum length is 255 bytes + 0 terminator, so fix to 256
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Reviewed-by: Amit Shah <amit.shah@redhat.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit b3af1bc9d21e6bec7dfd283d91b465c9f815b6d6)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	migration/qemu-file.c
+
+compression code
+
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+---
+ include/migration/qemu-file.h |  3 +++
+ migration/qemu-file.c         | 18 ++++++++++++++++++
+ migration/savevm.c            | 11 ++++++-----
+ 3 files changed, 27 insertions(+), 5 deletions(-)
+
+diff --git a/include/migration/qemu-file.h b/include/migration/qemu-file.h
+index a3ceb3b..b7f8a99 100644
+--- a/include/migration/qemu-file.h
++++ b/include/migration/qemu-file.h
+@@ -313,4 +313,7 @@ static inline void qemu_get_sbe64s(QEMUFile *f, int64_t *pv)
+ {
+     qemu_get_be64s(f, (uint64_t *)pv);
+ }
++
++size_t qemu_get_counted_string(QEMUFile *f, char buf[256]);
++
+ #endif
+diff --git a/migration/qemu-file.c b/migration/qemu-file.c
+index eadfc93..af045c2 100644
+--- a/migration/qemu-file.c
++++ b/migration/qemu-file.c
+@@ -552,3 +552,21 @@ uint64_t qemu_get_be64(QEMUFile *f)
+     v |= qemu_get_be32(f);
+     return v;
+ }
++
++/*
++ * Get a string whose length is determined by a single preceding byte
++ * A preallocated 256 byte buffer must be passed in.
++ * Returns: len on success and a 0 terminated string in the buffer
++ *          else 0
++ *          (Note a 0 length string will return 0 either way)
++ */
++size_t qemu_get_counted_string(QEMUFile *f, char buf[256])
++{
++    size_t len = qemu_get_byte(f);
++    size_t res = qemu_get_buffer(f, (uint8_t *)buf, len);
++
++    buf[res] = 0;
++
++    return res == len ? res : 0;
++}
++
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 9279875..044d8ad 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -1035,8 +1035,7 @@ int qemu_loadvm_state(QEMUFile *f)
+     while ((section_type = qemu_get_byte(f)) != QEMU_VM_EOF) {
+         uint32_t instance_id, version_id, section_id;
+         SaveStateEntry *se;
+-        char idstr[257];
+-        int len;
++        char idstr[256];
+ 
+         trace_qemu_loadvm_state_section(section_type);
+         switch (section_type) {
+@@ -1044,9 +1043,11 @@ int qemu_loadvm_state(QEMUFile *f)
+         case QEMU_VM_SECTION_FULL:
+             /* Read section start */
+             section_id = qemu_get_be32(f);
+-            len = qemu_get_byte(f);
+-            qemu_get_buffer(f, (uint8_t *)idstr, len);
+-            idstr[len] = 0;
++            if (!qemu_get_counted_string(f, idstr)) {
++                error_report("Unable to read ID string for section %u",
++                            section_id);
++                return -EINVAL;
++            }
+             instance_id = qemu_get_be32(f);
+             version_id = qemu_get_be32(f);
+ 
+-- 
+1.8.3.1
+

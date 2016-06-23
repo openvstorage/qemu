@@ -1,0 +1,133 @@
+From e527d7aa55ec2d8f1864ca205aece4eb3f835710 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:23 +0200
+Subject: [PATCH 19/44] hw/acpi/aml-build: Add aml_interrupt() term
+
+Message-id: <1434455325-23399-12-git-send-email-drjones@redhat.com>
+Patchwork-id: 66244
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 11/33] hw/acpi/aml-build: Add aml_interrupt() term
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Add aml_interrupt() for describing device interrupt in resource template.
+These can be used to generating DSDT table for ACPI on ARM.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Message-id: 1432522520-8068-7-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 205d1d1c04033b1be4c925e687b6865d1fc1b26b)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 27 +++++++++++++++++++++++++++
+ include/hw/acpi/aml-build.h | 42 ++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 69 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index ebfcf90..20eeaf9 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -534,6 +534,33 @@ Aml *aml_memory32_fixed(uint32_t addr, uint32_t size,
+     return var;
+ }
+ 
++/*
++ * ACPI 5.0: 6.4.3.6 Extended Interrupt Descriptor
++ * Type 1, Large Item Name 0x9
++ */
++Aml *aml_interrupt(AmlConsumerAndProducer con_and_pro,
++                   AmlLevelAndEdge level_and_edge,
++                   AmlActiveHighAndLow high_and_low, AmlShared shared,
++                   uint32_t irq)
++{
++    Aml *var = aml_alloc();
++    uint8_t irq_flags = con_and_pro | (level_and_edge << 1)
++                        | (high_and_low << 2) | (shared << 3);
++
++    build_append_byte(var->buf, 0x89); /* Extended irq descriptor */
++    build_append_byte(var->buf, 6); /* Length, bits[7:0] minimum value = 6 */
++    build_append_byte(var->buf, 0); /* Length, bits[15:8] minimum value = 0 */
++    build_append_byte(var->buf, irq_flags); /* Interrupt Vector Information. */
++    build_append_byte(var->buf, 0x01);      /* Interrupt table length = 1 */
++
++    /* Interrupt Number */
++    build_append_byte(var->buf, extract32(irq, 0, 8));  /* bits[7:0] */
++    build_append_byte(var->buf, extract32(irq, 8, 8));  /* bits[15:8] */
++    build_append_byte(var->buf, extract32(irq, 16, 8)); /* bits[23:16] */
++    build_append_byte(var->buf, extract32(irq, 24, 8)); /* bits[31:24] */
++    return var;
++}
++
+ /* ACPI 1.0b: 6.4.2.5 I/O Port Descriptor */
+ Aml *aml_io(AmlIODecode dec, uint16_t min_base, uint16_t max_base,
+             uint8_t aln, uint8_t len)
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 1c3cbd2..2142d54 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -111,6 +111,44 @@ typedef enum {
+     AML_READ_WRITE = 1,
+ } AmlReadAndWrite;
+ 
++/*
++ * ACPI 5.0: Table 6-187 Extended Interrupt Descriptor Definition
++ * Interrupt Vector Flags Bits[0] Consumer/Producer
++ */
++typedef enum {
++    AML_CONSUMER_PRODUCER = 0,
++    AML_CONSUMER = 1,
++} AmlConsumerAndProducer;
++
++/*
++ * ACPI 5.0: Table 6-187 Extended Interrupt Descriptor Definition
++ * _HE field definition
++ */
++typedef enum {
++    AML_LEVEL = 0,
++    AML_EDGE = 1,
++} AmlLevelAndEdge;
++
++/*
++ * ACPI 5.0: Table 6-187 Extended Interrupt Descriptor Definition
++ * _LL field definition
++ */
++typedef enum {
++    AML_ACTIVE_HIGH = 0,
++    AML_ACTIVE_LOW = 1,
++} AmlActiveHighAndLow;
++
++/*
++ * ACPI 5.0: Table 6-187 Extended Interrupt Descriptor Definition
++ * _SHR field definition
++ */
++typedef enum {
++    AML_EXCLUSIVE = 0,
++    AML_SHARED = 1,
++    AML_EXCLUSIVE_AND_WAKE = 2,
++    AML_SHARED_AND_WAKE = 3,
++} AmlShared;
++
+ typedef
+ struct AcpiBuildTables {
+     GArray *table_data;
+@@ -170,6 +208,10 @@ Aml *aml_call3(const char *method, Aml *arg1, Aml *arg2, Aml *arg3);
+ Aml *aml_call4(const char *method, Aml *arg1, Aml *arg2, Aml *arg3, Aml *arg4);
+ Aml *aml_memory32_fixed(uint32_t addr, uint32_t size,
+                         AmlReadAndWrite read_and_write);
++Aml *aml_interrupt(AmlConsumerAndProducer con_and_pro,
++                   AmlLevelAndEdge level_and_edge,
++                   AmlActiveHighAndLow high_and_low, AmlShared shared,
++                   uint32_t irq);
+ Aml *aml_io(AmlIODecode dec, uint16_t min_base, uint16_t max_base,
+             uint8_t aln, uint8_t len);
+ Aml *aml_operation_region(const char *name, AmlRegionSpace rs,
+-- 
+1.8.3.1
+

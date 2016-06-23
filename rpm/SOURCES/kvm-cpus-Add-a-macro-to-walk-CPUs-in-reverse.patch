@@ -1,0 +1,48 @@
+From d1343f81abce6957d6fb371c9213b6e17637270f Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:10 +0200
+Subject: [PATCH 48/58] cpus: Add a macro to walk CPUs in reverse
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1437715580-14817-19-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67135
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 18/28] cpus: Add a macro to walk CPUs in reverse
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Add CPU_FOREACH_REVERSE that walks CPUs in reverse.
+
+Needed for PowerPC CPU device tree reorganization.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: Andreas Färber <afaerber@suse.de>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 8487d1231830917099c801e4f2f0e698e8535063)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/qom/cpu.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/include/qom/cpu.h b/include/qom/cpu.h
+index 9dafb48..c8bfc23 100644
+--- a/include/qom/cpu.h
++++ b/include/qom/cpu.h
+@@ -321,6 +321,8 @@ extern struct CPUTailQ cpus;
+ #define CPU_FOREACH(cpu) QTAILQ_FOREACH(cpu, &cpus, node)
+ #define CPU_FOREACH_SAFE(cpu, next_cpu) \
+     QTAILQ_FOREACH_SAFE(cpu, &cpus, node, next_cpu)
++#define CPU_FOREACH_REVERSE(cpu) \
++    QTAILQ_FOREACH_REVERSE(cpu, &cpus, CPUTailQ, node)
+ #define first_cpu QTAILQ_FIRST(&cpus)
+ 
+ DECLARE_TLS(CPUState *, current_cpu);
+-- 
+1.8.3.1
+

@@ -1,0 +1,71 @@
+From 3b195510664ae851438b608183c0ef31ab86d6fc Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:36 +0200
+Subject: [PATCH 32/44] hw/acpi/aml-build: Add aml_create_dword_field() term
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-25-git-send-email-drjones@redhat.com>
+Patchwork-id: 66257
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 24/33] hw/acpi/aml-build: Add aml_create_dword_field() term
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-20-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ed8176a37a8f227e61daddbcf92dc5d1cad45818)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 11 +++++++++++
+ include/hw/acpi/aml-build.h |  1 +
+ 2 files changed, 12 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 3b06349..54d652d 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -739,6 +739,17 @@ Aml *aml_field(const char *name, AmlAccessType type, AmlUpdateRule rule)
+     return var;
+ }
+ 
++/* ACPI 1.0b: 16.2.5.2 Named Objects Encoding: DefCreateDWordField */
++Aml *aml_create_dword_field(Aml *srcbuf, Aml *index, const char *name)
++{
++    Aml *var = aml_alloc();
++    build_append_byte(var->buf, 0x8A); /* CreateDWordFieldOp */
++    aml_append(var, srcbuf);
++    aml_append(var, index);
++    build_append_namestring(var->buf, "%s", name);
++    return var;
++}
++
+ /* ACPI 1.0b: 16.2.3 Data Objects Encoding: String */
+ Aml *aml_string(const char *name_format, ...)
+ {
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 356484a..e02010d 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -259,6 +259,7 @@ Aml *aml_package(uint8_t num_elements);
+ Aml *aml_buffer(int buffer_size, uint8_t *byte_list);
+ Aml *aml_resource_template(void);
+ Aml *aml_field(const char *name, AmlAccessType type, AmlUpdateRule rule);
++Aml *aml_create_dword_field(Aml *srcbuf, Aml *index, const char *name);
+ Aml *aml_varpackage(uint32_t num_elements);
+ Aml *aml_touuid(const char *uuid);
+ 
+-- 
+1.8.3.1
+

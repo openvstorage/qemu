@@ -1,0 +1,118 @@
+From f9fd29ea942b8989412d0f2ce790a3622ef93ab1 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:09 +0200
+Subject: [PATCH 47/58] spapr: Support ibm, lrdr-capacity device tree property
+
+Message-id: <1437715580-14817-18-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67134
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 17/28] spapr: Support ibm, lrdr-capacity device tree property
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Add support for ibm,lrdr-capacity since this is needed by the guest
+kernel to know about the possible hot-pluggable CPUs and Memory. With
+this, pseries kernels will start reporting correct maxcpus in
+/sys/devices/system/cpu/possible.
+
+Also define the minimum hotpluggable memory size as 256MB.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+[agraf: Fix compile error on 32bit hosts]
+Signed-off-by: Alexander Graf <agraf@suse.de>
+
+(cherry picked from commit db4ef288f4a6d285b39dc8ac477092d76971a300)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/ppc-spapr-hotplug.txt | 18 ++++++++++++++++++
+ hw/ppc/spapr_rtas.c              | 16 ++++++++++++++++
+ include/hw/ppc/spapr.h           |  2 ++
+ 3 files changed, 36 insertions(+)
+
+diff --git a/docs/specs/ppc-spapr-hotplug.txt b/docs/specs/ppc-spapr-hotplug.txt
+index d35771c..46e0719 100644
+--- a/docs/specs/ppc-spapr-hotplug.txt
++++ b/docs/specs/ppc-spapr-hotplug.txt
+@@ -284,4 +284,22 @@ struct rtas_event_log_v6_hp {
+     } drc;
+ } QEMU_PACKED;
+ 
++== ibm,lrdr-capacity ==
++
++ibm,lrdr-capacity is a property in the /rtas device tree node that identifies
++the dynamic reconfiguration capabilities of the guest. It consists of a triple
++consisting of <phys>, <size> and <maxcpus>.
++
++  <phys>, encoded in BE format represents the maximum address in bytes and
++  hence the maximum memory that can be allocated to the guest.
++
++  <size>, encoded in BE format represents the size increments in which
++  memory can be hot-plugged to the guest.
++
++  <maxcpus>, a BE-encoded integer, represents the maximum number of
++  processors that the guest can have.
++
++pseries guests use this property to note the maximum allowed CPUs for the
++guest.
++
+ [1] http://thread.gmane.org/gmane.linux.ports.ppc.embedded/75350/focus=106867
+diff --git a/hw/ppc/spapr_rtas.c b/hw/ppc/spapr_rtas.c
+index 3b95dfc..2986f94 100644
+--- a/hw/ppc/spapr_rtas.c
++++ b/hw/ppc/spapr_rtas.c
+@@ -29,6 +29,7 @@
+ #include "sysemu/char.h"
+ #include "hw/qdev.h"
+ #include "sysemu/device_tree.h"
++#include "sysemu/cpus.h"
+ 
+ #include "hw/ppc/spapr.h"
+ #include "hw/ppc/spapr_vio.h"
+@@ -651,6 +652,8 @@ int spapr_rtas_device_tree_setup(void *fdt, hwaddr rtas_addr,
+ {
+     int ret;
+     int i;
++    uint32_t lrdr_capacity[5];
++    MachineState *machine = MACHINE(qdev_get_machine());
+ 
+     ret = fdt_add_mem_rsv(fdt, rtas_addr, rtas_size);
+     if (ret < 0) {
+@@ -699,6 +702,19 @@ int spapr_rtas_device_tree_setup(void *fdt, hwaddr rtas_addr,
+         }
+ 
+     }
++
++    lrdr_capacity[0] = cpu_to_be32(((uint64_t)machine->maxram_size) >> 32);
++    lrdr_capacity[1] = cpu_to_be32(machine->maxram_size & 0xffffffff);
++    lrdr_capacity[2] = 0;
++    lrdr_capacity[3] = cpu_to_be32(SPAPR_MEMORY_BLOCK_SIZE);
++    lrdr_capacity[4] = cpu_to_be32(max_cpus/smp_threads);
++    ret = qemu_fdt_setprop(fdt, "/rtas", "ibm,lrdr-capacity", lrdr_capacity,
++                     sizeof(lrdr_capacity));
++    if (ret < 0) {
++        fprintf(stderr, "Couldn't add ibm,lrdr-capacity rtas property\n");
++        return ret;
++    }
++
+     return 0;
+ }
+ 
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index 0bf46f7..24efb7b 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -601,4 +601,6 @@ void spapr_ccs_reset_hook(void *opaque);
+ void spapr_rtc_read(DeviceState *dev, struct tm *tm, uint32_t *ns);
+ int spapr_rtc_import_offset(DeviceState *dev, int64_t legacy_offset);
+ 
++#define SPAPR_MEMORY_BLOCK_SIZE (1 << 28) /* 256MB */
++
+ #endif /* !defined (__HW_SPAPR_H__) */
+-- 
+1.8.3.1
+

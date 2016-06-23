@@ -1,0 +1,481 @@
+From bb50fb069869fab0a771bad90196b88ec86e3c31 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:17 +0200
+Subject: [PATCH 55/58] spapr: Support ibm, dynamic-reconfiguration-memory
+
+Message-id: <1437715580-14817-26-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67142
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 25/28] spapr: Support ibm, dynamic-reconfiguration-memory
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Parse ibm,architecture.vec table obtained from the guest and enable
+memory node configuration via ibm,dynamic-reconfiguration-memory if guest
+supports it. This is in preparation to support memory hotplug for
+sPAPR guests.
+
+This changes the way memory node configuration is done. Currently all
+memory nodes are built upfront. But after this patch, only memory@0 node
+for RMA is built upfront. Guest kernel boots with just that and rest of
+the memory nodes (via memory@XXX or ibm,dynamic-reconfiguration-memory)
+are built when guest does ibm,client-architecture-support call.
+
+Note: This patch needs a SLOF enhancement which is already part of
+SLOF binary in QEMU.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit 4b74638f638344209033ee71dc96c1dc38bdc722)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/ppc-spapr-hotplug.txt |  48 +++++++++
+ hw/ppc/spapr.c                   | 210 +++++++++++++++++++++++++++++++--------
+ hw/ppc/spapr_hcall.c             |  51 ++++++++--
+ include/hw/ppc/spapr.h           |  15 ++-
+ 4 files changed, 274 insertions(+), 50 deletions(-)
+
+diff --git a/docs/specs/ppc-spapr-hotplug.txt b/docs/specs/ppc-spapr-hotplug.txt
+index 46e0719..631b0ca 100644
+--- a/docs/specs/ppc-spapr-hotplug.txt
++++ b/docs/specs/ppc-spapr-hotplug.txt
+@@ -302,4 +302,52 @@ consisting of <phys>, <size> and <maxcpus>.
+ pseries guests use this property to note the maximum allowed CPUs for the
+ guest.
+ 
++== ibm,dynamic-reconfiguration-memory ==
++
++ibm,dynamic-reconfiguration-memory is a device tree node that represents
++dynamically reconfigurable logical memory blocks (LMB). This node
++is generated only when the guest advertises the support for it via
++ibm,client-architecture-support call. Memory that is not dynamically
++reconfigurable is represented by /memory nodes. The properties of this
++node that are of interest to the sPAPR memory hotplug implementation
++in QEMU are described here.
++
++ibm,lmb-size
++
++This 64bit integer defines the size of each dynamically reconfigurable LMB.
++
++ibm,associativity-lookup-arrays
++
++This property defines a lookup array in which the NUMA associativity
++information for each LMB can be found. It is a property encoded array
++that begins with an integer M, the number of associativity lists followed
++by an integer N, the number of entries per associativity list and terminated
++by M associativity lists each of length N integers.
++
++This property provides the same information as given by ibm,associativity
++property in a /memory node. Each assigned LMB has an index value between
++0 and M-1 which is used as an index into this table to select which
++associativity list to use for the LMB. This index value for each LMB
++is defined in ibm,dynamic-memory property.
++
++ibm,dynamic-memory
++
++This property describes the dynamically reconfigurable memory. It is a
++property encoded array that has an integer N, the number of LMBs followed
++by N LMB list entires.
++
++Each LMB list entry consists of the following elements:
++
++- Logical address of the start of the LMB encoded as a 64bit integer. This
++  corresponds to reg property in /memory node.
++- DRC index of the LMB that corresponds to ibm,my-drc-index property
++  in a /memory node.
++- Four bytes reserved for expansion.
++- Associativity list index for the LMB that is used as an index into
++  ibm,associativity-lookup-arrays property described earlier. This
++  is used to retrieve the right associativity list to be used for this
++  LMB.
++- A 32bit flags word. The bit at bit position 0x00000008 defines whether
++  the LMB is assigned to the the partition as of boot time.
++
+ [1] http://thread.gmane.org/gmane.linux.ports.ppc.embedded/75350/focus=106867
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index b48d1d8..6077f7e 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -495,44 +495,7 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
+     return fdt;
+ }
+ 
+-int spapr_h_cas_compose_response(sPAPRMachineState *spapr,
+-                                 target_ulong addr, target_ulong size)
+-{
+-    void *fdt, *fdt_skel;
+-    sPAPRDeviceTreeUpdateHeader hdr = { .version_id = 1 };
+-
+-    size -= sizeof(hdr);
+-
+-    /* Create sceleton */
+-    fdt_skel = g_malloc0(size);
+-    _FDT((fdt_create(fdt_skel, size)));
+-    _FDT((fdt_begin_node(fdt_skel, "")));
+-    _FDT((fdt_end_node(fdt_skel)));
+-    _FDT((fdt_finish(fdt_skel)));
+-    fdt = g_malloc0(size);
+-    _FDT((fdt_open_into(fdt_skel, fdt, size)));
+-    g_free(fdt_skel);
+-
+-    /* Fix skeleton up */
+-    _FDT((spapr_fixup_cpu_dt(fdt, spapr)));
+-
+-    /* Pack resulting tree */
+-    _FDT((fdt_pack(fdt)));
+-
+-    if (fdt_totalsize(fdt) + sizeof(hdr) > size) {
+-        trace_spapr_cas_failed(size);
+-        return -1;
+-    }
+-
+-    cpu_physical_memory_write(addr, &hdr, sizeof(hdr));
+-    cpu_physical_memory_write(addr + sizeof(hdr), fdt, fdt_totalsize(fdt));
+-    trace_spapr_cas_continue(fdt_totalsize(fdt) + sizeof(hdr));
+-    g_free(fdt);
+-
+-    return 0;
+-}
+-
+-static void spapr_populate_memory_node(void *fdt, int nodeid, hwaddr start,
++static int spapr_populate_memory_node(void *fdt, int nodeid, hwaddr start,
+                                        hwaddr size)
+ {
+     uint32_t associativity[] = {
+@@ -555,6 +518,7 @@ static void spapr_populate_memory_node(void *fdt, int nodeid, hwaddr start,
+                       sizeof(mem_reg_property))));
+     _FDT((fdt_setprop(fdt, off, "ibm,associativity", associativity,
+                       sizeof(associativity))));
++    return off;
+ }
+ 
+ static int spapr_populate_memory(sPAPRMachineState *spapr, void *fdt)
+@@ -586,7 +550,6 @@ static int spapr_populate_memory(sPAPRMachineState *spapr, void *fdt)
+         }
+         if (!mem_start) {
+             /* ppc_spapr_init() checks for rma_size <= node0_size already */
+-            spapr_populate_memory_node(fdt, i, 0, spapr->rma_size);
+             mem_start += spapr->rma_size;
+             node_size -= spapr->rma_size;
+         }
+@@ -738,6 +701,154 @@ static void spapr_populate_cpus_dt_node(void *fdt, sPAPRMachineState *spapr)
+ 
+ }
+ 
++/*
++ * Adds ibm,dynamic-reconfiguration-memory node.
++ * Refer to docs/specs/ppc-spapr-hotplug.txt for the documentation
++ * of this device tree node.
++ */
++static int spapr_populate_drconf_memory(sPAPRMachineState *spapr, void *fdt)
++{
++    MachineState *machine = MACHINE(spapr);
++    int ret, i, offset;
++    uint64_t lmb_size = SPAPR_MEMORY_BLOCK_SIZE;
++    uint32_t prop_lmb_size[] = {0, cpu_to_be32(lmb_size)};
++    uint32_t nr_rma_lmbs = spapr->rma_size/lmb_size;
++    uint32_t nr_lmbs = machine->maxram_size/lmb_size - nr_rma_lmbs;
++    uint32_t nr_assigned_lmbs = machine->ram_size/lmb_size - nr_rma_lmbs;
++    uint32_t *int_buf, *cur_index, buf_len;
++
++    /* Allocate enough buffer size to fit in ibm,dynamic-memory */
++    buf_len = nr_lmbs * SPAPR_DR_LMB_LIST_ENTRY_SIZE * sizeof(uint32_t) +
++                sizeof(uint32_t);
++    cur_index = int_buf = g_malloc0(buf_len);
++
++    offset = fdt_add_subnode(fdt, 0, "ibm,dynamic-reconfiguration-memory");
++
++    ret = fdt_setprop(fdt, offset, "ibm,lmb-size", prop_lmb_size,
++                    sizeof(prop_lmb_size));
++    if (ret < 0) {
++        goto out;
++    }
++
++    ret = fdt_setprop_cell(fdt, offset, "ibm,memory-flags-mask", 0xff);
++    if (ret < 0) {
++        goto out;
++    }
++
++    ret = fdt_setprop_cell(fdt, offset, "ibm,memory-preservation-time", 0x0);
++    if (ret < 0) {
++        goto out;
++    }
++
++    /* ibm,dynamic-memory */
++    int_buf[0] = cpu_to_be32(nr_lmbs);
++    cur_index++;
++    for (i = 0; i < nr_lmbs; i++) {
++        sPAPRDRConnector *drc;
++        sPAPRDRConnectorClass *drck;
++        uint64_t addr;
++        uint32_t *dynamic_memory = cur_index;
++
++        if (i < nr_assigned_lmbs) {
++            addr = (i + nr_rma_lmbs) * lmb_size;
++        } else {
++            addr = (i - nr_assigned_lmbs) * lmb_size +
++                    spapr->hotplug_memory.base;
++        }
++        drc = spapr_dr_connector_by_id(SPAPR_DR_CONNECTOR_TYPE_LMB,
++                                       addr/lmb_size);
++        g_assert(drc);
++        drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
++
++        dynamic_memory[0] = cpu_to_be32(addr >> 32);
++        dynamic_memory[1] = cpu_to_be32(addr & 0xffffffff);
++        dynamic_memory[2] = cpu_to_be32(drck->get_index(drc));
++        dynamic_memory[3] = cpu_to_be32(0); /* reserved */
++        dynamic_memory[4] = cpu_to_be32(numa_get_node(addr, NULL));
++        if (addr < machine->ram_size ||
++                    memory_region_present(get_system_memory(), addr)) {
++            dynamic_memory[5] = cpu_to_be32(SPAPR_LMB_FLAGS_ASSIGNED);
++        } else {
++            dynamic_memory[5] = cpu_to_be32(0);
++        }
++
++        cur_index += SPAPR_DR_LMB_LIST_ENTRY_SIZE;
++    }
++    ret = fdt_setprop(fdt, offset, "ibm,dynamic-memory", int_buf, buf_len);
++    if (ret < 0) {
++        goto out;
++    }
++
++    /* ibm,associativity-lookup-arrays */
++    cur_index = int_buf;
++    int_buf[0] = cpu_to_be32(nb_numa_nodes);
++    int_buf[1] = cpu_to_be32(4); /* Number of entries per associativity list */
++    cur_index += 2;
++    for (i = 0; i < nb_numa_nodes; i++) {
++        uint32_t associativity[] = {
++            cpu_to_be32(0x0),
++            cpu_to_be32(0x0),
++            cpu_to_be32(0x0),
++            cpu_to_be32(i)
++        };
++        memcpy(cur_index, associativity, sizeof(associativity));
++        cur_index += 4;
++    }
++    ret = fdt_setprop(fdt, offset, "ibm,associativity-lookup-arrays", int_buf,
++            (cur_index - int_buf) * sizeof(uint32_t));
++out:
++    g_free(int_buf);
++    return ret;
++}
++
++int spapr_h_cas_compose_response(sPAPRMachineState *spapr,
++                                 target_ulong addr, target_ulong size,
++                                 bool cpu_update, bool memory_update)
++{
++    void *fdt, *fdt_skel;
++    sPAPRDeviceTreeUpdateHeader hdr = { .version_id = 1 };
++    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(qdev_get_machine());
++
++    size -= sizeof(hdr);
++
++    /* Create sceleton */
++    fdt_skel = g_malloc0(size);
++    _FDT((fdt_create(fdt_skel, size)));
++    _FDT((fdt_begin_node(fdt_skel, "")));
++    _FDT((fdt_end_node(fdt_skel)));
++    _FDT((fdt_finish(fdt_skel)));
++    fdt = g_malloc0(size);
++    _FDT((fdt_open_into(fdt_skel, fdt, size)));
++    g_free(fdt_skel);
++
++    /* Fixup cpu nodes */
++    if (cpu_update) {
++        _FDT((spapr_fixup_cpu_dt(fdt, spapr)));
++    }
++
++    /* Generate memory nodes or ibm,dynamic-reconfiguration-memory node */
++    if (memory_update && smc->dr_lmb_enabled) {
++        _FDT((spapr_populate_drconf_memory(spapr, fdt)));
++    } else {
++        _FDT((spapr_populate_memory(spapr, fdt)));
++    }
++
++    /* Pack resulting tree */
++    _FDT((fdt_pack(fdt)));
++
++    if (fdt_totalsize(fdt) + sizeof(hdr) > size) {
++        trace_spapr_cas_failed(size);
++        return -1;
++    }
++
++    cpu_physical_memory_write(addr, &hdr, sizeof(hdr));
++    cpu_physical_memory_write(addr + sizeof(hdr), fdt, fdt_totalsize(fdt));
++    trace_spapr_cas_continue(fdt_totalsize(fdt) + sizeof(hdr));
++    g_free(fdt);
++
++    return 0;
++}
++
+ static void spapr_finalize_fdt(sPAPRMachineState *spapr,
+                                hwaddr fdt_addr,
+                                hwaddr rtas_addr,
+@@ -756,10 +867,23 @@ static void spapr_finalize_fdt(sPAPRMachineState *spapr,
+     /* open out the base tree into a temp buffer for the final tweaks */
+     _FDT((fdt_open_into(spapr->fdt_skel, fdt, FDT_MAX_SIZE)));
+ 
+-    ret = spapr_populate_memory(spapr, fdt);
+-    if (ret < 0) {
+-        fprintf(stderr, "couldn't setup memory nodes in fdt\n");
+-        exit(1);
++    /*
++     * Add memory@0 node to represent RMA. Rest of the memory is either
++     * represented by memory nodes or ibm,dynamic-reconfiguration-memory
++     * node later during ibm,client-architecture-support call.
++     *
++     * If NUMA is configured, ensure that memory@0 ends up in the
++     * first memory-less node.
++     */
++    if (nb_numa_nodes) {
++        for (i = 0; i < nb_numa_nodes; ++i) {
++            if (numa_info[i].node_mem) {
++                spapr_populate_memory_node(fdt, i, 0, spapr->rma_size);
++                break;
++            }
++        }
++    } else {
++        spapr_populate_memory_node(fdt, 0, 0, spapr->rma_size);
+     }
+ 
+     ret = spapr_populate_vdevice(spapr->vio_bus, fdt);
+diff --git a/hw/ppc/spapr_hcall.c b/hw/ppc/spapr_hcall.c
+index 652ddf6..2caac82 100644
+--- a/hw/ppc/spapr_hcall.c
++++ b/hw/ppc/spapr_hcall.c
+@@ -808,6 +808,32 @@ static target_ulong h_set_mode(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+     return ret;
+ }
+ 
++/*
++ * Return the offset to the requested option vector @vector in the
++ * option vector table @table.
++ */
++static target_ulong cas_get_option_vector(int vector, target_ulong table)
++{
++    int i;
++    char nr_vectors, nr_entries;
++
++    if (!table) {
++        return 0;
++    }
++
++    nr_vectors = (ldl_phys(&address_space_memory, table) >> 24) + 1;
++    if (!vector || vector > nr_vectors) {
++        return 0;
++    }
++    table++; /* skip nr option vectors */
++
++    for (i = 0; i < vector - 1; i++) {
++        nr_entries = ldl_phys(&address_space_memory, table) >> 24;
++        table += nr_entries + 2;
++    }
++    return table;
++}
++
+ typedef struct {
+     PowerPCCPU *cpu;
+     uint32_t cpu_version;
+@@ -828,19 +854,22 @@ static void do_set_compat(void *arg)
+     ((cpuver) == CPU_POWERPC_LOGICAL_2_06_PLUS) ? 2061 : \
+     ((cpuver) == CPU_POWERPC_LOGICAL_2_07) ? 2070 : 0)
+ 
++#define OV5_DRCONF_MEMORY 0x20
++
+ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
+                                                   sPAPRMachineState *spapr,
+                                                   target_ulong opcode,
+                                                   target_ulong *args)
+ {
+-    target_ulong list = args[0];
++    target_ulong list = args[0], ov_table;
+     PowerPCCPUClass *pcc_ = POWERPC_CPU_GET_CLASS(cpu_);
+     CPUState *cs;
+-    bool cpu_match = false;
++    bool cpu_match = false, cpu_update = true, memory_update = false;
+     unsigned old_cpu_version = cpu_->cpu_version;
+     unsigned compat_lvl = 0, cpu_version = 0;
+     unsigned max_lvl = get_compat_level(cpu_->max_compat);
+     int counter;
++    char ov5_byte2;
+ 
+     /* Parse PVR list */
+     for (counter = 0; counter < 512; ++counter) {
+@@ -890,8 +919,6 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
+         }
+     }
+ 
+-    /* For the future use: here @list points to the first capability */
+-
+     /* Parsing finished */
+     trace_spapr_cas_pvr(cpu_->cpu_version, cpu_match,
+                         cpu_version, pcc_->pcr_mask);
+@@ -915,14 +942,26 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
+     }
+ 
+     if (!cpu_version) {
+-        return H_SUCCESS;
++        cpu_update = false;
+     }
+ 
++    /* For the future use: here @ov_table points to the first option vector */
++    ov_table = list;
++
++    list = cas_get_option_vector(5, ov_table);
+     if (!list) {
+         return H_SUCCESS;
+     }
+ 
+-    if (spapr_h_cas_compose_response(spapr, args[1], args[2])) {
++    /* @list now points to OV 5 */
++    list += 2;
++    ov5_byte2 = rtas_ld(list, 0) >> 24;
++    if (ov5_byte2 & OV5_DRCONF_MEMORY) {
++        memory_update = true;
++    }
++
++    if (spapr_h_cas_compose_response(spapr, args[1], args[2],
++                                     cpu_update, memory_update)) {
+         qemu_system_reset_request();
+     }
+ 
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index d8ddf20..b8e757e 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -574,7 +574,8 @@ struct sPAPREventLogEntry {
+ void spapr_events_init(sPAPRMachineState *sm);
+ void spapr_events_fdt_skel(void *fdt, uint32_t epow_irq);
+ int spapr_h_cas_compose_response(sPAPRMachineState *sm,
+-                                 target_ulong addr, target_ulong size);
++                                 target_ulong addr, target_ulong size,
++                                 bool cpu_update, bool memory_update);
+ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn,
+                                    uint64_t bus_offset,
+                                    uint32_t page_shift,
+@@ -616,4 +617,16 @@ int spapr_rtc_import_offset(DeviceState *dev, int64_t legacy_offset);
+ /* 1GB alignment for hotplug memory region */
+ #define SPAPR_HOTPLUG_MEM_ALIGN (1ULL << 30)
+ 
++/*
++ * Number of 32 bit words in each LMB list entry in ibm,dynamic-memory
++ * property under ibm,dynamic-reconfiguration-memory node.
++ */
++#define SPAPR_DR_LMB_LIST_ENTRY_SIZE 6
++
++/*
++ * This flag value defines the LMB as assigned in ibm,dynamic-memory
++ * property under ibm,dynamic-reconfiguration-memory node.
++ */
++#define SPAPR_LMB_FLAGS_ASSIGNED 0x00000008
++
+ #endif /* !defined (__HW_SPAPR_H__) */
+-- 
+1.8.3.1
+

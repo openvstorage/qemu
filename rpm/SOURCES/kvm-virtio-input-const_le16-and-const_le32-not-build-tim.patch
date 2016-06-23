@@ -1,0 +1,60 @@
+From d38320837669c799c030775176bf1c2685efcc7b Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:25 +0200
+Subject: [PATCH 051/100] virtio-input: const_le16 and const_le32 not build
+ time constant
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1436260751-25015-23-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66797
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 22/68] virtio-input: const_le16 and const_le32 not build time constant
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Michael Mueller <mimu@linux.vnet.ibm.com>
+
+As the implementation of const_le16 and const_le32 is not build time constant
+on big endian systems this need to be fixed.
+
+  CC    hw/input/virtio-input-hid.o
+hw/input/virtio-input-hid.c:340:13: error: initializer element is not constant
+hw/input/virtio-input-hid.c:340:13: error: (near initialization for ‘virtio_keyboard_config[1].u.ids.bustype’)
+...
+
+Signed-off-by: Michael Mueller <mimu@linux.vnet.ibm.com>
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit 16c9d46d32b39b147774ddd948dd2f9ad9049d02)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/virtio/virtio-input.h | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/include/hw/virtio/virtio-input.h b/include/hw/virtio/virtio-input.h
+index a265519..bcee355 100644
+--- a/include/hw/virtio/virtio-input.h
++++ b/include/hw/virtio/virtio-input.h
+@@ -14,8 +14,14 @@ typedef struct virtio_input_config virtio_input_config;
+ typedef struct virtio_input_event virtio_input_event;
+ 
+ #if defined(HOST_WORDS_BIGENDIAN)
+-# define const_le32(_x) bswap32(_x)
+-# define const_le16(_x) bswap32(_x)
++# define const_le32(_x)                          \
++    (((_x & 0x000000ffU) << 24) |                \
++     ((_x & 0x0000ff00U) <<  8) |                \
++     ((_x & 0x00ff0000U) >>  8) |                \
++     ((_x & 0xff000000U) >> 24))
++# define const_le16(_x)                          \
++    (((_x & 0x00ff) << 8) |                      \
++     ((_x & 0xff00) >> 8))
+ #else
+ # define const_le32(_x) (_x)
+ # define const_le16(_x) (_x)
+-- 
+1.8.3.1
+

@@ -1,0 +1,68 @@
+From 7899edd06f5aa36bab16530dc4948ba4e52116df Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Thu, 2 Jul 2015 13:43:57 +0200
+Subject: [PATCH 098/100] aarch64: allow --enable-seccomp
+
+Message-id: <1435844638-28460-2-git-send-email-drjones@redhat.com>
+Patchwork-id: 66606
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 1/2] aarch64: allow --enable-seccomp
+Bugzilla: 1174861
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Jeff Nelson <jenelson@redhat.com>
+
+RHEL-only
+
+This is a few character patch that needs a long commit message
+to explain why it's downstream only. So, here we go...
+
+Once upon a time arm and aarch64 builds were allowed to use
+--enable-seccomp, but a problem with arm builds resulted in
+upstream commit ae6e8ef11e6c: "Revert seccomp tests that allow
+it to be used on non-x86 architectures". Now, the only way to
+revert that revert is to get the seccomp whitelist working
+for all architectures that have libseccomp, which means arm,
+aarch64, and even mips and mips64 (but nobody mentioned mips
+upstream yet, so shh...) For arm, we needed to patch libseccomp
+and qemu to get things working. That's done now, but it'll be
+a while before we have upstream commit hashes to reference, and,
+even if we did, RHELSA wouldn't have a late enough libseccomp in
+its compose to pass the atleast-version test in qemu's configure,
+since that version will be bumped to the one containing the
+libseccomp patch for arm, thus we'd need a downstream-only patch
+anyway.
+
+Now, we want to turn libseccomp on for the obvious security reasons,
+and also because the sooner we run with it on, the sooner we'll find
+bugs with it on.
+
+Oh, and we actually don't have to worry about the atleast-version,
+which is currently is in configure, even though it's old. This is
+because this patch is for building RHELSA's qemu-kvm-rhev, which is
+only for RHELSA, and the earliest libseccomp version installable on
+RHELSA is late enough.
+
+The end.
+
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ configure | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configure b/configure
+index bebae4c..f054934 100755
+--- a/configure
++++ b/configure
+@@ -1857,7 +1857,7 @@ fi
+ # libseccomp check
+ 
+ if test "$seccomp" != "no" ; then
+-    if test "$cpu" = "i386" || test "$cpu" = "x86_64" &&
++    if test "$cpu" = "i386" || test "$cpu" = "x86_64" || test "$cpu" = "aarch64" &&
+         $pkg_config --atleast-version=2.1.1 libseccomp; then
+         libs_softmmu="$libs_softmmu `$pkg_config --libs libseccomp`"
+         QEMU_CFLAGS="$QEMU_CFLAGS `$pkg_config --cflags libseccomp`"
+-- 
+1.8.3.1
+

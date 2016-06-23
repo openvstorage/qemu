@@ -1,0 +1,63 @@
+From 3bc788b0228afec88f016d6f4ace6b6b2ba68314 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:16 +0200
+Subject: [PATCH 08/31] acpi: add aml_shiftright() term
+
+Message-id: <1435154016-26233-24-git-send-email-marcel@redhat.com>
+Patchwork-id: 66456
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 23/43] acpi: add aml_shiftright() term
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Add encoding for ACPI DefShiftRight Opcode.
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Shannon Zhao <shannon.zhao@linaro.org>
+(cherry picked from commit f7bd7b8eb6573ed22bfc51e148455a1c0a1e36d0)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 10 ++++++++++
+ include/hw/acpi/aml-build.h |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 0d98c7b..57e6cf4 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -466,6 +466,16 @@ Aml *aml_shiftleft(Aml *arg1, Aml *count)
+     return var;
+ }
+ 
++/* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefShiftRight */
++Aml *aml_shiftright(Aml *arg1, Aml *count)
++{
++    Aml *var = aml_opcode(0x7A /* ShiftRightOp */);
++    aml_append(var, arg1);
++    aml_append(var, count);
++    build_append_byte(var->buf, 0x00); /* NullNameOp */
++    return var;
++}
++
+ /* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefLLess */
+ Aml *aml_lless(Aml *arg1, Aml *arg2)
+ {
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index f2100cb..9abb4c3 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -203,6 +203,7 @@ Aml *aml_store(Aml *val, Aml *target);
+ Aml *aml_and(Aml *arg1, Aml *arg2);
+ Aml *aml_or(Aml *arg1, Aml *arg2);
+ Aml *aml_shiftleft(Aml *arg1, Aml *count);
++Aml *aml_shiftright(Aml *arg1, Aml *count);
+ Aml *aml_lless(Aml *arg1, Aml *arg2);
+ Aml *aml_add(Aml *arg1, Aml *arg2);
+ Aml *aml_index(Aml *arg1, Aml *idx);
+-- 
+1.8.3.1
+

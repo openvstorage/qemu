@@ -1,0 +1,465 @@
+From 6a0b31841bd402c701df6974c61d047fc67e4103 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:10 +0200
+Subject: [PATCH 036/100] memory: Define API for MemoryRegionOps to take attrs
+ and return status
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1436260751-25015-8-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66782
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 07/68] memory: Define API for MemoryRegionOps to take attrs and return status
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Peter Maydell <peter.maydell@linaro.org>
+
+Define an API so that devices can register MemoryRegionOps whose read
+and write callback functions are passed an arbitrary pointer to some
+transaction attributes and can return a success-or-failure status code.
+This will allow us to model devices which:
+ * behave differently for ARM Secure/NonSecure memory accesses
+ * behave differently for privileged/unprivileged accesses
+ * may return a transaction failure (causing a guest exception)
+   for erroneous accesses
+
+This patch defines the new API and plumbs the attributes parameter through
+to the memory.c public level functions io_mem_read() and io_mem_write(),
+where it is currently dummied out.
+
+The success/failure response indication is also propagated out to
+io_mem_read() and io_mem_write(), which retain the old-style
+boolean true-for-error return.
+
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+(cherry picked from commit cc05c43ad942165ecc6ffd39e41991bee43af044)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/exec/memattrs.h |  41 ++++++++++
+ include/exec/memory.h   |  22 +++++
+ memory.c                | 207 ++++++++++++++++++++++++++++++++----------------
+ 3 files changed, 203 insertions(+), 67 deletions(-)
+ create mode 100644 include/exec/memattrs.h
+
+diff --git a/include/exec/memattrs.h b/include/exec/memattrs.h
+new file mode 100644
+index 0000000..1cb3fc0
+--- /dev/null
++++ b/include/exec/memattrs.h
+@@ -0,0 +1,41 @@
++/*
++ * Memory transaction attributes
++ *
++ * Copyright (c) 2015 Linaro Limited.
++ *
++ * Authors:
++ *  Peter Maydell <peter.maydell@linaro.org>
++ *
++ * This work is licensed under the terms of the GNU GPL, version 2 or later.
++ * See the COPYING file in the top-level directory.
++ *
++ */
++
++#ifndef MEMATTRS_H
++#define MEMATTRS_H
++
++/* Every memory transaction has associated with it a set of
++ * attributes. Some of these are generic (such as the ID of
++ * the bus master); some are specific to a particular kind of
++ * bus (such as the ARM Secure/NonSecure bit). We define them
++ * all as non-overlapping bitfields in a single struct to avoid
++ * confusion if different parts of QEMU used the same bit for
++ * different semantics.
++ */
++typedef struct MemTxAttrs {
++    /* Bus masters which don't specify any attributes will get this
++     * (via the MEMTXATTRS_UNSPECIFIED constant), so that we can
++     * distinguish "all attributes deliberately clear" from
++     * "didn't specify" if necessary.
++     */
++    unsigned int unspecified:1;
++} MemTxAttrs;
++
++/* Bus masters which don't specify any attributes will get this,
++ * which has all attribute bits clear except the topmost one
++ * (so that we can distinguish "all attributes deliberately clear"
++ * from "didn't specify" if necessary).
++ */
++#define MEMTXATTRS_UNSPECIFIED ((MemTxAttrs) { .unspecified = 1 })
++
++#endif
+diff --git a/include/exec/memory.h b/include/exec/memory.h
+index a2ea587..88de117 100644
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
+@@ -28,6 +28,7 @@
+ #ifndef CONFIG_USER_ONLY
+ #include "exec/hwaddr.h"
+ #endif
++#include "exec/memattrs.h"
+ #include "qemu/queue.h"
+ #include "qemu/int128.h"
+ #include "qemu/notify.h"
+@@ -68,6 +69,16 @@ struct IOMMUTLBEntry {
+     IOMMUAccessFlags perm;
+ };
+ 
++/* New-style MMIO accessors can indicate that the transaction failed.
++ * A zero (MEMTX_OK) response means success; anything else is a failure
++ * of some kind. The memory subsystem will bitwise-OR together results
++ * if it is synthesizing an operation from multiple smaller accesses.
++ */
++#define MEMTX_OK 0
++#define MEMTX_ERROR             (1U << 0) /* device returned an error */
++#define MEMTX_DECODE_ERROR      (1U << 1) /* nothing at that address */
++typedef uint32_t MemTxResult;
++
+ /*
+  * Memory region callbacks
+  */
+@@ -84,6 +95,17 @@ struct MemoryRegionOps {
+                   uint64_t data,
+                   unsigned size);
+ 
++    MemTxResult (*read_with_attrs)(void *opaque,
++                                   hwaddr addr,
++                                   uint64_t *data,
++                                   unsigned size,
++                                   MemTxAttrs attrs);
++    MemTxResult (*write_with_attrs)(void *opaque,
++                                    hwaddr addr,
++                                    uint64_t data,
++                                    unsigned size,
++                                    MemTxAttrs attrs);
++
+     enum device_endian endianness;
+     /* Guest-visible constraints: */
+     struct {
+diff --git a/memory.c b/memory.c
+index a11e9bf..23d6345 100644
+--- a/memory.c
++++ b/memory.c
+@@ -368,57 +368,84 @@ static void adjust_endianness(MemoryRegion *mr, uint64_t *data, unsigned size)
+     }
+ }
+ 
+-static void memory_region_oldmmio_read_accessor(MemoryRegion *mr,
++static MemTxResult memory_region_oldmmio_read_accessor(MemoryRegion *mr,
++                                                       hwaddr addr,
++                                                       uint64_t *value,
++                                                       unsigned size,
++                                                       unsigned shift,
++                                                       uint64_t mask,
++                                                       MemTxAttrs attrs)
++{
++    uint64_t tmp;
++
++    tmp = mr->ops->old_mmio.read[ctz32(size)](mr->opaque, addr);
++    trace_memory_region_ops_read(mr, addr, tmp, size);
++    *value |= (tmp & mask) << shift;
++    return MEMTX_OK;
++}
++
++static MemTxResult  memory_region_read_accessor(MemoryRegion *mr,
+                                                 hwaddr addr,
+                                                 uint64_t *value,
+                                                 unsigned size,
+                                                 unsigned shift,
+-                                                uint64_t mask)
++                                                uint64_t mask,
++                                                MemTxAttrs attrs)
+ {
+     uint64_t tmp;
+ 
+-    tmp = mr->ops->old_mmio.read[ctz32(size)](mr->opaque, addr);
++    if (mr->flush_coalesced_mmio) {
++        qemu_flush_coalesced_mmio_buffer();
++    }
++    tmp = mr->ops->read(mr->opaque, addr, size);
+     trace_memory_region_ops_read(mr, addr, tmp, size);
+     *value |= (tmp & mask) << shift;
++    return MEMTX_OK;
+ }
+ 
+-static void memory_region_read_accessor(MemoryRegion *mr,
+-                                        hwaddr addr,
+-                                        uint64_t *value,
+-                                        unsigned size,
+-                                        unsigned shift,
+-                                        uint64_t mask)
++static MemTxResult memory_region_read_with_attrs_accessor(MemoryRegion *mr,
++                                                          hwaddr addr,
++                                                          uint64_t *value,
++                                                          unsigned size,
++                                                          unsigned shift,
++                                                          uint64_t mask,
++                                                          MemTxAttrs attrs)
+ {
+-    uint64_t tmp;
++    uint64_t tmp = 0;
++    MemTxResult r;
+ 
+     if (mr->flush_coalesced_mmio) {
+         qemu_flush_coalesced_mmio_buffer();
+     }
+-    tmp = mr->ops->read(mr->opaque, addr, size);
++    r = mr->ops->read_with_attrs(mr->opaque, addr, &tmp, size, attrs);
+     trace_memory_region_ops_read(mr, addr, tmp, size);
+     *value |= (tmp & mask) << shift;
++    return r;
+ }
+ 
+-static void memory_region_oldmmio_write_accessor(MemoryRegion *mr,
+-                                                 hwaddr addr,
+-                                                 uint64_t *value,
+-                                                 unsigned size,
+-                                                 unsigned shift,
+-                                                 uint64_t mask)
++static MemTxResult memory_region_oldmmio_write_accessor(MemoryRegion *mr,
++                                                        hwaddr addr,
++                                                        uint64_t *value,
++                                                        unsigned size,
++                                                        unsigned shift,
++                                                        uint64_t mask,
++                                                        MemTxAttrs attrs)
+ {
+     uint64_t tmp;
+ 
+     tmp = (*value >> shift) & mask;
+     trace_memory_region_ops_write(mr, addr, tmp, size);
+     mr->ops->old_mmio.write[ctz32(size)](mr->opaque, addr, tmp);
++    return MEMTX_OK;
+ }
+ 
+-static void memory_region_write_accessor(MemoryRegion *mr,
+-                                         hwaddr addr,
+-                                         uint64_t *value,
+-                                         unsigned size,
+-                                         unsigned shift,
+-                                         uint64_t mask)
++static MemTxResult memory_region_write_accessor(MemoryRegion *mr,
++                                                hwaddr addr,
++                                                uint64_t *value,
++                                                unsigned size,
++                                                unsigned shift,
++                                                uint64_t mask,
++                                                MemTxAttrs attrs)
+ {
+     uint64_t tmp;
+ 
+@@ -428,24 +455,46 @@ static void memory_region_write_accessor(MemoryRegion *mr,
+     tmp = (*value >> shift) & mask;
+     trace_memory_region_ops_write(mr, addr, tmp, size);
+     mr->ops->write(mr->opaque, addr, tmp, size);
++    return MEMTX_OK;
+ }
+ 
+-static void access_with_adjusted_size(hwaddr addr,
++static MemTxResult memory_region_write_with_attrs_accessor(MemoryRegion *mr,
++                                                           hwaddr addr,
++                                                           uint64_t *value,
++                                                           unsigned size,
++                                                           unsigned shift,
++                                                           uint64_t mask,
++                                                           MemTxAttrs attrs)
++{
++    uint64_t tmp;
++
++    if (mr->flush_coalesced_mmio) {
++        qemu_flush_coalesced_mmio_buffer();
++    }
++    tmp = (*value >> shift) & mask;
++    trace_memory_region_ops_write(mr, addr, tmp, size);
++    return mr->ops->write_with_attrs(mr->opaque, addr, tmp, size, attrs);
++}
++
++static MemTxResult access_with_adjusted_size(hwaddr addr,
+                                       uint64_t *value,
+                                       unsigned size,
+                                       unsigned access_size_min,
+                                       unsigned access_size_max,
+-                                      void (*access)(MemoryRegion *mr,
+-                                                     hwaddr addr,
+-                                                     uint64_t *value,
+-                                                     unsigned size,
+-                                                     unsigned shift,
+-                                                     uint64_t mask),
+-                                      MemoryRegion *mr)
++                                      MemTxResult (*access)(MemoryRegion *mr,
++                                                            hwaddr addr,
++                                                            uint64_t *value,
++                                                            unsigned size,
++                                                            unsigned shift,
++                                                            uint64_t mask,
++                                                            MemTxAttrs attrs),
++                                      MemoryRegion *mr,
++                                      MemTxAttrs attrs)
+ {
+     uint64_t access_mask;
+     unsigned access_size;
+     unsigned i;
++    MemTxResult r = MEMTX_OK;
+ 
+     if (!access_size_min) {
+         access_size_min = 1;
+@@ -459,14 +508,16 @@ static void access_with_adjusted_size(hwaddr addr,
+     access_mask = -1ULL >> (64 - access_size * 8);
+     if (memory_region_big_endian(mr)) {
+         for (i = 0; i < size; i += access_size) {
+-            access(mr, addr + i, value, access_size,
+-                   (size - access_size - i) * 8, access_mask);
++            r |= access(mr, addr + i, value, access_size,
++                        (size - access_size - i) * 8, access_mask, attrs);
+         }
+     } else {
+         for (i = 0; i < size; i += access_size) {
+-            access(mr, addr + i, value, access_size, i * 8, access_mask);
++            r |= access(mr, addr + i, value, access_size, i * 8,
++                        access_mask, attrs);
+         }
+     }
++    return r;
+ }
+ 
+ static AddressSpace *memory_region_to_address_space(MemoryRegion *mr)
+@@ -1053,62 +1104,82 @@ bool memory_region_access_valid(MemoryRegion *mr,
+     return true;
+ }
+ 
+-static uint64_t memory_region_dispatch_read1(MemoryRegion *mr,
+-                                             hwaddr addr,
+-                                             unsigned size)
++static MemTxResult memory_region_dispatch_read1(MemoryRegion *mr,
++                                                hwaddr addr,
++                                                uint64_t *pval,
++                                                unsigned size,
++                                                MemTxAttrs attrs)
+ {
+-    uint64_t data = 0;
++    *pval = 0;
+ 
+     if (mr->ops->read) {
+-        access_with_adjusted_size(addr, &data, size,
+-                                  mr->ops->impl.min_access_size,
+-                                  mr->ops->impl.max_access_size,
+-                                  memory_region_read_accessor, mr);
++        return access_with_adjusted_size(addr, pval, size,
++                                         mr->ops->impl.min_access_size,
++                                         mr->ops->impl.max_access_size,
++                                         memory_region_read_accessor,
++                                         mr, attrs);
++    } else if (mr->ops->read_with_attrs) {
++        return access_with_adjusted_size(addr, pval, size,
++                                         mr->ops->impl.min_access_size,
++                                         mr->ops->impl.max_access_size,
++                                         memory_region_read_with_attrs_accessor,
++                                         mr, attrs);
+     } else {
+-        access_with_adjusted_size(addr, &data, size, 1, 4,
+-                                  memory_region_oldmmio_read_accessor, mr);
++        return access_with_adjusted_size(addr, pval, size, 1, 4,
++                                         memory_region_oldmmio_read_accessor,
++                                         mr, attrs);
+     }
+-
+-    return data;
+ }
+ 
+-static bool memory_region_dispatch_read(MemoryRegion *mr,
+-                                        hwaddr addr,
+-                                        uint64_t *pval,
+-                                        unsigned size)
++static MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
++                                               hwaddr addr,
++                                               uint64_t *pval,
++                                               unsigned size,
++                                               MemTxAttrs attrs)
+ {
++    MemTxResult r;
++
+     if (!memory_region_access_valid(mr, addr, size, false)) {
+         *pval = unassigned_mem_read(mr, addr, size);
+-        return true;
++        return MEMTX_DECODE_ERROR;
+     }
+ 
+-    *pval = memory_region_dispatch_read1(mr, addr, size);
++    r = memory_region_dispatch_read1(mr, addr, pval, size, attrs);
+     adjust_endianness(mr, pval, size);
+-    return false;
++    return r;
+ }
+ 
+-static bool memory_region_dispatch_write(MemoryRegion *mr,
+-                                         hwaddr addr,
+-                                         uint64_t data,
+-                                         unsigned size)
++static MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
++                                                hwaddr addr,
++                                                uint64_t data,
++                                                unsigned size,
++                                                MemTxAttrs attrs)
+ {
+     if (!memory_region_access_valid(mr, addr, size, true)) {
+         unassigned_mem_write(mr, addr, data, size);
+-        return true;
++        return MEMTX_DECODE_ERROR;
+     }
+ 
+     adjust_endianness(mr, &data, size);
+ 
+     if (mr->ops->write) {
+-        access_with_adjusted_size(addr, &data, size,
+-                                  mr->ops->impl.min_access_size,
+-                                  mr->ops->impl.max_access_size,
+-                                  memory_region_write_accessor, mr);
++        return access_with_adjusted_size(addr, &data, size,
++                                         mr->ops->impl.min_access_size,
++                                         mr->ops->impl.max_access_size,
++                                         memory_region_write_accessor, mr,
++                                         attrs);
++    } else if (mr->ops->write_with_attrs) {
++        return
++            access_with_adjusted_size(addr, &data, size,
++                                      mr->ops->impl.min_access_size,
++                                      mr->ops->impl.max_access_size,
++                                      memory_region_write_with_attrs_accessor,
++                                      mr, attrs);
+     } else {
+-        access_with_adjusted_size(addr, &data, size, 1, 4,
+-                                  memory_region_oldmmio_write_accessor, mr);
++        return access_with_adjusted_size(addr, &data, size, 1, 4,
++                                         memory_region_oldmmio_write_accessor,
++                                         mr, attrs);
+     }
+-    return false;
+ }
+ 
+ void memory_region_init_io(MemoryRegion *mr,
+@@ -2001,13 +2072,15 @@ void address_space_destroy(AddressSpace *as)
+ 
+ bool io_mem_read(MemoryRegion *mr, hwaddr addr, uint64_t *pval, unsigned size)
+ {
+-    return memory_region_dispatch_read(mr, addr, pval, size);
++    return memory_region_dispatch_read(mr, addr, pval, size,
++                                       MEMTXATTRS_UNSPECIFIED);
+ }
+ 
+ bool io_mem_write(MemoryRegion *mr, hwaddr addr,
+                   uint64_t val, unsigned size)
+ {
+-    return memory_region_dispatch_write(mr, addr, val, size);
++    return memory_region_dispatch_write(mr, addr, val, size,
++                                        MEMTXATTRS_UNSPECIFIED);
+ }
+ 
+ typedef struct MemoryRegionList MemoryRegionList;
+-- 
+1.8.3.1
+

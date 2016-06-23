@@ -1,0 +1,43 @@
+From 354e03245b06f3b69c7806ea5810daeddabbef96 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:09 +0200
+Subject: [PATCH 095/100] Add MAINTAINERS entry for virtio-input
+
+Message-id: <1436260751-25015-67-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66841
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 66/68] Add MAINTAINERS entry for virtio-input
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit a5d4d7b580f42c47d240a2068c810e4147147f6e)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ MAINTAINERS | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index d7e9ba2..a8ec9be 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -715,6 +715,12 @@ S: Supported
+ F: hw/s390x/virtio-ccw.[hc]
+ T: git git://github.com/cohuck/qemu virtio-ccw-upstr
+ 
++virtio-input
++M: Gerd Hoffmann <kraxel@redhat.com>
++S: Maintained
++F: hw/input/virtio-input*.c
++F: include/hw/virtio/virtio-input.h
++
+ virtio-serial
+ M: Amit Shah <amit.shah@redhat.com>
+ S: Supported
+-- 
+1.8.3.1
+

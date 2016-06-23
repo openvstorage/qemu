@@ -1,0 +1,45 @@
+From 2d9106264601e3ce0de431b69a1beb46ea711a99 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:19 +0100
+Subject: [PATCH 16/44] vhost: document log resizing
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-10-git-send-email-mst@redhat.com>
+Patchwork-id: 68358
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 09/36] vhost: document log resizing
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit 636f4dddfe48ccabaf5198bba440354d6a268d62)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index aa636f9..c7e033f 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -334,6 +334,8 @@ static inline void vhost_dev_log_resize(struct vhost_dev* dev, uint64_t size)
+     uint64_t log_base = (uintptr_t)log->log;
+     int r;
+ 
++    /* inform backend of log switching, this must be done before
++       releasing the current log, to ensure no logging is lost */
+     r = dev->vhost_ops->vhost_call(dev, VHOST_SET_LOG_BASE, &log_base);
+     assert(r >= 0);
+     vhost_log_put(dev, true);
+-- 
+1.8.3.1
+

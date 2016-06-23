@@ -1,0 +1,133 @@
+From b4731851109d48bc94eb59825a13320b3e13cd03 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:31 +0200
+Subject: [PATCH 057/100] virtio: allow to fail setting status
+
+Message-id: <1436260751-25015-29-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66803
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 28/68] virtio: allow to fail setting status
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+virtio-1 allow setting of the FEATURES_OK status bit to fail if
+the negotiated feature bits are inconsistent: let's fail
+virtio_set_status() in that case and update virtio-ccw to post an
+error to the guest.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 0b352fd680e1ca7827ddea47b5e9b603320913b6)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/s390x/virtio-ccw.c      | 20 ++++++++++++--------
+ hw/virtio/virtio.c         | 24 +++++++++++++++++++++++-
+ include/hw/virtio/virtio.h |  3 ++-
+ 3 files changed, 37 insertions(+), 10 deletions(-)
+
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index fdac013..8708a2b 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -497,15 +497,19 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
+             if (!(status & VIRTIO_CONFIG_S_DRIVER_OK)) {
+                 virtio_ccw_stop_ioeventfd(dev);
+             }
+-            virtio_set_status(vdev, status);
+-            if (vdev->status == 0) {
+-                virtio_reset(vdev);
+-            }
+-            if (status & VIRTIO_CONFIG_S_DRIVER_OK) {
+-                virtio_ccw_start_ioeventfd(dev);
++            if (virtio_set_status(vdev, status) == 0) {
++                if (vdev->status == 0) {
++                    virtio_reset(vdev);
++                }
++                if (status & VIRTIO_CONFIG_S_DRIVER_OK) {
++                    virtio_ccw_start_ioeventfd(dev);
++                }
++                sch->curr_status.scsw.count = ccw.count - sizeof(status);
++                ret = 0;
++            } else {
++                /* Trigger a command reject. */
++                ret = -ENOSYS;
+             }
+-            sch->curr_status.scsw.count = ccw.count - sizeof(status);
+-            ret = 0;
+         }
+         break;
+     case CCW_CMD_SET_IND:
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 3367100..8a6ebae 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -544,15 +544,37 @@ void virtio_update_irq(VirtIODevice *vdev)
+     virtio_notify_vector(vdev, VIRTIO_NO_VECTOR);
+ }
+ 
+-void virtio_set_status(VirtIODevice *vdev, uint8_t val)
++static int virtio_validate_features(VirtIODevice *vdev)
++{
++    VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
++
++    if (k->validate_features) {
++        return k->validate_features(vdev);
++    } else {
++        return 0;
++    }
++}
++
++int virtio_set_status(VirtIODevice *vdev, uint8_t val)
+ {
+     VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
+     trace_virtio_set_status(vdev, val);
+ 
++    if (virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
++        if (!(vdev->status & VIRTIO_CONFIG_S_FEATURES_OK) &&
++            val & VIRTIO_CONFIG_S_FEATURES_OK) {
++            int ret = virtio_validate_features(vdev);
++
++            if (ret) {
++                return ret;
++            }
++        }
++    }
+     if (k->set_status) {
+         k->set_status(vdev, val);
+     }
+     vdev->status = val;
++    return 0;
+ }
+ 
+ bool target_words_bigendian(void);
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 7583eac..effb8f8 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -99,6 +99,7 @@ typedef struct VirtioDeviceClass {
+     uint64_t (*get_features)(VirtIODevice *vdev, uint64_t requested_features);
+     uint64_t (*bad_features)(VirtIODevice *vdev);
+     void (*set_features)(VirtIODevice *vdev, uint64_t val);
++    int (*validate_features)(VirtIODevice *vdev);
+     void (*get_config)(VirtIODevice *vdev, uint8_t *config);
+     void (*set_config)(VirtIODevice *vdev, const uint8_t *config);
+     void (*reset)(VirtIODevice *vdev);
+@@ -184,7 +185,7 @@ void virtio_queue_set_align(VirtIODevice *vdev, int n, int align);
+ void virtio_queue_notify(VirtIODevice *vdev, int n);
+ uint16_t virtio_queue_vector(VirtIODevice *vdev, int n);
+ void virtio_queue_set_vector(VirtIODevice *vdev, int n, uint16_t vector);
+-void virtio_set_status(VirtIODevice *vdev, uint8_t val);
++int virtio_set_status(VirtIODevice *vdev, uint8_t val);
+ void virtio_reset(void *opaque);
+ void virtio_update_irq(VirtIODevice *vdev);
+ int virtio_set_features(VirtIODevice *vdev, uint64_t val);
+-- 
+1.8.3.1
+

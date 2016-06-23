@@ -1,0 +1,192 @@
+From d7b782e6f39bca5472ca7a5f9895fa974bcaac68 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 8 Jun 2015 00:52:01 +0200
+Subject: [PATCH 03/44] acpi, mem-hotplug: add unplug request cb for memory
+ device
+
+Message-id: <1433724727-46928-4-git-send-email-imammedo@redhat.com>
+Patchwork-id: 65391
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 3/9] acpi, mem-hotplug: add unplug request cb for memory device
+Bugzilla: 1120706
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Tang Chen <tangchen@cn.fujitsu.com>
+
+This patch adds unplug request cb for memory device, and adds the
+is_removing boolean field to MemStatus. This field is used to indicate
+whether the memory device in slot has been requested to be ejected.
+This field is set to true in acpi_memory_unplug_request_cb().
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Tang Chen <tangchen@cn.fujitsu.com>
+Signed-off-by: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 64fec58e8ab62490edd2638e4214d8c9f84518c9)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/ich9.c                   | 10 ++++++++--
+ hw/acpi/memory_hotplug.c         | 19 +++++++++++++++++++
+ hw/acpi/piix4.c                  |  6 +++++-
+ hw/i386/pc.c                     | 28 ++++++++++++++++++++++++++--
+ include/hw/acpi/memory_hotplug.h | 10 ++++++++++
+ 5 files changed, 68 insertions(+), 5 deletions(-)
+
+diff --git a/hw/acpi/ich9.c b/hw/acpi/ich9.c
+index 5352e19..b85eed4 100644
+--- a/hw/acpi/ich9.c
++++ b/hw/acpi/ich9.c
+@@ -400,8 +400,14 @@ void ich9_pm_device_plug_cb(ICH9LPCPMRegs *pm, DeviceState *dev, Error **errp)
+ void ich9_pm_device_unplug_request_cb(ICH9LPCPMRegs *pm, DeviceState *dev,
+                                       Error **errp)
+ {
+-    error_setg(errp, "acpi: device unplug request for not supported device"
+-               " type: %s", object_get_typename(OBJECT(dev)));
++    if (pm->acpi_memory_hotplug.is_enabled &&
++        object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
++        acpi_memory_unplug_request_cb(&pm->acpi_regs, pm->irq,
++                                      &pm->acpi_memory_hotplug, dev, errp);
++    } else {
++        error_setg(errp, "acpi: device unplug request for not supported device"
++                   " type: %s", object_get_typename(OBJECT(dev)));
++    }
+ }
+ 
+ void ich9_pm_device_unplug_cb(ICH9LPCPMRegs *pm, DeviceState *dev,
+diff --git a/hw/acpi/memory_hotplug.c b/hw/acpi/memory_hotplug.c
+index 6af9303..42fe668 100644
+--- a/hw/acpi/memory_hotplug.c
++++ b/hw/acpi/memory_hotplug.c
+@@ -75,6 +75,7 @@ static uint64_t acpi_memory_hotplug_read(void *opaque, hwaddr addr,
+     case 0x14: /* pack and return is_* fields */
+         val |= mdev->is_enabled   ? 1 : 0;
+         val |= mdev->is_inserting ? 2 : 0;
++        val |= mdev->is_removing  ? 4 : 0;
+         trace_mhp_acpi_read_flags(mem_st->selector, val);
+         break;
+     default:
+@@ -218,6 +219,24 @@ void acpi_memory_plug_cb(ACPIREGS *ar, qemu_irq irq, MemHotplugState *mem_st,
+     return;
+ }
+ 
++void acpi_memory_unplug_request_cb(ACPIREGS *ar, qemu_irq irq,
++                                   MemHotplugState *mem_st,
++                                   DeviceState *dev, Error **errp)
++{
++    MemStatus *mdev;
++
++    mdev = acpi_memory_slot_status(mem_st, dev, errp);
++    if (!mdev) {
++        return;
++    }
++
++    mdev->is_removing = true;
++
++    /* Do ACPI magic */
++    ar->gpe.sts[0] |= ACPI_MEMORY_HOTPLUG_STATUS;
++    acpi_update_sci(ar, irq);
++}
++
+ static const VMStateDescription vmstate_memhp_sts = {
+     .name = "memory hotplug device state",
+     .version_id = 1,
+diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
+index 910b5ad..66ecfca 100644
+--- a/hw/acpi/piix4.c
++++ b/hw/acpi/piix4.c
+@@ -361,7 +361,11 @@ static void piix4_device_unplug_request_cb(HotplugHandler *hotplug_dev,
+ {
+     PIIX4PMState *s = PIIX4_PM(hotplug_dev);
+ 
+-    if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_DEVICE)) {
++    if (s->acpi_memory_hotplug.is_enabled &&
++        object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
++        acpi_memory_unplug_request_cb(&s->ar, s->irq, &s->acpi_memory_hotplug,
++                                      dev, errp);
++    } else if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_DEVICE)) {
+         acpi_pcihp_device_unplug_cb(&s->ar, s->irq, &s->acpi_pci_hotplug, dev,
+                                     errp);
+     } else {
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 32dccd3..2e3158a 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1679,6 +1679,26 @@ out:
+     error_propagate(errp, local_err);
+ }
+ 
++static void pc_dimm_unplug_request(HotplugHandler *hotplug_dev,
++                                   DeviceState *dev, Error **errp)
++{
++    HotplugHandlerClass *hhc;
++    Error *local_err = NULL;
++    PCMachineState *pcms = PC_MACHINE(hotplug_dev);
++
++    if (!pcms->acpi_dev) {
++        error_setg(&local_err,
++                   "memory hotplug is not enabled: missing acpi device");
++        goto out;
++    }
++
++    hhc = HOTPLUG_HANDLER_GET_CLASS(pcms->acpi_dev);
++    hhc->unplug_request(HOTPLUG_HANDLER(pcms->acpi_dev), dev, &local_err);
++
++out:
++    error_propagate(errp, local_err);
++}
++
+ static void pc_cpu_plug(HotplugHandler *hotplug_dev,
+                         DeviceState *dev, Error **errp)
+ {
+@@ -1721,8 +1741,12 @@ static void pc_machine_device_plug_cb(HotplugHandler *hotplug_dev,
+ static void pc_machine_device_unplug_request_cb(HotplugHandler *hotplug_dev,
+                                                 DeviceState *dev, Error **errp)
+ {
+-    error_setg(errp, "acpi: device unplug request for not supported device"
+-               " type: %s", object_get_typename(OBJECT(dev)));
++    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
++        pc_dimm_unplug_request(hotplug_dev, dev, errp);
++    } else {
++        error_setg(errp, "acpi: device unplug request for not supported device"
++                   " type: %s", object_get_typename(OBJECT(dev)));
++    }
+ }
+ 
+ static void pc_machine_device_unplug_cb(HotplugHandler *hotplug_dev,
+diff --git a/include/hw/acpi/memory_hotplug.h b/include/hw/acpi/memory_hotplug.h
+index 7bbf8a0..9d7eee9 100644
+--- a/include/hw/acpi/memory_hotplug.h
++++ b/include/hw/acpi/memory_hotplug.h
+@@ -7,10 +7,17 @@
+ 
+ #define ACPI_MEMORY_HOTPLUG_STATUS 8
+ 
++/**
++ * MemStatus:
++ * @is_removing: the memory device in slot has been requested to be ejected.
++ *
++ * This structure stores memory device's status.
++ */
+ typedef struct MemStatus {
+     DeviceState *dimm;
+     bool is_enabled;
+     bool is_inserting;
++    bool is_removing;
+     uint32_t ost_event;
+     uint32_t ost_status;
+ } MemStatus;
+@@ -28,6 +35,9 @@ void acpi_memory_hotplug_init(MemoryRegion *as, Object *owner,
+ 
+ void acpi_memory_plug_cb(ACPIREGS *ar, qemu_irq irq, MemHotplugState *mem_st,
+                          DeviceState *dev, Error **errp);
++void acpi_memory_unplug_request_cb(ACPIREGS *ar, qemu_irq irq,
++                                   MemHotplugState *mem_st,
++                                   DeviceState *dev, Error **errp);
+ 
+ extern const VMStateDescription vmstate_memory_hotplug;
+ #define VMSTATE_MEMORY_HOTPLUG(memhp, state) \
+-- 
+1.8.3.1
+

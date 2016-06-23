@@ -1,0 +1,88 @@
+From 8cde8c7080da3d841d7b285fac41fe2e540e8b3c Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Thu, 5 Feb 2015 15:35:07 +0100
+Subject: ignore SIGIO in tests that use AIO context (aarch64 host only)
+
+Message-id: <1423150507-19999-3-git-send-email-lersek@redhat.com>
+Patchwork-id: 63730
+O-Subject: [RHELSA qemu-kvm-rhev PATCH 2/2] ignore SIGIO in tests that use AIO context (aarch64 host only)
+Bugzilla: 1184405
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Richard Jones <rjones@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+
+There are three tests (grep for aio_context_new()) that call aio_notify().
+According to the previous patch, aio_notify() now generates a SIGIO for
+the entire process. The default action for SIGIO is to terminate the
+process.
+
+These tests are single-threaded, and don't expect aio_notify() to raise
+SIGIO. Set the disposition to SIG_IGN so that SIGIO not terminate the test
+processes.
+
+Downstream only.
+
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+diff --git a/tests/test-aio.c b/tests/test-aio.c
+index a7cb5c9..dd14bc7 100644
+--- a/tests/test-aio.c
++++ b/tests/test-aio.c
+@@ -11,6 +11,7 @@
+  */
+ 
+ #include <glib.h>
++#include "qemu-common.h"
+ #include "block/aio.h"
+ #include "qemu/timer.h"
+ #include "qemu/sockets.h"
+@@ -816,6 +817,10 @@ int main(int argc, char **argv)
+ 
+     init_clocks();
+ 
++#ifdef HOST_AARCH64
++    sigaction(SIGIO, &(struct sigaction){ .sa_handler = SIG_IGN }, NULL);
++#endif
++
+     ctx = aio_context_new(&local_error);
+     if (!ctx) {
+         error_report("Failed to create AIO Context: '%s'",
+diff --git a/tests/test-thread-pool.c b/tests/test-thread-pool.c
+index 6a0b981..d9a1444 100644
+--- a/tests/test-thread-pool.c
++++ b/tests/test-thread-pool.c
+@@ -227,6 +227,10 @@ int main(int argc, char **argv)
+ 
+     init_clocks();
+ 
++#ifdef HOST_AARCH64
++    sigaction(SIGIO, &(struct sigaction){ .sa_handler = SIG_IGN }, NULL);
++#endif
++
+     ctx = aio_context_new(&local_error);
+     if (!ctx) {
+         error_report("Failed to create AIO Context: '%s'",
+diff --git a/tests/test-throttle.c b/tests/test-throttle.c
+index d8ba415..f9f4fca 100644
+--- a/tests/test-throttle.c
++++ b/tests/test-throttle.c
+@@ -12,6 +12,7 @@
+ 
+ #include <glib.h>
+ #include <math.h>
++#include "qemu-common.h"
+ #include "block/aio.h"
+ #include "qemu/throttle.h"
+ #include "qemu/error-report.h"
+@@ -497,6 +498,10 @@ int main(int argc, char **argv)
+ 
+     init_clocks();
+ 
++#ifdef HOST_AARCH64
++    sigaction(SIGIO, &(struct sigaction){ .sa_handler = SIG_IGN }, NULL);
++#endif
++
+     ctx = aio_context_new(&local_error);
+     if (!ctx) {
+         error_report("Failed to create AIO Context: '%s'",

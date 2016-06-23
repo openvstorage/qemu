@@ -1,0 +1,99 @@
+From afc5a8ba4d6b506ebd9e5d3c1b2f49d822528b32 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:33 +0100
+Subject: [PATCH 21/44] vhost-user: add a migration blocker
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-15-git-send-email-mst@redhat.com>
+Patchwork-id: 68361
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 14/36] vhost-user: add a migration blocker
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+If VHOST_USER_PROTOCOL_F_LOG_SHMFD is not announced, block vhost-user
+migration. The blocker is removed in vhost_dev_cleanup().
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit d2fc4402cb152d3e526f736d7d53dbd050ef8794)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost-user.c |  9 +++++++++
+ hw/virtio/vhost.c      | 16 ++++++++++++----
+ 2 files changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 2c51b7b..bee99c7 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -15,6 +15,7 @@
+ #include "qemu/error-report.h"
+ #include "qemu/sockets.h"
+ #include "exec/ram_addr.h"
++#include "migration/migration.h"
+ 
+ #include <fcntl.h>
+ #include <unistd.h>
+@@ -442,6 +443,14 @@ static int vhost_user_init(struct vhost_dev *dev, void *opaque)
+         }
+     }
+ 
++    if (dev->migration_blocker == NULL &&
++        !virtio_has_feature(dev->protocol_features,
++                            VHOST_USER_PROTOCOL_F_LOG_SHMFD)) {
++        error_setg(&dev->migration_blocker,
++                   "Migration disabled: vhost-user backend lacks "
++                   "VHOST_USER_PROTOCOL_F_LOG_SHMFD feature.");
++    }
++
+     return 0;
+ }
+ 
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index 21ce496..a5fee9b 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -941,6 +941,8 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
+     uint64_t features;
+     int i, r;
+ 
++    hdev->migration_blocker = NULL;
++
+     if (vhost_set_backend_type(hdev, backend_type) < 0) {
+         close((uintptr_t)opaque);
+         return -1;
+@@ -984,12 +986,18 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
+         .eventfd_del = vhost_eventfd_del,
+         .priority = 10
+     };
+-    hdev->migration_blocker = NULL;
+-    if (!(hdev->features & (0x1ULL << VHOST_F_LOG_ALL))) {
+-        error_setg(&hdev->migration_blocker,
+-                   "Migration disabled: vhost lacks VHOST_F_LOG_ALL feature.");
++
++    if (hdev->migration_blocker == NULL) {
++        if (!(hdev->features & (0x1ULL << VHOST_F_LOG_ALL))) {
++            error_setg(&hdev->migration_blocker,
++                       "Migration disabled: vhost lacks VHOST_F_LOG_ALL feature.");
++        }
++    }
++
++    if (hdev->migration_blocker != NULL) {
+         migrate_add_blocker(hdev->migration_blocker);
+     }
++
+     hdev->mem = g_malloc0(offsetof(struct vhost_memory, regions));
+     hdev->n_mem_sections = 0;
+     hdev->mem_sections = NULL;
+-- 
+1.8.3.1
+

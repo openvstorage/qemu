@@ -1,0 +1,138 @@
+From 12c2e621e49fa838d1408b754a5cfd7e6c07a9f0 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 30 Sep 2015 06:43:16 +0200
+Subject: [PATCH 08/10] spapr_iommu: Rename vfio_accel parameter
+
+Message-id: <1443595398-20898-9-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67992
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv4 08/10] spapr_iommu: Rename vfio_accel parameter
+Bugzilla: 1259556
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+The vfio_accel parameter used when creating a new TCE table (guest IOMMU
+context) has a confusing name.  What it really means is whether we need the
+TCE table created to be able to support VFIO devices.
+
+VFIO is relevant, because when available we use in-kernel acceleration of
+the TCE table, but that may not work with VFIO devices because updates to
+the table are handled in kernel, bypass qemu and so don't hit qemu's
+infrastructure for keeping the VFIO host IOMMU state in sync with the guest
+IOMMU state.
+
+Rename the parameter to "need_vfio" throughout.  This is a cosmetic change,
+with no impact on the logic.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1259556
+Upstream: Posted, revised, not merged
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+---
+ hw/ppc/spapr_iommu.c   | 6 +++---
+ include/hw/ppc/spapr.h | 4 ++--
+ target-ppc/kvm.c       | 4 ++--
+ target-ppc/kvm_ppc.h   | 2 +-
+ 4 files changed, 8 insertions(+), 8 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_iommu.c   | 6 +++---
+ include/hw/ppc/spapr.h | 4 ++--
+ target-ppc/kvm.c       | 4 ++--
+ target-ppc/kvm_ppc.h   | 2 +-
+ 4 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/hw/ppc/spapr_iommu.c b/hw/ppc/spapr_iommu.c
+index f5ee95f..af561e0 100644
+--- a/hw/ppc/spapr_iommu.c
++++ b/hw/ppc/spapr_iommu.c
+@@ -132,7 +132,7 @@ static int spapr_tce_table_realize(DeviceState *dev)
+                                               tcet->nb_table <<
+                                               tcet->page_shift,
+                                               &tcet->fd,
+-                                              tcet->vfio_accel);
++                                              tcet->need_vfio);
+     }
+ 
+     if (!tcet->table) {
+@@ -158,7 +158,7 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn,
+                                    uint64_t bus_offset,
+                                    uint32_t page_shift,
+                                    uint32_t nb_table,
+-                                   bool vfio_accel)
++                                   bool need_vfio)
+ {
+     sPAPRTCETable *tcet;
+ 
+@@ -177,7 +177,7 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn,
+     tcet->bus_offset = bus_offset;
+     tcet->page_shift = page_shift;
+     tcet->nb_table = nb_table;
+-    tcet->vfio_accel = vfio_accel;
++    tcet->need_vfio = need_vfio;
+ 
+     object_property_add_child(OBJECT(owner), "tce-table", OBJECT(tcet), NULL);
+ 
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index a23ef6a..acc61c3 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -559,7 +559,7 @@ struct sPAPRTCETable {
+     uint32_t page_shift;
+     uint64_t *table;
+     bool bypass;
+-    bool vfio_accel;
++    bool need_vfio;
+     int fd;
+     MemoryRegion iommu;
+     struct VIOsPAPRDevice *vdev; /* for @bypass migration compatibility only */
+@@ -583,7 +583,7 @@ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn,
+                                    uint64_t bus_offset,
+                                    uint32_t page_shift,
+                                    uint32_t nb_table,
+-                                   bool vfio_accel);
++                                   bool need_vfio);
+ MemoryRegion *spapr_tce_get_iommu(sPAPRTCETable *tcet);
+ int spapr_dma_dt(void *fdt, int node_off, const char *propname,
+                  uint32_t liobn, uint64_t window, uint32_t size);
+diff --git a/target-ppc/kvm.c b/target-ppc/kvm.c
+index 70d3a52..f4ea18d 100644
+--- a/target-ppc/kvm.c
++++ b/target-ppc/kvm.c
+@@ -2012,7 +2012,7 @@ bool kvmppc_spapr_use_multitce(void)
+ }
+ 
+ void *kvmppc_create_spapr_tce(uint32_t liobn, uint32_t window_size, int *pfd,
+-                              bool vfio_accel)
++                              bool need_vfio)
+ {
+     struct kvm_create_spapr_tce args = {
+         .liobn = liobn,
+@@ -2026,7 +2026,7 @@ void *kvmppc_create_spapr_tce(uint32_t liobn, uint32_t window_size, int *pfd,
+      * destroying the table, which the upper layers -will- do
+      */
+     *pfd = -1;
+-    if (!cap_spapr_tce || (vfio_accel && !cap_spapr_vfio)) {
++    if (!cap_spapr_tce || (need_vfio && !cap_spapr_vfio)) {
+         return NULL;
+     }
+ 
+diff --git a/target-ppc/kvm_ppc.h b/target-ppc/kvm_ppc.h
+index 4d30e27..1d17130 100644
+--- a/target-ppc/kvm_ppc.h
++++ b/target-ppc/kvm_ppc.h
+@@ -37,7 +37,7 @@ int kvmppc_booke_watchdog_enable(PowerPCCPU *cpu);
+ off_t kvmppc_alloc_rma(void **rma);
+ bool kvmppc_spapr_use_multitce(void);
+ void *kvmppc_create_spapr_tce(uint32_t liobn, uint32_t window_size, int *pfd,
+-                              bool vfio_accel);
++                              bool need_vfio);
+ int kvmppc_remove_spapr_tce(void *table, int pfd, uint32_t window_size);
+ int kvmppc_reset_htab(int shift_hint);
+ uint64_t kvmppc_rma_size(uint64_t current_size, unsigned int hash_shift);
+-- 
+1.8.3.1
+

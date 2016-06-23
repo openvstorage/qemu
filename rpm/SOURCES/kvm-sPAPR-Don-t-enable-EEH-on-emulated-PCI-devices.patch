@@ -1,0 +1,60 @@
+From b8d1e7e1aecc85d4c115d5390122b49cac82c36a Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Mon, 6 Jul 2015 13:05:54 +0200
+Subject: [PATCH 28/31] sPAPR: Don't enable EEH on emulated PCI devices
+
+Message-id: <1436187956-15948-2-git-send-email-lvivier@redhat.com>
+Patchwork-id: 66742
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 1/3] sPAPR: Don't enable EEH on emulated PCI devices
+Bugzilla: 1213681
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Gavin Shan <gwshan@linux.vnet.ibm.com>
+
+There might have emulated PCI devices, together with VFIO PCI
+devices under one PHB. The EEH capability shouldn't enabled
+on emulated PCI devices.
+
+The patch returns error when enabling EEH capability on emulated
+PCI devices by RTAS call "ibm,set-eeh-option".
+
+Signed-off-by: Gavin Shan <gwshan@linux.vnet.ibm.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit 979b81496da90324d4668ea08ada52a59a9ab06f)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Upstream: 7cb180079e245024cf92ca218ca58858b679a7d6
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_pci.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/hw/ppc/spapr_pci.c b/hw/ppc/spapr_pci.c
+index 00a87bf..1a27963 100644
+--- a/hw/ppc/spapr_pci.c
++++ b/hw/ppc/spapr_pci.c
+@@ -425,6 +425,7 @@ static void rtas_ibm_set_eeh_option(PowerPCCPU *cpu,
+ {
+     sPAPRPHBState *sphb;
+     sPAPRPHBClass *spc;
++    PCIDevice *pdev;
+     uint32_t addr, option;
+     uint64_t buid;
+     int ret;
+@@ -442,6 +443,12 @@ static void rtas_ibm_set_eeh_option(PowerPCCPU *cpu,
+         goto param_error_exit;
+     }
+ 
++    pdev = pci_find_device(PCI_HOST_BRIDGE(sphb)->bus,
++                           (addr >> 16) & 0xFF, (addr >> 8) & 0xFF);
++    if (!pdev || !object_dynamic_cast(OBJECT(pdev), "vfio-pci")) {
++        goto param_error_exit;
++    }
++
+     spc = SPAPR_PCI_HOST_BRIDGE_GET_CLASS(sphb);
+     if (!spc->eeh_set_option) {
+         goto param_error_exit;
+-- 
+1.8.3.1
+

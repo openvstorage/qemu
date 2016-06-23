@@ -1,0 +1,48 @@
+From 71d2de6585d0fae39bbb75e375254521d857f7af Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:37 +0200
+Subject: [PATCH 01/20] virtio-ccw: using VIRTIO_NO_VECTOR instead of 0 for
+ invalid virtqueue
+
+Message-id: <1434607916-15166-2-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66300
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 01/20] virtio-ccw: using VIRTIO_NO_VECTOR instead of 0 for invalid virtqueue
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+It's a bad idea to need to use vector 0 for invalid virtqueue. So this patch
+changes to using VIRTIO_NO_VECTOR instead.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Cornelia Huck <cornelia.huck@de.ibm.com>
+CC: Christian Borntraeger <borntraeger@de.ibm.com>
+Cc: Richard Henderson <rth@twiddle.net>
+Cc: Alexander Graf <agraf@suse.de>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Acked-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 955cc8c9541779e09895a9c5ccbf8ace15d884f5)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/s390x/virtio-ccw.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index d32ecaf..0434f56 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -281,7 +281,7 @@ static int virtio_ccw_set_vqs(SubchDev *sch, uint64_t addr, uint32_t align,
+ 
+     virtio_queue_set_addr(vdev, index, addr);
+     if (!addr) {
+-        virtio_queue_set_vector(vdev, index, 0);
++        virtio_queue_set_vector(vdev, index, VIRTIO_NO_VECTOR);
+     } else {
+         /* Fail if we don't have a big enough queue. */
+         /* TODO: Add interface to handle vring.num changing */
+-- 
+1.8.3.1
+

@@ -1,0 +1,51 @@
+From cb6719796802b92d5e80683ccb4fbd2ce60484d8 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Tue, 22 Sep 2015 06:07:17 +0200
+Subject: [PATCH 08/10] spapr_pci: encode class code including Prog IF register
+
+Message-id: <1442902037-32322-1-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67859
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] spapr_pci: encode class code including Prog IF register
+Bugzilla: 1264845
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+Current code missed the Prog IF register. All Class Code, Subclass,
+and Prog IF registers are needed to identify the accurate device type.
+
+For example: USB controllers use the PROG IF for denoting: USB
+FullSpeed, HighSpeed or SuperSpeed.
+
+Signed-off-by: Nikunj A Dadhania <nikunj@linux.vnet.ibm.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 4a7c34741584e91aa838a9e45b8ec5cdc65a343b)
+
+Bugzilla: https://bugzilla.redhat.com/process_bug.cgi
+Brew: http://brewweb.devel.redhat.com/brew/taskinfo?taskID=9865164
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr_pci.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/hw/ppc/spapr_pci.c b/hw/ppc/spapr_pci.c
+index a523bf1..183192f 100644
+--- a/hw/ppc/spapr_pci.c
++++ b/hw/ppc/spapr_pci.c
+@@ -956,8 +956,7 @@ static int spapr_populate_pci_child_dt(PCIDevice *dev, void *fdt, int offset,
+     _FDT(fdt_setprop_cell(fdt, offset, "revision-id",
+                           pci_default_read_config(dev, PCI_REVISION_ID, 1)));
+     _FDT(fdt_setprop_cell(fdt, offset, "class-code",
+-                          pci_default_read_config(dev, PCI_CLASS_DEVICE, 2)
+-                            << 8));
++                          pci_default_read_config(dev, PCI_CLASS_PROG, 3)));
+     if (pci_default_read_config(dev, PCI_INTERRUPT_PIN, 1)) {
+         _FDT(fdt_setprop_cell(fdt, offset, "interrupts",
+                  pci_default_read_config(dev, PCI_INTERRUPT_PIN, 1)));
+-- 
+1.8.3.1
+

@@ -1,0 +1,178 @@
+From cffcb61add562dbe023ab6c7ba0acd9519fd2202 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Mon, 10 Aug 2015 05:09:34 +0200
+Subject: [PATCH 13/16] virtio-net: remove virtio queues if the guest doesn't
+ support multiqueue
+
+Message-id: <1439183375-4841-14-git-send-email-jasowang@redhat.com>
+Patchwork-id: 67440
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 13/14] virtio-net: remove virtio queues if the guest doesn't support multiqueue
+Bugzilla: 1248312
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Wen Congyang <wency@cn.fujitsu.com>
+
+commit da51a335 adds all queues in .realize(). But if the
+guest doesn't support multiqueue, we forget to remove them. And
+we cannot handle the ctrl vq corretly. The guest will hang.
+
+Signed-off-by: Wen Congyang <wency@cn.fujitsu.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Jason Wang <jasowang@redhat.com>
+(cherry picked from commit f9d6dbf0bf6e91b8ed896369ab1b7e91e5a1a4df)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/virtio-net.c | 110 +++++++++++++++++++++++++++++++++++++++-------------
+ 1 file changed, 82 insertions(+), 28 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index d60ce70..6fdc3d5 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -1330,9 +1330,86 @@ static void virtio_net_tx_bh(void *opaque)
+     }
+ }
+ 
++static void virtio_net_add_queue(VirtIONet *n, int index)
++{
++    VirtIODevice *vdev = VIRTIO_DEVICE(n);
++
++    n->vqs[index].rx_vq = virtio_add_queue(vdev, 256, virtio_net_handle_rx);
++    if (n->net_conf.tx && !strcmp(n->net_conf.tx, "timer")) {
++        n->vqs[index].tx_vq =
++            virtio_add_queue(vdev, 256, virtio_net_handle_tx_timer);
++        n->vqs[index].tx_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
++                                              virtio_net_tx_timer,
++                                              &n->vqs[index]);
++    } else {
++        n->vqs[index].tx_vq =
++            virtio_add_queue(vdev, 256, virtio_net_handle_tx_bh);
++        n->vqs[index].tx_bh = qemu_bh_new(virtio_net_tx_bh, &n->vqs[index]);
++    }
++
++    n->vqs[index].tx_waiting = 0;
++    n->vqs[index].n = n;
++}
++
++static void virtio_net_del_queue(VirtIONet *n, int index)
++{
++    VirtIODevice *vdev = VIRTIO_DEVICE(n);
++    VirtIONetQueue *q = &n->vqs[index];
++    NetClientState *nc = qemu_get_subqueue(n->nic, index);
++
++    qemu_purge_queued_packets(nc);
++
++    virtio_del_queue(vdev, index * 2);
++    if (q->tx_timer) {
++        timer_del(q->tx_timer);
++        timer_free(q->tx_timer);
++    } else {
++        qemu_bh_delete(q->tx_bh);
++    }
++    virtio_del_queue(vdev, index * 2 + 1);
++}
++
++static void virtio_net_change_num_queues(VirtIONet *n, int new_max_queues)
++{
++    VirtIODevice *vdev = VIRTIO_DEVICE(n);
++    int old_num_queues = virtio_get_num_queues(vdev);
++    int new_num_queues = new_max_queues * 2 + 1;
++    int i;
++
++    assert(old_num_queues >= 3);
++    assert(old_num_queues % 2 == 1);
++
++    if (old_num_queues == new_num_queues) {
++        return;
++    }
++
++    /*
++     * We always need to remove and add ctrl vq if
++     * old_num_queues != new_num_queues. Remove ctrl_vq first,
++     * and then we only enter one of the following too loops.
++     */
++    virtio_del_queue(vdev, old_num_queues - 1);
++
++    for (i = new_num_queues - 1; i < old_num_queues - 1; i += 2) {
++        /* new_num_queues < old_num_queues */
++        virtio_net_del_queue(n, i / 2);
++    }
++
++    for (i = old_num_queues - 1; i < new_num_queues - 1; i += 2) {
++        /* new_num_queues > old_num_queues */
++        virtio_net_add_queue(n, i / 2);
++    }
++
++    /* add ctrl_vq last */
++    n->ctrl_vq = virtio_add_queue(vdev, 64, virtio_net_handle_ctrl);
++}
++
+ static void virtio_net_set_multiqueue(VirtIONet *n, int multiqueue)
+ {
++    int max = multiqueue ? n->max_queues : 1;
++
+     n->multiqueue = multiqueue;
++    virtio_net_change_num_queues(n, max);
+ 
+     virtio_net_set_queues(n);
+ }
+@@ -1607,21 +1684,7 @@ static void virtio_net_device_realize(DeviceState *dev, Error **errp)
+     }
+ 
+     for (i = 0; i < n->max_queues; i++) {
+-        n->vqs[i].rx_vq = virtio_add_queue(vdev, 256, virtio_net_handle_rx);
+-        if (n->net_conf.tx && !strcmp(n->net_conf.tx, "timer")) {
+-            n->vqs[i].tx_vq =
+-                virtio_add_queue(vdev, 256, virtio_net_handle_tx_timer);
+-            n->vqs[i].tx_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
+-                                              virtio_net_tx_timer,
+-                                              &n->vqs[i]);
+-        } else {
+-            n->vqs[i].tx_vq =
+-                virtio_add_queue(vdev, 256, virtio_net_handle_tx_bh);
+-            n->vqs[i].tx_bh = qemu_bh_new(virtio_net_tx_bh, &n->vqs[i]);
+-        }
+-
+-        n->vqs[i].tx_waiting = 0;
+-        n->vqs[i].n = n;
++        virtio_net_add_queue(n, i);
+     }
+ 
+     n->ctrl_vq = virtio_add_queue(vdev, 64, virtio_net_handle_ctrl);
+@@ -1675,7 +1738,7 @@ static void virtio_net_device_unrealize(DeviceState *dev, Error **errp)
+ {
+     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
+     VirtIONet *n = VIRTIO_NET(dev);
+-    int i;
++    int i, max_queues;
+ 
+     /* This will stop vhost backend if appropriate. */
+     virtio_net_set_status(vdev, 0);
+@@ -1690,18 +1753,9 @@ static void virtio_net_device_unrealize(DeviceState *dev, Error **errp)
+     g_free(n->mac_table.macs);
+     g_free(n->vlans);
+ 
+-    for (i = 0; i < n->max_queues; i++) {
+-        VirtIONetQueue *q = &n->vqs[i];
+-        NetClientState *nc = qemu_get_subqueue(n->nic, i);
+-
+-        qemu_purge_queued_packets(nc);
+-
+-        if (q->tx_timer) {
+-            timer_del(q->tx_timer);
+-            timer_free(q->tx_timer);
+-        } else if (q->tx_bh) {
+-            qemu_bh_delete(q->tx_bh);
+-        }
++    max_queues = n->multiqueue ? n->max_queues : 1;
++    for (i = 0; i < max_queues; i++) {
++        virtio_net_del_queue(n, i);
+     }
+ 
+     timer_del(n->announce_timer);
+-- 
+1.8.3.1
+

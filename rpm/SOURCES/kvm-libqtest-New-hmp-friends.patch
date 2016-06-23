@@ -1,0 +1,229 @@
+From b3ae8e79481f08728aafff3970476c66abb32778 Mon Sep 17 00:00:00 2001
+Message-Id: <b3ae8e79481f08728aafff3970476c66abb32778.1444668695.git.jen@redhat.com>
+In-Reply-To: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+References: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+From: Markus Armbruster <armbru@redhat.com>
+Date: Fri, 9 Oct 2015 14:37:34 -0500
+Subject: [CHANGE 07/11] libqtest: New hmp() & friends
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Markus Armbruster <armbru@redhat.com>
+Message-id: <1444401458-7995-6-git-send-email-armbru@redhat.com>
+Patchwork-id: 68111
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 5/9] libqtest: New hmp() & friends
+Bugzilla: 1264347
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+New convenience function hmp() to facilitate use of
+human-monitor-command in tests.  Use it to simplify its existing uses.
+
+To blend into existing libqtest code, also add qtest_hmpv() and
+qtest_hmp().  That, and the egregiously verbose GTK-Doc comment format
+make this patch look bigger than it is.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Message-Id: <1443689999-12182-7-git-send-email-armbru@redhat.com>
+(cherry picked from commit 5fb48d9673b76fc53507a0e717a12968e57d846e)
+
+Conflicts:
+	tests/libqtest.c
+	tests/libqtest.h
+
+Straightforward conflicts due to lack of commit 8fe941f.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+---
+ tests/drive_del-test.c | 22 ++++++----------------
+ tests/ide-test.c       |  8 ++------
+ tests/libqtest.c       | 38 ++++++++++++++++++++++++++++++++++++++
+ tests/libqtest.h       | 33 +++++++++++++++++++++++++++++++++
+ 4 files changed, 79 insertions(+), 22 deletions(-)
+
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ tests/drive_del-test.c | 22 ++++++----------------
+ tests/ide-test.c       |  8 ++------
+ tests/libqtest.c       | 38 ++++++++++++++++++++++++++++++++++++++
+ tests/libqtest.h       | 33 +++++++++++++++++++++++++++++++++
+ 4 files changed, 79 insertions(+), 22 deletions(-)
+
+diff --git a/tests/drive_del-test.c b/tests/drive_del-test.c
+index 8951f6f..3390946 100644
+--- a/tests/drive_del-test.c
++++ b/tests/drive_del-test.c
+@@ -16,28 +16,18 @@
+ 
+ static void drive_add(void)
+ {
+-    QDict *response;
++    char *resp = hmp("drive_add 0 if=none,id=drive0");
+ 
+-    response = qmp("{'execute': 'human-monitor-command',"
+-                   " 'arguments': {"
+-                   "   'command-line': 'drive_add 0 if=none,id=drive0'"
+-                   "}}");
+-    g_assert(response);
+-    g_assert_cmpstr(qdict_get_try_str(response, "return"), ==, "OK\r\n");
+-    QDECREF(response);
++    g_assert_cmpstr(resp, ==, "OK\r\n");
++    g_free(resp);
+ }
+ 
+ static void drive_del(void)
+ {
+-    QDict *response;
++    char *resp = hmp("drive_del drive0");
+ 
+-    response = qmp("{'execute': 'human-monitor-command',"
+-                   " 'arguments': {"
+-                   "   'command-line': 'drive_del drive0'"
+-                   "}}");
+-    g_assert(response);
+-    g_assert_cmpstr(qdict_get_try_str(response, "return"), ==, "");
+-    QDECREF(response);
++    g_assert_cmpstr(resp, ==, "");
++    g_free(resp);
+ }
+ 
+ static void device_del(void)
+diff --git a/tests/ide-test.c b/tests/ide-test.c
+index b28a302..ef55753 100644
+--- a/tests/ide-test.c
++++ b/tests/ide-test.c
+@@ -462,9 +462,7 @@ static void test_flush(void)
+         tmp_path);
+ 
+     /* Delay the completion of the flush request until we explicitly do it */
+-    qmp_discard_response("{'execute':'human-monitor-command', 'arguments': {"
+-                         " 'command-line':"
+-                         " 'qemu-io ide0-hd0 \"break flush_to_os A\"'} }");
++    g_free(hmp("qemu-io ide0-hd0 \"break flush_to_os A\""));
+ 
+     /* FLUSH CACHE command on device 0*/
+     outb(IDE_BASE + reg_device, 0);
+@@ -476,9 +474,7 @@ static void test_flush(void)
+     assert_bit_clear(data, DF | ERR | DRQ);
+ 
+     /* Complete the command */
+-    qmp_discard_response("{'execute':'human-monitor-command', 'arguments': {"
+-                         " 'command-line':"
+-                         " 'qemu-io ide0-hd0 \"resume A\"'} }");
++    g_free(hmp("qemu-io ide0-hd0 \"resume A\""));
+ 
+     /* Check registers */
+     data = inb(IDE_BASE + reg_device);
+diff --git a/tests/libqtest.c b/tests/libqtest.c
+index 6e67ca9..ffe78a0 100644
+--- a/tests/libqtest.c
++++ b/tests/libqtest.c
+@@ -449,6 +449,34 @@ void qtest_qmp_discard_response(QTestState *s, const char *fmt, ...)
+     QDECREF(response);
+ }
+ 
++char *qtest_hmpv(QTestState *s, const char *fmt, va_list ap)
++{
++    char *cmd;
++    QDict *resp;
++    char *ret;
++
++    cmd = g_strdup_vprintf(fmt, ap);
++    resp = qtest_qmp(s, "{'execute': 'human-monitor-command',"
++                     " 'arguments': {'command-line': %s}}",
++                     cmd);
++    ret = g_strdup(qdict_get_try_str(resp, "return"));
++    g_assert(ret);
++    QDECREF(resp);
++    g_free(cmd);
++    return ret;
++}
++
++char *qtest_hmp(QTestState *s, const char *fmt, ...)
++{
++    va_list ap;
++    char *ret;
++
++    va_start(ap, fmt);
++    ret = qtest_hmpv(s, fmt, ap);
++    va_end(ap);
++    return ret;
++}
++
+ const char *qtest_get_arch(void)
+ {
+     const char *qemu = getenv("QTEST_QEMU_BINARY");
+@@ -702,6 +730,16 @@ void qmp_discard_response(const char *fmt, ...)
+     qtest_qmpv_discard_response(global_qtest, fmt, ap);
+     va_end(ap);
+ }
++char *hmp(const char *fmt, ...)
++{
++    va_list ap;
++    char *ret;
++
++    va_start(ap, fmt);
++    ret = qtest_hmpv(global_qtest, fmt, ap);
++    va_end(ap);
++    return ret;
++}
+ 
+ bool qtest_big_endian(void)
+ {
+diff --git a/tests/libqtest.h b/tests/libqtest.h
+index 03469b8..eddac6e 100644
+--- a/tests/libqtest.h
++++ b/tests/libqtest.h
+@@ -92,6 +92,29 @@ QDict *qtest_qmpv(QTestState *s, const char *fmt, va_list ap);
+ QDict *qtest_qmp_receive(QTestState *s);
+ 
+ /**
++ * qtest_hmpv:
++ * @s: #QTestState instance to operate on.
++ * @fmt...: HMP command to send to QEMU
++ *
++ * Send HMP command to QEMU via QMP's human-monitor-command.
++ *
++ * Returns: the command's output.  The caller should g_free() it.
++ */
++char *qtest_hmp(QTestState *s, const char *fmt, ...);
++
++/**
++ * qtest_hmpv:
++ * @s: #QTestState instance to operate on.
++ * @fmt: HMP command to send to QEMU
++ * @ap: HMP command arguments
++ *
++ * Send HMP command to QEMU via QMP's human-monitor-command.
++ *
++ * Returns: the command's output.  The caller should g_free() it.
++ */
++char *qtest_hmpv(QTestState *s, const char *fmt, va_list ap);
++
++/**
+  * qtest_get_irq:
+  * @s: #QTestState instance to operate on.
+  * @num: Interrupt to observe.
+@@ -429,6 +452,16 @@ static inline QDict *qmp_receive(void)
+ }
+ 
+ /**
++ * hmp:
++ * @fmt...: HMP command to send to QEMU
++ *
++ * Send HMP command to QEMU via QMP's human-monitor-command.
++ *
++ * Returns: the command's output.  The caller should g_free() it.
++ */
++char *hmp(const char *fmt, ...);
++
++/**
+  * get_irq:
+  * @num: Interrupt to observe.
+  *
+-- 
+2.4.3
+

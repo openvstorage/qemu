@@ -1,0 +1,51 @@
+From 6a6a04250472e8dc7dfe31ed3febb7f48545f382 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:51 +0200
+Subject: [PATCH 15/20] virtio-ccw: validate the number of queues against bus
+ limitation
+
+Message-id: <1434607916-15166-16-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66313
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 15/20] virtio-ccw: validate the number of queues against bus limitation
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Cc: Cornelia Huck <cornelia.huck@de.ibm.com>
+Cc: Christian Borntraeger <borntraeger@de.ibm.com>
+Cc: Richard Henderson <rth@twiddle.net>
+Cc: Alexander Graf <agraf@suse.de>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 10ceaa1e8f9f74c917df1fe5db856817a8b26fe7)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/s390x/virtio-ccw.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index 4ee38a3..534d6b6 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -1382,7 +1382,16 @@ static int virtio_ccw_load_config(DeviceState *d, QEMUFile *f)
+ static void virtio_ccw_device_plugged(DeviceState *d, Error **errp)
+ {
+     VirtioCcwDevice *dev = VIRTIO_CCW_DEVICE(d);
++    VirtIODevice *vdev = virtio_bus_get_device(&dev->bus);
+     SubchDev *sch = dev->sch;
++    int n = virtio_get_num_queues(vdev);
++
++    if (virtio_get_num_queues(vdev) > VIRTIO_CCW_QUEUE_MAX) {
++        error_setg(errp, "The nubmer of virtqueues %d "
++                   "exceeds ccw limit %d", n,
++                   VIRTIO_CCW_QUEUE_MAX);
++        return;
++    }
+ 
+     sch->id.cu_model = virtio_bus_get_vdev_id(&dev->bus);
+ 
+-- 
+1.8.3.1
+

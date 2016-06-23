@@ -1,0 +1,39 @@
+From 6b4c95e9a136c4d9be2712d836cf21ece5f5e069 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:41:55 +0200
+Subject: [PATCH 15/58] Remove unneeded memset
+
+Message-id: <1436794926-1598-7-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66976
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 06/17] Remove unneeded memset
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Reviewed-by: Michael R. Hines <mrhines@us.ibm.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 4fa3dd17dc29c316726f0d4a354a4d895e130c73)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/rdma.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/migration/rdma.c b/migration/rdma.c
+index 25f7fae..63c4afd 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -2452,7 +2452,6 @@ static void *qemu_rdma_data_init(const char *host_port, Error **errp)
+ 
+     if (host_port) {
+         rdma = g_malloc0(sizeof(RDMAContext));
+-        memset(rdma, 0, sizeof(RDMAContext));
+         rdma->current_index = -1;
+         rdma->current_chunk = -1;
+ 
+-- 
+1.8.3.1
+

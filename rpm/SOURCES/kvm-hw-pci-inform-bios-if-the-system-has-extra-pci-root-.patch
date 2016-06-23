@@ -1,0 +1,70 @@
+From 7defff8db930974142772a2ee3a1942639dc93f2 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:31 +0200
+Subject: [PATCH 22/31] hw/pci: inform bios if the system has extra pci root
+ buses
+
+Message-id: <1435154016-26233-39-git-send-email-marcel@redhat.com>
+Patchwork-id: 66466
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 38/43] hw/pci: inform bios if the system has extra pci root buses
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+From: Marcel Apfelbaum <marcel.a@redhat.com>
+
+The bios looks for 'etc/extra-pci-roots' to decide if
+is going to scan further buses after bus 0 tree.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 2118196bb3795a43bf708c37bdcf4b3c33778ccb)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index a946976..eb310ee 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -30,6 +30,7 @@
+ #include "hw/block/fdc.h"
+ #include "hw/ide.h"
+ #include "hw/pci/pci.h"
++#include "hw/pci/pci_bus.h"
+ #include "monitor/monitor.h"
+ #include "hw/nvram/fw_cfg.h"
+ #include "hw/timer/hpet.h"
+@@ -1120,6 +1121,25 @@ void pc_guest_info_machine_done(Notifier *notifier, void *data)
+     PcGuestInfoState *guest_info_state = container_of(notifier,
+                                                       PcGuestInfoState,
+                                                       machine_done);
++    PCIBus *bus = find_i440fx();
++
++    if (bus) {
++        int extra_hosts = 0;
++
++        QLIST_FOREACH(bus, &bus->child, sibling) {
++            /* look for expander root buses */
++            if (pci_bus_is_root(bus)) {
++                extra_hosts++;
++            }
++        }
++        if (extra_hosts && guest_info_state->info.fw_cfg) {
++            uint64_t *val = g_malloc(sizeof(*val));
++            *val = cpu_to_le64(extra_hosts);
++            fw_cfg_add_file(guest_info_state->info.fw_cfg,
++                    "etc/extra-pci-roots", val, sizeof(*val));
++        }
++    }
++
+     acpi_setup(&guest_info_state->info);
+ }
+ 
+-- 
+1.8.3.1
+

@@ -1,0 +1,93 @@
+From b9d91be0dd7a7404f4aaf7020a8cf33d33fecfed Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:25:57 +0200
+Subject: [PATCH 35/58] numa: Store boot memory address range in node_info
+
+Message-id: <1437715580-14817-6-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67122
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 05/28] numa: Store boot memory address range in node_info
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Store memory address range information of boot memory  in address
+range list of numa_info.
+
+This helps to have a common NUMA node lookup by address function that
+works for both boot-time memory and hotplugged memory.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Tested-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+(cherry picked from commit abafabd8c982e875d60a10d37f0b91cff1003c55)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ numa.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/numa.c b/numa.c
+index 4fc186a..2bf44b9 100644
+--- a/numa.c
++++ b/numa.c
+@@ -57,6 +57,14 @@ void numa_set_mem_node_id(ram_addr_t addr, uint64_t size, uint32_t node)
+ {
+     struct numa_addr_range *range = g_malloc0(sizeof(*range));
+ 
++    /*
++     * Memory-less nodes can come here with 0 size in which case,
++     * there is nothing to do.
++     */
++    if (!size) {
++        return;
++    }
++
+     range->mem_start = addr;
+     range->mem_end = addr + size - 1;
+     QLIST_INSERT_HEAD(&numa_info[node].addr, range, entry);
+@@ -75,6 +83,21 @@ void numa_unset_mem_node_id(ram_addr_t addr, uint64_t size, uint32_t node)
+     }
+ }
+ 
++static void numa_set_mem_ranges(void)
++{
++    int i;
++    ram_addr_t mem_start = 0;
++
++    /*
++     * Deduce start address of each node and use it to store
++     * the address range info in numa_info address range list
++     */
++    for (i = 0; i < nb_numa_nodes; i++) {
++        numa_set_mem_node_id(mem_start, numa_info[i].node_mem, i);
++        mem_start += numa_info[i].node_mem;
++    }
++}
++
+ static void numa_node_parse(NumaNodeOptions *node, QemuOpts *opts, Error **errp)
+ {
+     uint16_t nodenr;
+@@ -301,6 +324,8 @@ void parse_numa_opts(MachineClass *mc)
+             QLIST_INIT(&numa_info[i].addr);
+         }
+ 
++        numa_set_mem_ranges();
++
+         for (i = 0; i < nb_numa_nodes; i++) {
+             if (!bitmap_empty(numa_info[i].node_cpu, MAX_CPUMASK_BITS)) {
+                 break;
+@@ -325,6 +350,8 @@ void parse_numa_opts(MachineClass *mc)
+         }
+ 
+         validate_numa_cpus();
++    } else {
++        numa_set_mem_node_id(0, ram_size, 0);
+     }
+ }
+ 
+-- 
+1.8.3.1
+

@@ -1,0 +1,65 @@
+From 2bdd0afd3cf38118b63d1e1c81329004575a7d0c Mon Sep 17 00:00:00 2001
+From: Kevin Wolf <kwolf@redhat.com>
+Date: Tue, 2 Dec 2014 13:06:15 +0100
+Subject: qemu-iotests: Fix broken test cases
+
+Message-id: <1417525575-19744-1-git-send-email-kwolf@redhat.com>
+Patchwork-id: 62638
+O-Subject: [RHEV-7.1 qemu-kvm-rhev PATCH] qemu-iotests: Fix broken test cases
+Bugzilla: 1169589
+RH-Acked-by: Jeffrey Cody <jcody@redhat.com>
+RH-Acked-by: Max Reitz <mreitz@redhat.com>
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+
+This fixes a few qemu-iotests cases which currently fail in this tree
+because of incomplete or wrong backports.
+
+051 and 087 have trivial output changes.
+
+071 would require whitelisting blkverify, but since this doesn't test
+other drivers, but merely the QMP interface for blkdebug/blkverify,
+which is only compiled in for debugging and not really supported anyway,
+we can just skip the test.
+
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Rebase notes:
+  2.2.0: Different context in 087.out
+
+Conflicts:
+	tests/qemu-iotests/087.out
+
+diff --git a/tests/qemu-iotests/051.out b/tests/qemu-iotests/051.out
+index 042f1e2..ca4830c 100644
+--- a/tests/qemu-iotests/051.out
++++ b/tests/qemu-iotests/051.out
+@@ -146,6 +146,7 @@ QEMU X.Y.Z monitor - type 'help' for more information
+ QEMU_PROG: -device ide-hd,drive=disk: Device initialization failed.
+ QEMU_PROG: -device ide-hd,drive=disk: Device 'ide-hd' could not be initialized
+ 
++
+ === Read-only ===
+ 
+ Testing: -drive file=TEST_DIR/t.qcow2,if=floppy,readonly=on
+@@ -181,6 +182,7 @@ QEMU X.Y.Z monitor - type 'help' for more information
+ QEMU_PROG: -device ide-hd,drive=disk: Device initialization failed.
+ QEMU_PROG: -device ide-hd,drive=disk: Device 'ide-hd' could not be initialized
+ 
++
+ === Cache modes ===
+ 
+ Testing: -drive media=cdrom,cache=none
+diff --git a/tests/qemu-iotests/group b/tests/qemu-iotests/group
+index bcf2578..fd03fe0 100644
+--- a/tests/qemu-iotests/group
++++ b/tests/qemu-iotests/group
+@@ -77,7 +77,7 @@
+ 068 rw auto quick
+ 069 rw auto quick
+ 070 rw auto quick
+-071 rw auto quick
++# 071 rw auto quick -- requires whitelisted blkverify
+ 072 rw auto quick
+ 073 rw auto quick
+ 074 rw auto quick

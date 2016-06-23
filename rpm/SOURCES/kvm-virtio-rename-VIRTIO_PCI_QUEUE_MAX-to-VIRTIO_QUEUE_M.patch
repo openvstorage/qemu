@@ -1,0 +1,291 @@
+From 8505a9388e3c2fba2745dacb09bd500c07f32ec2 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:54 +0200
+Subject: [PATCH 18/20] virtio: rename VIRTIO_PCI_QUEUE_MAX to VIRTIO_QUEUE_MAX
+
+Message-id: <1434607916-15166-19-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66317
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 18/20] virtio: rename VIRTIO_PCI_QUEUE_MAX to VIRTIO_QUEUE_MAX
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Notes: conflicts since commit 631b22ea206300f09b9d1bb9249169e0f0092639
+       ("misc: Fix new collection of typos"). Fix by squashing the
+       typo fixes for virtio-net in this patch.
+
+VIRTIO_PCI_QUEUE_MAX is not only used for pci, so rename it be generic.
+
+Cc: Amit Shah <amit.shah@redhat.com>
+Cc: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 87b3bd1c858e6cacac4d403da9109ec3a04fe9d0)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/net/virtio-net.c
+---
+ hw/char/virtio-serial-bus.c |  2 +-
+ hw/net/virtio-net.c         |  6 +++---
+ hw/scsi/virtio-scsi.c       |  4 ++--
+ hw/virtio/virtio-mmio.c     |  4 ++--
+ hw/virtio/virtio-pci.c      | 10 +++++-----
+ hw/virtio/virtio.c          | 28 ++++++++++++++--------------
+ include/hw/virtio/virtio.h  |  2 +-
+ 7 files changed, 28 insertions(+), 28 deletions(-)
+
+diff --git a/hw/char/virtio-serial-bus.c b/hw/char/virtio-serial-bus.c
+index e336bdb..4e6154b 100644
+--- a/hw/char/virtio-serial-bus.c
++++ b/hw/char/virtio-serial-bus.c
+@@ -973,7 +973,7 @@ static void virtio_serial_device_realize(DeviceState *dev, Error **errp)
+     }
+ 
+     /* Each port takes 2 queues, and one pair is for the control queue */
+-    max_supported_ports = VIRTIO_PCI_QUEUE_MAX / 2 - 1;
++    max_supported_ports = VIRTIO_QUEUE_MAX / 2 - 1;
+ 
+     if (vser->serial.max_virtserial_ports > max_supported_ports) {
+         error_setg(errp, "maximum ports supported: %u", max_supported_ports);
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index ccf5a78..4859b1c 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -1557,10 +1557,10 @@ static void virtio_net_device_realize(DeviceState *dev, Error **errp)
+     virtio_init(vdev, "virtio-net", VIRTIO_ID_NET, n->config_size);
+ 
+     n->max_queues = MAX(n->nic_conf.peers.queues, 1);
+-    if (n->max_queues * 2 + 1 > VIRTIO_PCI_QUEUE_MAX) {
++    if (n->max_queues * 2 + 1 > VIRTIO_QUEUE_MAX) {
+         error_setg(errp, "Invalid number of queues (= %" PRIu32 "), "
+-                   "must be a postive integer less than %d.",
+-                   n->max_queues, (VIRTIO_PCI_QUEUE_MAX - 1) / 2);
++                   "must be a positive integer less than %d.",
++                   n->max_queues, (VIRTIO_QUEUE_MAX - 1) / 2);
+         virtio_cleanup(vdev);
+         return;
+     }
+diff --git a/hw/scsi/virtio-scsi.c b/hw/scsi/virtio-scsi.c
+index c9bea06..13a272a 100644
+--- a/hw/scsi/virtio-scsi.c
++++ b/hw/scsi/virtio-scsi.c
+@@ -826,10 +826,10 @@ void virtio_scsi_common_realize(DeviceState *dev, Error **errp,
+                 sizeof(VirtIOSCSIConfig));
+ 
+     if (s->conf.num_queues == 0 ||
+-            s->conf.num_queues > VIRTIO_PCI_QUEUE_MAX - 2) {
++            s->conf.num_queues > VIRTIO_QUEUE_MAX - 2) {
+         error_setg(errp, "Invalid number of queues (= %" PRIu32 "), "
+                          "must be a positive integer less than %d.",
+-                   s->conf.num_queues, VIRTIO_PCI_QUEUE_MAX - 2);
++                   s->conf.num_queues, VIRTIO_QUEUE_MAX - 2);
+         virtio_cleanup(vdev);
+         return;
+     }
+diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
+index dd3f80b..bd2ee26 100644
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -237,7 +237,7 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
+                 proxy->guest_page_shift);
+         break;
+     case VIRTIO_MMIO_QUEUESEL:
+-        if (value < VIRTIO_PCI_QUEUE_MAX) {
++        if (value < VIRTIO_QUEUE_MAX) {
+             vdev->queue_sel = value;
+         }
+         break;
+@@ -257,7 +257,7 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
+         }
+         break;
+     case VIRTIO_MMIO_QUEUENOTIFY:
+-        if (value < VIRTIO_PCI_QUEUE_MAX) {
++        if (value < VIRTIO_QUEUE_MAX) {
+             virtio_queue_notify(vdev, value);
+         }
+         break;
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 96d54f1..625bf25 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -171,7 +171,7 @@ static void virtio_pci_start_ioeventfd(VirtIOPCIProxy *proxy)
+         return;
+     }
+ 
+-    for (n = 0; n < VIRTIO_PCI_QUEUE_MAX; n++) {
++    for (n = 0; n < VIRTIO_QUEUE_MAX; n++) {
+         if (!virtio_queue_get_num(vdev, n)) {
+             continue;
+         }
+@@ -207,7 +207,7 @@ static void virtio_pci_stop_ioeventfd(VirtIOPCIProxy *proxy)
+         return;
+     }
+ 
+-    for (n = 0; n < VIRTIO_PCI_QUEUE_MAX; n++) {
++    for (n = 0; n < VIRTIO_QUEUE_MAX; n++) {
+         if (!virtio_queue_get_num(vdev, n)) {
+             continue;
+         }
+@@ -243,11 +243,11 @@ static void virtio_ioport_write(void *opaque, uint32_t addr, uint32_t val)
+             virtio_queue_set_addr(vdev, vdev->queue_sel, pa);
+         break;
+     case VIRTIO_PCI_QUEUE_SEL:
+-        if (val < VIRTIO_PCI_QUEUE_MAX)
++        if (val < VIRTIO_QUEUE_MAX)
+             vdev->queue_sel = val;
+         break;
+     case VIRTIO_PCI_QUEUE_NOTIFY:
+-        if (val < VIRTIO_PCI_QUEUE_MAX) {
++        if (val < VIRTIO_QUEUE_MAX) {
+             virtio_queue_notify(vdev, val);
+         }
+         break;
+@@ -750,7 +750,7 @@ static int virtio_pci_set_guest_notifiers(DeviceState *d, int nvqs, bool assign)
+     bool with_irqfd = msix_enabled(&proxy->pci_dev) &&
+         kvm_msi_via_irqfd_enabled();
+ 
+-    nvqs = MIN(nvqs, VIRTIO_PCI_QUEUE_MAX);
++    nvqs = MIN(nvqs, VIRTIO_QUEUE_MAX);
+ 
+     /* When deassigning, pass a consistent nvqs value
+      * to avoid leaking notifiers.
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 81d8905..7092aa5 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -600,7 +600,7 @@ void virtio_reset(void *opaque)
+     vdev->config_vector = VIRTIO_NO_VECTOR;
+     virtio_notify_vector(vdev, vdev->config_vector);
+ 
+-    for(i = 0; i < VIRTIO_PCI_QUEUE_MAX; i++) {
++    for(i = 0; i < VIRTIO_QUEUE_MAX; i++) {
+         vdev->vq[i].vring.desc = 0;
+         vdev->vq[i].vring.avail = 0;
+         vdev->vq[i].vring.used = 0;
+@@ -750,7 +750,7 @@ int virtio_get_num_queues(VirtIODevice *vdev)
+ {
+     int i;
+ 
+-    for (i = 0; i < VIRTIO_PCI_QUEUE_MAX; i++) {
++    for (i = 0; i < VIRTIO_QUEUE_MAX; i++) {
+         if (!virtio_queue_get_num(vdev, i)) {
+             break;
+         }
+@@ -762,7 +762,7 @@ int virtio_get_num_queues(VirtIODevice *vdev)
+ int virtio_queue_get_id(VirtQueue *vq)
+ {
+     VirtIODevice *vdev = vq->vdev;
+-    assert(vq >= &vdev->vq[0] && vq < &vdev->vq[VIRTIO_PCI_QUEUE_MAX]);
++    assert(vq >= &vdev->vq[0] && vq < &vdev->vq[VIRTIO_QUEUE_MAX]);
+     return vq - &vdev->vq[0];
+ }
+ 
+@@ -798,7 +798,7 @@ void virtio_queue_notify(VirtIODevice *vdev, int n)
+ 
+ uint16_t virtio_queue_vector(VirtIODevice *vdev, int n)
+ {
+-    return n < VIRTIO_PCI_QUEUE_MAX ? vdev->vq[n].vector :
++    return n < VIRTIO_QUEUE_MAX ? vdev->vq[n].vector :
+         VIRTIO_NO_VECTOR;
+ }
+ 
+@@ -806,7 +806,7 @@ void virtio_queue_set_vector(VirtIODevice *vdev, int n, uint16_t vector)
+ {
+     VirtQueue *vq = &vdev->vq[n];
+ 
+-    if (n < VIRTIO_PCI_QUEUE_MAX) {
++    if (n < VIRTIO_QUEUE_MAX) {
+         if (vdev->vector_queues &&
+             vdev->vq[n].vector != VIRTIO_NO_VECTOR) {
+             QLIST_REMOVE(vq, node);
+@@ -824,12 +824,12 @@ VirtQueue *virtio_add_queue(VirtIODevice *vdev, int queue_size,
+ {
+     int i;
+ 
+-    for (i = 0; i < VIRTIO_PCI_QUEUE_MAX; i++) {
++    for (i = 0; i < VIRTIO_QUEUE_MAX; i++) {
+         if (vdev->vq[i].vring.num == 0)
+             break;
+     }
+ 
+-    if (i == VIRTIO_PCI_QUEUE_MAX || queue_size > VIRTQUEUE_MAX_SIZE)
++    if (i == VIRTIO_QUEUE_MAX || queue_size > VIRTQUEUE_MAX_SIZE)
+         abort();
+ 
+     vdev->vq[i].vring.num = queue_size;
+@@ -841,7 +841,7 @@ VirtQueue *virtio_add_queue(VirtIODevice *vdev, int queue_size,
+ 
+ void virtio_del_queue(VirtIODevice *vdev, int n)
+ {
+-    if (n < 0 || n >= VIRTIO_PCI_QUEUE_MAX) {
++    if (n < 0 || n >= VIRTIO_QUEUE_MAX) {
+         abort();
+     }
+ 
+@@ -951,14 +951,14 @@ void virtio_save(VirtIODevice *vdev, QEMUFile *f)
+     qemu_put_be32(f, vdev->config_len);
+     qemu_put_buffer(f, vdev->config, vdev->config_len);
+ 
+-    for (i = 0; i < VIRTIO_PCI_QUEUE_MAX; i++) {
++    for (i = 0; i < VIRTIO_QUEUE_MAX; i++) {
+         if (vdev->vq[i].vring.num == 0)
+             break;
+     }
+ 
+     qemu_put_be32(f, i);
+ 
+-    for (i = 0; i < VIRTIO_PCI_QUEUE_MAX; i++) {
++    for (i = 0; i < VIRTIO_QUEUE_MAX; i++) {
+         if (vdev->vq[i].vring.num == 0)
+             break;
+ 
+@@ -1023,7 +1023,7 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f, int version_id)
+     qemu_get_8s(f, &vdev->status);
+     qemu_get_8s(f, &vdev->isr);
+     qemu_get_be16s(f, &vdev->queue_sel);
+-    if (vdev->queue_sel >= VIRTIO_PCI_QUEUE_MAX) {
++    if (vdev->queue_sel >= VIRTIO_QUEUE_MAX) {
+         return -1;
+     }
+     qemu_get_be32s(f, &features);
+@@ -1050,7 +1050,7 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f, int version_id)
+ 
+     num = qemu_get_be32(f);
+ 
+-    if (num > VIRTIO_PCI_QUEUE_MAX) {
++    if (num > VIRTIO_QUEUE_MAX) {
+         error_report("Invalid number of PCI queues: 0x%x", num);
+         return -1;
+     }
+@@ -1176,9 +1176,9 @@ void virtio_init(VirtIODevice *vdev, const char *name,
+     vdev->isr = 0;
+     vdev->queue_sel = 0;
+     vdev->config_vector = VIRTIO_NO_VECTOR;
+-    vdev->vq = g_malloc0(sizeof(VirtQueue) * VIRTIO_PCI_QUEUE_MAX);
++    vdev->vq = g_malloc0(sizeof(VirtQueue) * VIRTIO_QUEUE_MAX);
+     vdev->vm_running = runstate_is_running();
+-    for (i = 0; i < VIRTIO_PCI_QUEUE_MAX; i++) {
++    for (i = 0; i < VIRTIO_QUEUE_MAX; i++) {
+         vdev->vq[i].vector = VIRTIO_NO_VECTOR;
+         vdev->vq[i].vdev = vdev;
+         vdev->vq[i].queue_index = i;
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 6f49108..a9e22af 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -48,7 +48,7 @@ typedef struct VirtQueueElement
+     struct iovec out_sg[VIRTQUEUE_MAX_SIZE];
+ } VirtQueueElement;
+ 
+-#define VIRTIO_PCI_QUEUE_MAX 64
++#define VIRTIO_QUEUE_MAX 64
+ 
+ #define VIRTIO_NO_VECTOR 0xffff
+ 
+-- 
+1.8.3.1
+

@@ -1,0 +1,102 @@
+From ef3fc6cfbb63e1c9cf125a711a78a0a6f274db42 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:42 +0100
+Subject: [PATCH 24/44] vhost user: add support of live migration
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-18-git-send-email-mst@redhat.com>
+Patchwork-id: 68378
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 17/36] vhost user: add support of live migration
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Thibaut Collet <thibaut.collet@6wind.com>
+
+Some vhost user backends are able to support live migration.
+To provide this service the following features must be added:
+1. Add the VIRTIO_NET_F_GUEST_ANNOUNCE capability to vhost-net when netdev
+   backend is vhost-user.
+2. Provide a nop receive callback to vhost-user.
+   This callback is called by:
+    *  qemu_announce_self after a migration to send fake RARP to avoid network
+       outage for peers talking to the migrated guest.
+         - For guest with GUEST_ANNOUNCE capabilities, guest already sends GARP
+           when the bit VIRTIO_NET_S_ANNOUNCE is set.
+           => These packets must be discarded.
+         - For guest without GUEST_ANNOUNCE capabilities, migration termination
+           is notified when the guest sends packets.
+           => These packets can be discarded.
+    * virtio_net_tx_bh with a dummy boot to send fake bootp/dhcp request.
+      BIOS guest manages virtio driver to send 4 bootp/dhcp request in case of
+      dummy boot.
+      => These packets must be discarded.
+
+Signed-off-by: Thibaut Collet <thibaut.collet@6wind.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit f6f56291de879827766d17b172465d4377ad2c11)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/vhost_net.c |  2 ++
+ net/vhost-user.c   | 12 ++++++++++--
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index 95da5f8..f702874 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -85,6 +85,8 @@ static const int user_feature_bits[] = {
+     VIRTIO_NET_F_CTRL_MAC_ADDR,
+     VIRTIO_NET_F_CTRL_GUEST_OFFLOADS,
+ 
++    VIRTIO_NET_F_GUEST_ANNOUNCE,
++
+     VIRTIO_NET_F_MQ,
+ 
+     VHOST_INVALID_FEATURE_BIT
+diff --git a/net/vhost-user.c b/net/vhost-user.c
+index b57b064..71b9b6c 100644
+--- a/net/vhost-user.c
++++ b/net/vhost-user.c
+@@ -103,6 +103,15 @@ err:
+     return -1;
+ }
+ 
++static ssize_t vhost_user_receive(NetClientState *nc, const uint8_t *buf,
++                                  size_t size)
++{
++    /* Discard the request that is received and managed by backend
++     * by an other way.
++     */
++    return size;
++}
++
+ static void vhost_user_cleanup(NetClientState *nc)
+ {
+     VhostUserState *s = DO_UPCAST(VhostUserState, nc, nc);
+@@ -132,6 +141,7 @@ static bool vhost_user_has_ufo(NetClientState *nc)
+ static NetClientInfo net_vhost_user_info = {
+         .type = NET_CLIENT_OPTIONS_KIND_VHOST_USER,
+         .size = sizeof(VhostUserState),
++        .receive = vhost_user_receive,
+         .cleanup = vhost_user_cleanup,
+         .has_vnet_hdr = vhost_user_has_vnet_hdr,
+         .has_ufo = vhost_user_has_ufo,
+@@ -182,8 +192,6 @@ static int net_vhost_user_init(NetClientState *peer, const char *device,
+         snprintf(nc->info_str, sizeof(nc->info_str), "vhost-user%d to %s",
+                  i, chr->label);
+ 
+-        /* We don't provide a receive callback */
+-        nc->receive_disabled = 1;
+         nc->queue_index = i;
+ 
+         s = DO_UPCAST(VhostUserState, nc, nc);
+-- 
+1.8.3.1
+

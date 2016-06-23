@@ -1,0 +1,49 @@
+From b326dfc44d2bfc8dcce4499062699f892b361dfe Mon Sep 17 00:00:00 2001
+From: Gal Hammer <ghammer@redhat.com>
+Date: Wed, 29 Jul 2015 10:58:04 +0200
+Subject: [PATCH 3/5] acpi: fix pvpanic device is not shown in ui
+
+Message-id: <1438167484-8417-1-git-send-email-ghammer@redhat.com>
+Patchwork-id: 67194
+O-Subject: [RHEL-7.2 qemu-kvm PATCH] acpi: fix pvpanic device is not shown in ui
+Bugzilla: 1238141
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1238141
+
+Brew: https://brewweb.devel.redhat.com/taskinfo?taskID=9605787
+
+Commit 2332333c added a _STA method that hides the device. The fact
+that the device is not shown in the gui make it harder to install its
+Windows' device.
+
+Signed-off-by: Gal Hammer <ghammer@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index efacd78..1ee2446 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -1108,8 +1108,8 @@ build_ssdt(GArray *table_data, GArray *linker,
+         aml_append(field, aml_named_field("PEPT", 8));
+         aml_append(dev, field);
+ 
+-        /* device present, functioning, decoding, not shown in UI */
+-        aml_append(dev, aml_name_decl("_STA", aml_int(0xB)));
++        /* device present, functioning, decoding, shown in UI */
++        aml_append(dev, aml_name_decl("_STA", aml_int(0xF)));
+ 
+         method = aml_method("RDPT", 0);
+         aml_append(method, aml_store(aml_name("PEPT"), aml_local(0)));
+-- 
+1.8.3.1
+

@@ -1,0 +1,82 @@
+From aed11fe612efa1407405779eeb8a875e872bbb65 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:41:51 +0200
+Subject: [PATCH 11/58] Only try and read a VMDescription if it should be there
+
+Message-id: <1436794926-1598-3-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66972
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 02/17] Only try and read a VMDescription if it should be there
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+The VMDescription section maybe after the EOF mark, the current code
+does a 'qemu_get_byte' and either gets the header byte identifying the
+description or an error (which it ignores).  Doing the 'get' upsets
+RDMA which hangs on old machine types without the VMDescription.
+
+Just avoid reading the VMDescription if we wouldn't send it.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 1aca9a5f7d5a1ef9ee0233eac0fccc77ea6f0626)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ savevm.c | 37 ++++++++++++++++++++++++++++---------
+ 1 file changed, 28 insertions(+), 9 deletions(-)
+
+diff --git a/savevm.c b/savevm.c
+index 2c6dffb..416bd3e 100644
+--- a/savevm.c
++++ b/savevm.c
+@@ -1111,16 +1111,35 @@ int qemu_loadvm_state(QEMUFile *f)
+      * Try to read in the VMDESC section as well, so that dumping tools that
+      * intercept our migration stream have the chance to see it.
+      */
+-    if (qemu_get_byte(f) == QEMU_VM_VMDESCRIPTION) {
+-        uint32_t size = qemu_get_be32(f);
+-        uint8_t *buf = g_malloc(0x1000);
+-
+-        while (size > 0) {
+-            uint32_t read_chunk = MIN(size, 0x1000);
+-            qemu_get_buffer(f, buf, read_chunk);
+-            size -= read_chunk;
++
++    /* We've got to be careful; if we don't read the data and just shut the fd
++     * then the sender can error if we close while it's still sending.
++     * We also mustn't read data that isn't there; some transports (RDMA)
++     * will stall waiting for that data when the source has already closed.
++     */
++    if (should_send_vmdesc()) {
++        uint8_t *buf;
++        uint32_t size;
++        section_type = qemu_get_byte(f);
++
++        if (section_type != QEMU_VM_VMDESCRIPTION) {
++            error_report("Expected vmdescription section, but got %d",
++                         section_type);
++            /*
++             * It doesn't seem worth failing at this point since
++             * we apparently have an otherwise valid VM state
++             */
++        } else {
++            buf = g_malloc(0x1000);
++            size = qemu_get_be32(f);
++
++            while (size > 0) {
++                uint32_t read_chunk = MIN(size, 0x1000);
++                qemu_get_buffer(f, buf, read_chunk);
++                size -= read_chunk;
++            }
++            g_free(buf);
+         }
+-        g_free(buf);
+     }
+ 
+     /* Supplement SeaBIOS's shadowing now, because it was useless when the
+-- 
+1.8.3.1
+

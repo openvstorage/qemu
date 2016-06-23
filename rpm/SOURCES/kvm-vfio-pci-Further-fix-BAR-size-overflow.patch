@@ -1,0 +1,49 @@
+From 5b9b1272234626bbd5a84a0153ffc33dd76fbbc2 Mon Sep 17 00:00:00 2001
+From: Alex Williamson <alex.williamson@redhat.com>
+Date: Mon, 22 Jun 2015 16:42:52 +0200
+Subject: [PATCH 2/5] vfio-pci: Further fix BAR size overflow
+
+Message-id: <20150622164251.23137.74252.stgit@gimli.home>
+Patchwork-id: 66348
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 2/2] vfio-pci: Further fix BAR size overflow
+Bugzilla: 1219090
+RH-Acked-by: Bandan Das <bsd@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+In an analysis by Laszlo, the resulting type of our calculation for
+the end of the MSI-X table, and thus the start of memory after the
+table, is uint32_t.  We're therefore not correctly preventing the
+corner case overflow that we intended to fix here where a BAR >=4G
+could place the MSI-X table to end exactly at the 4G boundary.  The
+MSI-X table offset is defined by the hardware spec to 32bits, so we
+simply use a cast rather than changing data structure types.  This
+scenario is purely theoretically, typically the MSI-X table is located
+at the front of the BAR.
+
+Upstream: 07ceaf98800519ef9c5dc893af00f1fe1f9144e4
+
+Reported-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Laszlo Ersek <lersek@redhat.com>
+Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/vfio/pci.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 3df2bbe..0ec51e2 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -2395,7 +2395,7 @@ static void vfio_map_bar(VFIOPCIDevice *vdev, int nr)
+     if (vdev->msix && vdev->msix->table_bar == nr) {
+         uint64_t start;
+ 
+-        start = HOST_PAGE_ALIGN(vdev->msix->table_offset +
++        start = HOST_PAGE_ALIGN((uint64_t)vdev->msix->table_offset +
+                                 (vdev->msix->entries * PCI_MSIX_ENTRY_SIZE));
+ 
+         size = start < bar->region.size ? bar->region.size - start : 0;
+-- 
+1.8.3.1
+

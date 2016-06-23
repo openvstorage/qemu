@@ -1,0 +1,67 @@
+From 675c266e958a4a692c4ce7a21292731cf30c2422 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 17:33:25 +0100
+Subject: [PATCH 44/44] vhost-user: start/stop all rings
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447695133-32670-1-git-send-email-mst@redhat.com>
+Patchwork-id: 68392
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 37/36] vhost-user: start/stop all rings
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+
+We are currently only sending VRING_ENABLE message for the first ring,
+that's wrong: we must start/stop them all.
+
+Reported-by: Victor Kaplansky <victork@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry-picked from commit dc3db6adde329548771ab2addc2ef8376b2b8b32)
+(in maintainer's tree)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost-user.c | 16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index c74ce4a..0397a37 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -471,10 +471,7 @@ static int vhost_user_init(struct vhost_dev *dev, void *opaque)
+ 
+ static int vhost_user_set_vring_enable(struct vhost_dev *dev, int enable)
+ {
+-    struct vhost_vring_state state = {
+-        .index = dev->vq_index,
+-        .num   = enable,
+-    };
++    int i;
+ 
+     assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_USER);
+ 
+@@ -482,7 +479,16 @@ static int vhost_user_set_vring_enable(struct vhost_dev *dev, int enable)
+         return -1;
+     }
+ 
+-    return vhost_user_call(dev, VHOST_USER_SET_VRING_ENABLE, &state);
++    for (i = 0; i < dev->nvqs; ++i) {
++        struct vhost_vring_state state = {
++            .index = dev->vq_index + i,
++            .num   = enable,
++        };
++
++        vhost_user_call(dev, VHOST_USER_SET_VRING_ENABLE, &state);
++    }
++
++    return 0;
+ }
+ 
+ static int vhost_user_cleanup(struct vhost_dev *dev)
+-- 
+1.8.3.1
+

@@ -1,0 +1,63 @@
+From 55200d46dab7f2f54d8eafc5061787c2de92f977 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:03 +0200
+Subject: [PATCH 089/100] virtio-serial-bus: move qdev properties into
+ virtio-serial-bus.c
+
+Message-id: <1436260751-25015-61-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66835
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 60/68] virtio-serial-bus: move qdev properties into virtio-serial-bus.c
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Shannon Zhao <shannon.zhao@linaro.org>
+
+As only one place in virtio-serial-bus.c uses
+DEFINE_VIRTIO_SERIAL_PROPERTIES, there is no need to expose it. Inline
+it into virtio-serial-bus.c to avoid wrongly use.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Acked-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 448777c411b80df0263eb00b9df2f829cdc7cc9b)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/char/virtio-serial-bus.c       | 3 ++-
+ include/hw/virtio/virtio-serial.h | 3 ---
+ 2 files changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/hw/char/virtio-serial-bus.c b/hw/char/virtio-serial-bus.c
+index fbe9d24..dc5c5ac 100644
+--- a/hw/char/virtio-serial-bus.c
++++ b/hw/char/virtio-serial-bus.c
+@@ -1083,7 +1083,8 @@ static void virtio_serial_device_unrealize(DeviceState *dev, Error **errp)
+ }
+ 
+ static Property virtio_serial_properties[] = {
+-    DEFINE_VIRTIO_SERIAL_PROPERTIES(VirtIOSerial, serial),
++    DEFINE_PROP_UINT32("max_ports", VirtIOSerial, serial.max_virtserial_ports,
++                                                  31),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/include/hw/virtio/virtio-serial.h b/include/hw/virtio/virtio-serial.h
+index 18d1bcc..527d0bf 100644
+--- a/include/hw/virtio/virtio-serial.h
++++ b/include/hw/virtio/virtio-serial.h
+@@ -221,7 +221,4 @@ void virtio_serial_throttle_port(VirtIOSerialPort *port, bool throttle);
+ #define VIRTIO_SERIAL(obj) \
+         OBJECT_CHECK(VirtIOSerial, (obj), TYPE_VIRTIO_SERIAL)
+ 
+-#define DEFINE_VIRTIO_SERIAL_PROPERTIES(_state, _field) \
+-        DEFINE_PROP_UINT32("max_ports", _state, _field.max_virtserial_ports, 31)
+-
+ #endif
+-- 
+1.8.3.1
+

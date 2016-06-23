@@ -1,0 +1,74 @@
+From 5f124f1ffa8fd6399d61be133ba1c342196969ae Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:05 +0200
+Subject: [PATCH 091/100] vhost-scsi: move qdev properties into vhost-scsi.c
+
+Message-id: <1436260751-25015-63-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66837
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 62/68] vhost-scsi: move qdev properties into vhost-scsi.c
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Shannon Zhao <shannon.zhao@linaro.org>
+
+As only one place in vhost-scsi.c uses DEFINE_VHOST_SCSI_PROPERTIES,
+there is no need to expose it. Inline it into vhost-scsi.c to avoid
+wrongly use.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Acked-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 21549a4642e1f1b438ffc31dd9dc35f134b10e5b)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/scsi/vhost-scsi.c           | 9 ++++++++-
+ include/hw/virtio/vhost-scsi.h | 9 ---------
+ 2 files changed, 8 insertions(+), 10 deletions(-)
+
+diff --git a/hw/scsi/vhost-scsi.c b/hw/scsi/vhost-scsi.c
+index 9c76486..1941aa1 100644
+--- a/hw/scsi/vhost-scsi.c
++++ b/hw/scsi/vhost-scsi.c
+@@ -294,7 +294,14 @@ static char *vhost_scsi_get_fw_dev_path(FWPathProvider *p, BusState *bus,
+ }
+ 
+ static Property vhost_scsi_properties[] = {
+-    DEFINE_VHOST_SCSI_PROPERTIES(VHostSCSI, parent_obj.conf),
++    DEFINE_PROP_STRING("vhostfd", VHostSCSI, parent_obj.conf.vhostfd),
++    DEFINE_PROP_STRING("wwpn", VHostSCSI, parent_obj.conf.wwpn),
++    DEFINE_PROP_UINT32("boot_tpgt", VHostSCSI, parent_obj.conf.boot_tpgt, 0),
++    DEFINE_PROP_UINT32("num_queues", VHostSCSI, parent_obj.conf.num_queues, 1),
++    DEFINE_PROP_UINT32("max_sectors", VHostSCSI, parent_obj.conf.max_sectors,
++                                                 0xFFFF),
++    DEFINE_PROP_UINT32("cmd_per_lun", VHostSCSI, parent_obj.conf.cmd_per_lun,
++                                                 128),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/include/hw/virtio/vhost-scsi.h b/include/hw/virtio/vhost-scsi.h
+index dea0075..701bfee 100644
+--- a/include/hw/virtio/vhost-scsi.h
++++ b/include/hw/virtio/vhost-scsi.h
+@@ -66,13 +66,4 @@ typedef struct VHostSCSI {
+     int lun;
+ } VHostSCSI;
+ 
+-#define DEFINE_VHOST_SCSI_PROPERTIES(_state, _conf_field) \
+-    DEFINE_PROP_STRING("vhostfd", _state, _conf_field.vhostfd), \
+-    DEFINE_PROP_STRING("wwpn", _state, _conf_field.wwpn), \
+-    DEFINE_PROP_UINT32("boot_tpgt", _state, _conf_field.boot_tpgt, 0), \
+-    DEFINE_PROP_UINT32("num_queues", _state, _conf_field.num_queues, 1), \
+-    DEFINE_PROP_UINT32("max_sectors", _state, _conf_field.max_sectors, 0xFFFF), \
+-    DEFINE_PROP_UINT32("cmd_per_lun", _state, _conf_field.cmd_per_lun, 128)
+-
+-
+ #endif
+-- 
+1.8.3.1
+

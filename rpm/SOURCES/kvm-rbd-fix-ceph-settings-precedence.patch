@@ -1,0 +1,106 @@
+From c56800d113e72055624d105941dc5094026f9987 Mon Sep 17 00:00:00 2001
+From: Stefan Hajnoczi <stefanha@redhat.com>
+Date: Thu, 5 Nov 2015 16:39:00 +0100
+Subject: [PATCH 04/44] rbd: fix ceph settings precedence
+
+Message-id: <1446741540-2966-3-git-send-email-stefanha@redhat.com>
+Patchwork-id: 68298
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 2/2] rbd: fix ceph settings precedence
+Bugzilla: 1279391
+RH-Acked-by: Max Reitz <mreitz@redhat.com>
+RH-Acked-by: Jeffrey Cody <jcody@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+
+From: Josh Durgin <jdurgin@redhat.com>
+
+Apply the ceph settings from a config file before any ceph settings
+from the command line. Since the ceph config file location may be
+specified on the command line, parse it once to read the config file,
+and do a second pass to apply the rest of the command line ceph
+options.
+
+Signed-off-by: Josh Durgin <jdurgin@redhat.com>
+Signed-off-by: Kevin Wolf <kwolf@redhat.com>
+(cherry picked from commit e34d8f297d51b7ffa5dce72df1e45fa94cff989c)
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block/rbd.c | 32 ++++++++++++++++++++++++--------
+ 1 file changed, 24 insertions(+), 8 deletions(-)
+
+diff --git a/block/rbd.c b/block/rbd.c
+index 929ebb7..66bc2a0 100644
+--- a/block/rbd.c
++++ b/block/rbd.c
+@@ -235,7 +235,9 @@ static char *qemu_rbd_parse_clientname(const char *conf, char *clientname)
+     return NULL;
+ }
+ 
+-static int qemu_rbd_set_conf(rados_t cluster, const char *conf, Error **errp)
++static int qemu_rbd_set_conf(rados_t cluster, const char *conf,
++                             bool only_read_conf_file,
++                             Error **errp)
+ {
+     char *p, *buf;
+     char name[RBD_MAX_CONF_NAME_SIZE];
+@@ -267,14 +269,18 @@ static int qemu_rbd_set_conf(rados_t cluster, const char *conf, Error **errp)
+         qemu_rbd_unescape(value);
+ 
+         if (strcmp(name, "conf") == 0) {
+-            ret = rados_conf_read_file(cluster, value);
+-            if (ret < 0) {
+-                error_setg(errp, "error reading conf file %s", value);
+-                break;
++            /* read the conf file alone, so it doesn't override more
++               specific settings for a particular device */
++            if (only_read_conf_file) {
++                ret = rados_conf_read_file(cluster, value);
++                if (ret < 0) {
++                    error_setg(errp, "error reading conf file %s", value);
++                    break;
++                }
+             }
+         } else if (strcmp(name, "id") == 0) {
+             /* ignore, this is parsed by qemu_rbd_parse_clientname() */
+-        } else {
++        } else if (!only_read_conf_file) {
+             ret = rados_conf_set(cluster, name, value);
+             if (ret < 0) {
+                 error_setg(errp, "invalid conf option %s", name);
+@@ -337,10 +343,15 @@ static int qemu_rbd_create(const char *filename, QemuOpts *opts, Error **errp)
+     if (strstr(conf, "conf=") == NULL) {
+         /* try default location, but ignore failure */
+         rados_conf_read_file(cluster, NULL);
++    } else if (conf[0] != '\0' &&
++               qemu_rbd_set_conf(cluster, conf, true, &local_err) < 0) {
++        rados_shutdown(cluster);
++        error_propagate(errp, local_err);
++        return -EIO;
+     }
+ 
+     if (conf[0] != '\0' &&
+-        qemu_rbd_set_conf(cluster, conf, &local_err) < 0) {
++        qemu_rbd_set_conf(cluster, conf, false, &local_err) < 0) {
+         rados_shutdown(cluster);
+         error_propagate(errp, local_err);
+         return -EIO;
+@@ -471,10 +482,15 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
+     if (strstr(conf, "conf=") == NULL) {
+         /* try default location, but ignore failure */
+         rados_conf_read_file(s->cluster, NULL);
++    } else if (conf[0] != '\0') {
++        r = qemu_rbd_set_conf(s->cluster, conf, true, errp);
++        if (r < 0) {
++            goto failed_shutdown;
++        }
+     }
+ 
+     if (conf[0] != '\0') {
+-        r = qemu_rbd_set_conf(s->cluster, conf, errp);
++        r = qemu_rbd_set_conf(s->cluster, conf, false, errp);
+         if (r < 0) {
+             goto failed_shutdown;
+         }
+-- 
+1.8.3.1
+

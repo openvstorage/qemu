@@ -1,0 +1,218 @@
+From faf5ae6c496225cfd40e78d02e87c12b217359c2 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Wed, 30 Sep 2015 10:25:15 +0200
+Subject: [PATCH 02/11] vhost: enable vhost without without MSI-X
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1443608650-22364-3-git-send-email-mst@redhat.com>
+Patchwork-id: 67998
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 2/9] vhost: enable vhost without without MSI-X
+Bugzilla: 1276100
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+
+From: Pankaj Gupta <pagupta@redhat.com>
+
+We use vhostforce to enable vhost even if Guests don't have MSI-X
+support and we fall back to QEMU virtio-net.
+
+This gives a very small performance gain, but the disadvantage
+is that guest now controls which virtio code is running
+(qemu or vhost) so our attack surface is doubled.
+
+This patch will enable vhost unconditionally whenever it's requested.
+For compatibility, enable vhost when vhostforce is set, as well.
+
+Signed-off-by: Pankaj Gupta <pagupta@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Jason Wang <jasowang@redhat.com>
+(cherry picked from commit 1e7398a140f7a6bd9f5a438e7ad0f1ef50990e25)
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/vhost_net.c        | 12 +-----------
+ hw/net/virtio-net.c       |  4 ----
+ hw/scsi/vhost-scsi.c      |  2 +-
+ hw/virtio/vhost.c         | 14 +-------------
+ include/hw/virtio/vhost.h |  3 +--
+ include/net/vhost_net.h   |  2 --
+ net/tap.c                 |  1 -
+ net/vhost-user.c          |  1 -
+ 8 files changed, 4 insertions(+), 35 deletions(-)
+
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index f98653a..feba86d 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -162,7 +162,7 @@ struct vhost_net *vhost_net_init(VhostNetOptions *options)
+     net->dev.vqs = net->vqs;
+ 
+     r = vhost_dev_init(&net->dev, options->opaque,
+-                       options->backend_type, options->force);
++                       options->backend_type);
+     if (r < 0) {
+         goto fail;
+     }
+@@ -187,11 +187,6 @@ fail:
+     return NULL;
+ }
+ 
+-bool vhost_net_query(VHostNetState *net, VirtIODevice *dev)
+-{
+-    return vhost_dev_query(&net->dev, dev);
+-}
+-
+ static void vhost_net_set_vq_index(struct vhost_net *net, int vq_index)
+ {
+     net->dev.vq_index = vq_index;
+@@ -416,11 +411,6 @@ struct vhost_net *vhost_net_init(VhostNetOptions *options)
+     return NULL;
+ }
+ 
+-bool vhost_net_query(VHostNetState *net, VirtIODevice *dev)
+-{
+-    return false;
+-}
+-
+ int vhost_net_start(VirtIODevice *dev,
+                     NetClientState *ncs,
+                     int total_queues)
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 8ba45ec..b65a49e 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -128,10 +128,6 @@ static void virtio_net_vhost_status(VirtIONet *n, uint8_t status)
+     if (!n->vhost_started) {
+         int r, i;
+ 
+-        if (!vhost_net_query(get_vhost_net(nc->peer), vdev)) {
+-            return;
+-        }
+-
+         /* Any packets outstanding? Purge them to avoid touching rings
+          * when vhost is running.
+          */
+diff --git a/hw/scsi/vhost-scsi.c b/hw/scsi/vhost-scsi.c
+index 7f184d3..b32082f 100644
+--- a/hw/scsi/vhost-scsi.c
++++ b/hw/scsi/vhost-scsi.c
+@@ -247,7 +247,7 @@ static void vhost_scsi_realize(DeviceState *dev, Error **errp)
+     s->dev.backend_features = 0;
+ 
+     ret = vhost_dev_init(&s->dev, (void *)(uintptr_t)vhostfd,
+-                         VHOST_BACKEND_TYPE_KERNEL, true);
++                         VHOST_BACKEND_TYPE_KERNEL);
+     if (ret < 0) {
+         error_setg(errp, "vhost-scsi: vhost initialization failed: %s",
+                    strerror(-ret));
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index 0b311c8..5b2c33e 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -859,7 +859,7 @@ static void vhost_virtqueue_cleanup(struct vhost_virtqueue *vq)
+ }
+ 
+ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
+-                   VhostBackendType backend_type, bool force)
++                   VhostBackendType backend_type)
+ {
+     uint64_t features;
+     int i, r;
+@@ -922,7 +922,6 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
+     hdev->started = false;
+     hdev->memory_changed = false;
+     memory_listener_register(&hdev->memory_listener, &address_space_memory);
+-    hdev->force = force;
+     return 0;
+ fail_vq:
+     while (--i >= 0) {
+@@ -950,17 +949,6 @@ void vhost_dev_cleanup(struct vhost_dev *hdev)
+     hdev->vhost_ops->vhost_backend_cleanup(hdev);
+ }
+ 
+-bool vhost_dev_query(struct vhost_dev *hdev, VirtIODevice *vdev)
+-{
+-    BusState *qbus = BUS(qdev_get_parent_bus(DEVICE(vdev)));
+-    VirtioBusState *vbus = VIRTIO_BUS(qbus);
+-    VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(vbus);
+-
+-    return !k->query_guest_notifiers ||
+-           k->query_guest_notifiers(qbus->parent) ||
+-           hdev->force;
+-}
+-
+ /* Stop processing guest IO notifications in qemu.
+  * Start processing them in vhost in kernel.
+  */
+diff --git a/include/hw/virtio/vhost.h b/include/hw/virtio/vhost.h
+index 88e1e56..b8edb0f 100644
+--- a/include/hw/virtio/vhost.h
++++ b/include/hw/virtio/vhost.h
+@@ -46,7 +46,6 @@ struct vhost_dev {
+     vhost_log_chunk_t *log;
+     unsigned long long log_size;
+     Error *migration_blocker;
+-    bool force;
+     bool memory_changed;
+     hwaddr mem_changed_start_addr;
+     hwaddr mem_changed_end_addr;
+@@ -55,7 +54,7 @@ struct vhost_dev {
+ };
+ 
+ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
+-                   VhostBackendType backend_type, bool force);
++                   VhostBackendType backend_type);
+ void vhost_dev_cleanup(struct vhost_dev *hdev);
+ bool vhost_dev_query(struct vhost_dev *hdev, VirtIODevice *vdev);
+ int vhost_dev_start(struct vhost_dev *hdev, VirtIODevice *vdev);
+diff --git a/include/net/vhost_net.h b/include/net/vhost_net.h
+index 9eb493e..840d4b1 100644
+--- a/include/net/vhost_net.h
++++ b/include/net/vhost_net.h
+@@ -11,12 +11,10 @@ typedef struct VhostNetOptions {
+     VhostBackendType backend_type;
+     NetClientState *net_backend;
+     void *opaque;
+-    bool force;
+ } VhostNetOptions;
+ 
+ struct vhost_net *vhost_net_init(VhostNetOptions *options);
+ 
+-bool vhost_net_query(VHostNetState *net, VirtIODevice *dev);
+ int vhost_net_start(VirtIODevice *dev, NetClientState *ncs, int total_queues);
+ void vhost_net_stop(VirtIODevice *dev, NetClientState *ncs, int total_queues);
+ 
+diff --git a/net/tap.c b/net/tap.c
+index c6f9a7d..5b7d521 100644
+--- a/net/tap.c
++++ b/net/tap.c
+@@ -657,7 +657,6 @@ static int net_init_tap_one(const NetdevTapOptions *tap, NetClientState *peer,
+ 
+         options.backend_type = VHOST_BACKEND_TYPE_KERNEL;
+         options.net_backend = &s->nc;
+-        options.force = tap->has_vhostforce && tap->vhostforce;
+ 
+         if (tap->has_vhostfd || tap->has_vhostfds) {
+             vhostfd = monitor_fd_param(cur_mon, vhostfdname, &err);
+diff --git a/net/vhost-user.c b/net/vhost-user.c
+index 1d86a2b..4865615 100644
+--- a/net/vhost-user.c
++++ b/net/vhost-user.c
+@@ -50,7 +50,6 @@ static int vhost_user_start(VhostUserState *s)
+     options.backend_type = VHOST_BACKEND_TYPE_USER;
+     options.net_backend = &s->nc;
+     options.opaque = s->chr;
+-    options.force = true;
+ 
+     s->vhost_net = vhost_net_init(&options);
+ 
+-- 
+1.8.3.1
+

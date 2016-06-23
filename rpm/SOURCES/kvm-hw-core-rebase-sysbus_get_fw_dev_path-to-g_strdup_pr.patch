@@ -1,0 +1,69 @@
+From c20e2dbd9293fa07337cc66a6ab0bc84d215327b Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Mon, 13 Jul 2015 19:17:40 +0200
+Subject: [PATCH 14/23] hw/core: rebase sysbus_get_fw_dev_path() to
+ g_strdup_printf()
+
+Message-id: <1436815069-15106-4-git-send-email-lersek@redhat.com>
+Patchwork-id: 66994
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 03/12] hw/core: rebase sysbus_get_fw_dev_path() to g_strdup_printf()
+Bugzilla: 1242479
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+This is done mainly for improving readability, and in preparation for the
+next patch, but Markus pointed out another bonus for the string being
+returned:
+
+"No arbitrary length limit. Before the patch, it's 39 characters, and the
+code breaks catastrophically when qdev_fw_name() is longer: the second
+snprintf() is called with its first argument pointing beyond path[], and
+its second argument underflowing to a huge size."
+
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Tested-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 5ba03e2dd785362026917e4cc8a1fd2c64e8e62c)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/core/sysbus.c | 16 ++++++----------
+ 1 file changed, 6 insertions(+), 10 deletions(-)
+
+diff --git a/hw/core/sysbus.c b/hw/core/sysbus.c
+index b53c351..92eced9 100644
+--- a/hw/core/sysbus.c
++++ b/hw/core/sysbus.c
+@@ -281,19 +281,15 @@ static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent)
+ static char *sysbus_get_fw_dev_path(DeviceState *dev)
+ {
+     SysBusDevice *s = SYS_BUS_DEVICE(dev);
+-    char path[40];
+-    int off;
+-
+-    off = snprintf(path, sizeof(path), "%s", qdev_fw_name(dev));
+ 
+     if (s->num_mmio) {
+-        snprintf(path + off, sizeof(path) - off, "@"TARGET_FMT_plx,
+-                 s->mmio[0].addr);
+-    } else if (s->num_pio) {
+-        snprintf(path + off, sizeof(path) - off, "@i%04x", s->pio[0]);
++        return g_strdup_printf("%s@" TARGET_FMT_plx, qdev_fw_name(dev),
++                               s->mmio[0].addr);
+     }
+-
+-    return g_strdup(path);
++    if (s->num_pio) {
++        return g_strdup_printf("%s@i%04x", qdev_fw_name(dev), s->pio[0]);
++    }
++    return g_strdup(qdev_fw_name(dev));
+ }
+ 
+ void sysbus_add_io(SysBusDevice *dev, hwaddr addr,
+-- 
+1.8.3.1
+

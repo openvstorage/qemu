@@ -1,0 +1,92 @@
+From cca2be071ad372d1944039038e0fcc04b5e91e26 Mon Sep 17 00:00:00 2001
+From: Laszlo Ersek <lersek@redhat.com>
+Date: Mon, 13 Jul 2015 19:17:47 +0200
+Subject: [PATCH 21/23] hw/pci-bridge: disable SHPC in PXB
+
+Message-id: <1436815069-15106-11-git-send-email-lersek@redhat.com>
+Patchwork-id: 67001
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 10/12] hw/pci-bridge: disable SHPC in PXB
+Bugzilla: 1242479
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+OVMF downloads the ACPI linker/loader script from QEMU when the edk2 PCI
+Bus driver globally signals the firmware that PCI enumeration and resource
+allocation have completed. At this point QEMU regenerates the ACPI payload
+in an fw_cfg read callback, and this is when the PXB's _CRS gets
+populated.
+
+Unfortunately, when this happens, the PCI_COMMAND_MEMORY bit is clear in
+the root bus's command register, *unlike* under SeaBIOS. The consequences
+unfold as follows:
+
+- When build_crs() fetches dev->io_regions[i].addr, it is all-bits-one,
+  because pci_update_mappings() --> pci_bar_address() calculated it as
+  PCI_BAR_UNMAPPED, due to the PCI_COMMAND_MEMORY bit being clear.
+
+- Consequently, the SHPC MMIO BAR (bar 0) of the bridge is not added to
+  the _CRS, *despite* having been programmed in PCI config space.
+
+- Similarly, the SHPC MMIO BAR of the PXB is not removed from the main
+  root bus's DWordMemory descriptor.
+
+- Guest OSes (Linux and Windows alike) notice the pre-programmed SHPC BAR
+  within the PXB's config space, and notice that it conflicts with the
+  main root bus's memory resource descriptors. Linux reports
+
+  pci 0000:04:00.0: BAR 0: can't assign mem (size 0x100)
+  pci 0000:04:00.0: BAR 0: trying firmware assignment [mem
+                           0x88200000-0x882000ff 64bit]
+  pci 0000:04:00.0: BAR 0: [mem 0x88200000-0x882000ff 64bit] conflicts
+                           with PCI Bus 0000:00 [mem
+                           0x88200000-0xfebfffff]
+
+  While Windows Server 2012 R2 reports
+
+    https://technet.microsoft.com/en-us/library/cc732199%28v=ws.10%29.aspx
+
+    This device cannot find enough free resources that it can use. If you
+    want to use this device, you will need to disable one of the other
+    devices on this system. (Code 12)
+
+This issue was apparently encountered earlier, see the "hack" in:
+
+  https://lists.nongnu.org/archive/html/qemu-devel/2015-01/msg02983.html
+
+and the current hole-punching logic in build_crs() and build_ssdt() is
+probably supposed to remedy exactly that problem -- however, for OVMF they
+don't work, because at the end of the PCI enumeration and resource
+allocation, which cues the ACPI linker/loader client, the command register
+is clear.
+
+The "shpc" property of "pci-bridge", introduced in the previous patches,
+allows us to disable the standard hotplug controller cleanly, eliminating
+the SHPC bar and the conflict.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: Marcel Apfelbaum <marcel@redhat.com>
+Signed-off-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit d10dda2d60c8c225a89a53d53add799b69f6bb46)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci-bridge/pci_expander_bridge.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/pci-bridge/pci_expander_bridge.c b/hw/pci-bridge/pci_expander_bridge.c
+index 3d840ef..70708ef 100644
+--- a/hw/pci-bridge/pci_expander_bridge.c
++++ b/hw/pci-bridge/pci_expander_bridge.c
+@@ -177,6 +177,7 @@ static int pxb_dev_initfn(PCIDevice *dev)
+     bds = qdev_create(BUS(bus), "pci-bridge");
+     bds->id = dev_name;
+     qdev_prop_set_uint8(bds, PCI_BRIDGE_DEV_PROP_CHASSIS_NR, pxb->bus_nr);
++    qdev_prop_set_bit(bds, PCI_BRIDGE_DEV_PROP_SHPC, false);
+ 
+     PCI_HOST_BRIDGE(ds)->bus = bus;
+ 
+-- 
+1.8.3.1
+

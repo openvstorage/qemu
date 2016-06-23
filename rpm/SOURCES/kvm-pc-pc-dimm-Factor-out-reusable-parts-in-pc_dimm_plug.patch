@@ -1,0 +1,259 @@
+From f2ae638fabd66c924301c8c4b37ebecdb7db1b7a Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:25:54 +0200
+Subject: [PATCH 32/58] pc,pc-dimm: Factor out reusable parts in pc_dimm_plug
+ to a separate routine
+
+Message-id: <1437715580-14817-3-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67119
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 02/28] pc, pc-dimm: Factor out reusable parts in pc_dimm_plug to a separate routine
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+pc_dimm_plug() has code that will be needed for memory plug handlers
+in other archs too. Extract code from pc_dimm_plug() into a generic
+routine pc_dimm_memory_plug() that resides in pc-dimm.c. Also
+correspondingly refactor re-usable unplug code into pc_dimm_memory_unplug().
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Tested-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+(cherry picked from commit 43bbb49ef7032a8bfdafbd02d0286512af161089)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/pc.c             | 66 ++-------------------------------------
+ hw/mem/pc-dimm.c         | 80 ++++++++++++++++++++++++++++++++++++++++++++++++
+ include/hw/mem/pc-dimm.h |  4 +++
+ 3 files changed, 87 insertions(+), 63 deletions(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 00e71c6..5903b22 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -64,7 +64,6 @@
+ #include "hw/pci/pci_host.h"
+ #include "acpi-build.h"
+ #include "hw/mem/pc-dimm.h"
+-#include "trace.h"
+ #include "qapi/visitor.h"
+ #include "qapi-visit.h"
+ 
+@@ -1678,86 +1677,29 @@ void qemu_register_pc_machine(QEMUMachine *m)
+ static void pc_dimm_plug(HotplugHandler *hotplug_dev,
+                          DeviceState *dev, Error **errp)
+ {
+-    int slot;
+     HotplugHandlerClass *hhc;
+     Error *local_err = NULL;
+     PCMachineState *pcms = PC_MACHINE(hotplug_dev);
+-    MachineState *machine = MACHINE(hotplug_dev);
+     PCDIMMDevice *dimm = PC_DIMM(dev);
+     PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
+     MemoryRegion *mr = ddc->get_memory_region(dimm);
+-    uint64_t existing_dimms_capacity = 0;
+     uint64_t align = TARGET_PAGE_SIZE;
+-    uint64_t addr;
+-
+-    addr = object_property_get_int(OBJECT(dimm), PC_DIMM_ADDR_PROP, &local_err);
+-    if (local_err) {
+-        goto out;
+-    }
+ 
+     if (memory_region_get_alignment(mr) && pcms->enforce_aligned_dimm) {
+         align = memory_region_get_alignment(mr);
+     }
+ 
+-    addr = pc_dimm_get_free_addr(pcms->hotplug_memory.base,
+-                                 memory_region_size(&pcms->hotplug_memory.mr),
+-                                 !addr ? NULL : &addr, align,
+-                                 memory_region_size(mr), &local_err);
+-    if (local_err) {
+-        goto out;
+-    }
+-
+-    existing_dimms_capacity = pc_existing_dimms_capacity(&local_err);
+-    if (local_err) {
+-        goto out;
+-    }
+-
+-    if (existing_dimms_capacity + memory_region_size(mr) >
+-        machine->maxram_size - machine->ram_size) {
+-        error_setg(&local_err, "not enough space, currently 0x%" PRIx64
+-                   " in use of total hot pluggable 0x" RAM_ADDR_FMT,
+-                   existing_dimms_capacity,
+-                   machine->maxram_size - machine->ram_size);
+-        goto out;
+-    }
+-
+-    object_property_set_int(OBJECT(dev), addr, PC_DIMM_ADDR_PROP, &local_err);
+-    if (local_err) {
+-        goto out;
+-    }
+-    trace_mhp_pc_dimm_assigned_address(addr);
+-
+-    slot = object_property_get_int(OBJECT(dev), PC_DIMM_SLOT_PROP, &local_err);
+-    if (local_err) {
+-        goto out;
+-    }
+-
+-    slot = pc_dimm_get_free_slot(slot == PC_DIMM_UNASSIGNED_SLOT ? NULL : &slot,
+-                                 machine->ram_slots, &local_err);
+-    if (local_err) {
+-        goto out;
+-    }
+-    object_property_set_int(OBJECT(dev), slot, PC_DIMM_SLOT_PROP, &local_err);
+-    if (local_err) {
+-        goto out;
+-    }
+-    trace_mhp_pc_dimm_assigned_slot(slot);
+-
+     if (!pcms->acpi_dev) {
+         error_setg(&local_err,
+                    "memory hotplug is not enabled: missing acpi device");
+         goto out;
+     }
+ 
+-    if (kvm_enabled() && !kvm_has_free_slot(machine)) {
+-        error_setg(&local_err, "hypervisor has no free memory slots left");
++    pc_dimm_memory_plug(dev, &pcms->hotplug_memory, mr, align, &local_err);
++    if (local_err) {
+         goto out;
+     }
+ 
+-    memory_region_add_subregion(&pcms->hotplug_memory.mr,
+-                                addr - pcms->hotplug_memory.base, mr);
+-    vmstate_register_ram(mr, dev);
+-
+     hhc = HOTPLUG_HANDLER_GET_CLASS(pcms->acpi_dev);
+     hhc->plug(HOTPLUG_HANDLER(pcms->acpi_dev), dev, &local_err);
+ out:
+@@ -1801,9 +1743,7 @@ static void pc_dimm_unplug(HotplugHandler *hotplug_dev,
+         goto out;
+     }
+ 
+-    memory_region_del_subregion(&pcms->hotplug_memory.mr, mr);
+-    vmstate_unregister_ram(mr, dev);
+-
++    pc_dimm_memory_unplug(dev, &pcms->hotplug_memory, mr);
+     object_unparent(OBJECT(dev));
+ 
+  out:
+diff --git a/hw/mem/pc-dimm.c b/hw/mem/pc-dimm.c
+index e70633d..98971b7 100644
+--- a/hw/mem/pc-dimm.c
++++ b/hw/mem/pc-dimm.c
+@@ -23,12 +23,92 @@
+ #include "qapi/visitor.h"
+ #include "qemu/range.h"
+ #include "sysemu/numa.h"
++#include "sysemu/kvm.h"
++#include "trace.h"
+ 
+ typedef struct pc_dimms_capacity {
+      uint64_t size;
+      Error    **errp;
+ } pc_dimms_capacity;
+ 
++void pc_dimm_memory_plug(DeviceState *dev, MemoryHotplugState *hpms,
++                         MemoryRegion *mr, uint64_t align, Error **errp)
++{
++    int slot;
++    MachineState *machine = MACHINE(qdev_get_machine());
++    PCDIMMDevice *dimm = PC_DIMM(dev);
++    Error *local_err = NULL;
++    uint64_t existing_dimms_capacity = 0;
++    uint64_t addr;
++
++    addr = object_property_get_int(OBJECT(dimm), PC_DIMM_ADDR_PROP, &local_err);
++    if (local_err) {
++        goto out;
++    }
++
++    addr = pc_dimm_get_free_addr(hpms->base,
++                                 memory_region_size(&hpms->mr),
++                                 !addr ? NULL : &addr, align,
++                                 memory_region_size(mr), &local_err);
++    if (local_err) {
++        goto out;
++    }
++
++    existing_dimms_capacity = pc_existing_dimms_capacity(&local_err);
++    if (local_err) {
++        goto out;
++    }
++
++    if (existing_dimms_capacity + memory_region_size(mr) >
++        machine->maxram_size - machine->ram_size) {
++        error_setg(&local_err, "not enough space, currently 0x%" PRIx64
++                   " in use of total hot pluggable 0x" RAM_ADDR_FMT,
++                   existing_dimms_capacity,
++                   machine->maxram_size - machine->ram_size);
++        goto out;
++    }
++
++    object_property_set_int(OBJECT(dev), addr, PC_DIMM_ADDR_PROP, &local_err);
++    if (local_err) {
++        goto out;
++    }
++    trace_mhp_pc_dimm_assigned_address(addr);
++
++    slot = object_property_get_int(OBJECT(dev), PC_DIMM_SLOT_PROP, &local_err);
++    if (local_err) {
++        goto out;
++    }
++
++    slot = pc_dimm_get_free_slot(slot == PC_DIMM_UNASSIGNED_SLOT ? NULL : &slot,
++                                 machine->ram_slots, &local_err);
++    if (local_err) {
++        goto out;
++    }
++    object_property_set_int(OBJECT(dev), slot, PC_DIMM_SLOT_PROP, &local_err);
++    if (local_err) {
++        goto out;
++    }
++    trace_mhp_pc_dimm_assigned_slot(slot);
++
++    if (kvm_enabled() && !kvm_has_free_slot(machine)) {
++        error_setg(&local_err, "hypervisor has no free memory slots left");
++        goto out;
++    }
++
++    memory_region_add_subregion(&hpms->mr, addr - hpms->base, mr);
++    vmstate_register_ram(mr, dev);
++
++out:
++    error_propagate(errp, local_err);
++}
++
++void pc_dimm_memory_unplug(DeviceState *dev, MemoryHotplugState *hpms,
++                           MemoryRegion *mr)
++{
++    memory_region_del_subregion(&hpms->mr, mr);
++    vmstate_unregister_ram(mr, dev);
++}
++
+ static int pc_existing_dimms_capacity_internal(Object *obj, void *opaque)
+ {
+     pc_dimms_capacity *cap = opaque;
+diff --git a/include/hw/mem/pc-dimm.h b/include/hw/mem/pc-dimm.h
+index 4bace7b..d83bf30 100644
+--- a/include/hw/mem/pc-dimm.h
++++ b/include/hw/mem/pc-dimm.h
+@@ -90,4 +90,8 @@ int pc_dimm_get_free_slot(const int *hint, int max_slots, Error **errp);
+ 
+ int qmp_pc_dimm_device_list(Object *obj, void *opaque);
+ uint64_t pc_existing_dimms_capacity(Error **errp);
++void pc_dimm_memory_plug(DeviceState *dev, MemoryHotplugState *hpms,
++                         MemoryRegion *mr, uint64_t align, Error **errp);
++void pc_dimm_memory_unplug(DeviceState *dev, MemoryHotplugState *hpms,
++                           MemoryRegion *mr);
+ #endif
+-- 
+1.8.3.1
+

@@ -1,0 +1,103 @@
+From 6d08adfa606ede5cca8f95d4ef592d9b9c771cd3 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:59 +0200
+Subject: [PATCH 14/28] vmstate: Create optional sections
+
+Message-id: <1438098431-30847-15-git-send-email-quintela@redhat.com>
+Patchwork-id: 67174
+O-Subject: [RHEL-7 qemu-kvm PATCH 14/26] vmstate: Create optional sections
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+To make sections optional, we need to do it at the beggining of the code.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit df8961522a3d6bc7bb60c2830ef59e7c6c67a928)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/migration/vmstate.h |  2 ++
+ migration/savevm.c          |  8 ++++++++
+ migration/vmstate.c         | 11 +++++++++++
+ trace-events                |  1 +
+ 4 files changed, 22 insertions(+)
+
+diff --git a/include/migration/vmstate.h b/include/migration/vmstate.h
+index 546f313..6fa9a55 100644
+--- a/include/migration/vmstate.h
++++ b/include/migration/vmstate.h
+@@ -818,6 +818,8 @@ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
+ void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
+                         void *opaque, QJSON *vmdesc);
+ 
++bool vmstate_save_needed(const VMStateDescription *vmsd, void *opaque);
++
+ int vmstate_register_with_alias_id(DeviceState *dev, int instance_id,
+                                    const VMStateDescription *vmsd,
+                                    void *base, int alias_id,
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 044d8ad..68c6f36 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -770,6 +770,11 @@ void qemu_savevm_state_complete(QEMUFile *f)
+         if ((!se->ops || !se->ops->save_state) && !se->vmsd) {
+             continue;
+         }
++        if (se->vmsd && !vmstate_save_needed(se->vmsd, se->opaque)) {
++            trace_savevm_section_skip(se->idstr, se->section_id);
++            continue;
++        }
++
+         trace_savevm_section_start(se->idstr, se->section_id);
+ 
+         json_start_object(vmdesc, NULL);
+@@ -893,6 +898,9 @@ static int qemu_save_device_state(QEMUFile *f)
+         if ((!se->ops || !se->ops->save_state) && !se->vmsd) {
+             continue;
+         }
++        if (se->vmsd && !vmstate_save_needed(se->vmsd, se->opaque)) {
++            continue;
++        }
+ 
+         /* Section type */
+         qemu_put_byte(f, QEMU_VM_SECTION_FULL);
+diff --git a/migration/vmstate.c b/migration/vmstate.c
+index 108995e..36dab84 100644
+--- a/migration/vmstate.c
++++ b/migration/vmstate.c
+@@ -276,6 +276,17 @@ static void vmsd_desc_field_end(const VMStateDescription *vmsd, QJSON *vmdesc,
+     json_end_object(vmdesc);
+ }
+ 
++
++bool vmstate_save_needed(const VMStateDescription *vmsd, void *opaque)
++{
++    if (vmsd->needed && !vmsd->needed(opaque)) {
++        /* optional section not needed */
++        return false;
++    }
++    return true;
++}
++
++
+ void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
+                         void *opaque, QJSON *vmdesc)
+ {
+diff --git a/trace-events b/trace-events
+index 8490ccb..360b0fa 100644
+--- a/trace-events
++++ b/trace-events
+@@ -1173,6 +1173,7 @@ qemu_loadvm_state_section_partend(uint32_t section_id) "%u"
+ qemu_loadvm_state_section_startfull(uint32_t section_id, const char *idstr, uint32_t instance_id, uint32_t version_id) "%u(%s) %u %u"
+ savevm_section_start(const char *id, unsigned int section_id) "%s, section_id %u"
+ savevm_section_end(const char *id, unsigned int section_id, int ret) "%s, section_id %u -> %d"
++savevm_section_skip(const char *id, unsigned int section_id) "%s, section_id %u"
+ savevm_state_begin(void) ""
+ savevm_state_iterate(void) ""
+ savevm_state_complete(void) ""
+-- 
+1.8.3.1
+

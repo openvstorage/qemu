@@ -1,0 +1,105 @@
+From 34ef57f6abfb9fd72fcf266cb6c4873c5dc67e6d Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:11 +0200
+Subject: [PATCH 03/31] acpi: Simplify printing to dynamic string
+
+Message-id: <1435154016-26233-19-git-send-email-marcel@redhat.com>
+Patchwork-id: 66446
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 18/43] acpi: Simplify printing to dynamic string
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+From: Markus Armbruster <armbru@redhat.com>
+
+build_append_namestringv() and aml_string() first calculate the
+resulting string's length with vsnprintf(NULL, ...), then allocate,
+then print for real.  Simply use g_strdup_vprintf() or g_vasprintf()
+instead.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: John Snow <jsnow@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+(cherry picked from commit c3bdc56c183f6ca6baa502bd7861583ca98b333b)
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c | 27 +++++----------------------
+ 1 file changed, 5 insertions(+), 22 deletions(-)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 9efef70..709ddc3 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -19,6 +19,7 @@
+  * with this program; if not, see <http://www.gnu.org/licenses/>.
+  */
+ 
++#include <glib/gprintf.h>
+ #include <stdio.h>
+ #include <stdarg.h>
+ #include <assert.h>
+@@ -59,7 +60,6 @@ static void build_append_array(GArray *array, GArray *val)
+ static void
+ build_append_nameseg(GArray *array, const char *seg)
+ {
+-    /* It would be nicer to use g_string_vprintf but it's only there in 2.22 */
+     int len;
+ 
+     len = strlen(seg);
+@@ -73,22 +73,12 @@ build_append_nameseg(GArray *array, const char *seg)
+ static void GCC_FMT_ATTR(2, 0)
+ build_append_namestringv(GArray *array, const char *format, va_list ap)
+ {
+-    /* It would be nicer to use g_string_vprintf but it's only there in 2.22 */
+     char *s;
+-    int len;
+-    va_list va_len;
+     char **segs;
+     char **segs_iter;
+     int seg_count = 0;
+ 
+-    va_copy(va_len, ap);
+-    len = vsnprintf(NULL, 0, format, va_len);
+-    va_end(va_len);
+-    len += 1;
+-    s = g_new(typeof(*s), len);
+-
+-    len = vsnprintf(s, len, format, ap);
+-
++    s = g_strdup_vprintf(format, ap);
+     segs = g_strsplit(s, ".", 0);
+     g_free(s);
+ 
+@@ -754,22 +744,15 @@ Aml *aml_create_dword_field(Aml *srcbuf, Aml *index, const char *name)
+ Aml *aml_string(const char *name_format, ...)
+ {
+     Aml *var = aml_opcode(0x0D /* StringPrefix */);
+-    va_list ap, va_len;
++    va_list ap;
+     char *s;
+     int len;
+ 
+     va_start(ap, name_format);
+-    va_copy(va_len, ap);
+-    len = vsnprintf(NULL, 0, name_format, va_len);
+-    va_end(va_len);
+-    len += 1;
+-    s = g_new0(typeof(*s), len);
+-
+-    len = vsnprintf(s, len, name_format, ap);
++    len = g_vasprintf(&s, name_format, ap);
+     va_end(ap);
+ 
+-    g_array_append_vals(var->buf, s, len);
+-    build_append_byte(var->buf, 0x0); /* NullChar */
++    g_array_append_vals(var->buf, s, len + 1);
+     g_free(s);
+ 
+     return var;
+-- 
+1.8.3.1
+

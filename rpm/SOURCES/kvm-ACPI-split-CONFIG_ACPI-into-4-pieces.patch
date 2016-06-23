@@ -1,0 +1,165 @@
+From ee1cf2aaea32803432c0af41aef5c86739945368 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:40 +0200
+Subject: [PATCH 36/44] ACPI: split CONFIG_ACPI into 4 pieces
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-29-git-send-email-drjones@redhat.com>
+Patchwork-id: 66260
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 28/33] ACPI: split CONFIG_ACPI into 4 pieces
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+As core.c, piix4.c, ich9.c and pcihp.c are for x86, add CONFIG_ACPI_X86
+to make it only for x86. ARM doesn't support cpu and memory hotplug, add
+CONFIG_ACPI_CPU_HOTPLUG and CONFIG_ACPI_MEMORY_HOTPLUG to exclude them
+for target-arm.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Message-id: 1432522520-8068-24-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 135a67a692bedb952ea720351026247104da8645)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ default-configs/arm-softmmu.mak      | 1 +
+ default-configs/i386-softmmu.mak     | 3 +++
+ default-configs/mips-softmmu.mak     | 3 +++
+ default-configs/mips64-softmmu.mak   | 3 +++
+ default-configs/mips64el-softmmu.mak | 3 +++
+ default-configs/mipsel-softmmu.mak   | 3 +++
+ default-configs/x86_64-softmmu.mak   | 3 +++
+ hw/acpi/Makefile.objs                | 5 +++--
+ hw/i2c/Makefile.objs                 | 2 +-
+ 9 files changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/default-configs/arm-softmmu.mak b/default-configs/arm-softmmu.mak
+index 0399634..deb788d 100644
+--- a/default-configs/arm-softmmu.mak
++++ b/default-configs/arm-softmmu.mak
+@@ -96,3 +96,4 @@ CONFIG_ALLWINNER_A10=y
+ CONFIG_XIO3130=y
+ CONFIG_IOH3420=y
+ CONFIG_I82801B11=y
++CONFIG_ACPI=y
+diff --git a/default-configs/i386-softmmu.mak b/default-configs/i386-softmmu.mak
+index 074d0fd..c2b82de 100644
+--- a/default-configs/i386-softmmu.mak
++++ b/default-configs/i386-softmmu.mak
+@@ -15,6 +15,9 @@ CONFIG_PCSPK=y
+ CONFIG_PCKBD=y
+ CONFIG_FDC=y
+ CONFIG_ACPI=y
++CONFIG_ACPI_X86=y
++CONFIG_ACPI_MEMORY_HOTPLUG=y
++CONFIG_ACPI_CPU_HOTPLUG=y
+ CONFIG_APM=y
+ CONFIG_I8257=y
+ CONFIG_IDE_ISA=y
+diff --git a/default-configs/mips-softmmu.mak b/default-configs/mips-softmmu.mak
+index 46e2a0d..645908e 100644
+--- a/default-configs/mips-softmmu.mak
++++ b/default-configs/mips-softmmu.mak
+@@ -15,6 +15,9 @@ CONFIG_PCSPK=y
+ CONFIG_PCKBD=y
+ CONFIG_FDC=y
+ CONFIG_ACPI=y
++CONFIG_ACPI_X86=y
++CONFIG_ACPI_MEMORY_HOTPLUG=y
++CONFIG_ACPI_CPU_HOTPLUG=y
+ CONFIG_APM=y
+ CONFIG_I8257=y
+ CONFIG_PIIX4=y
+diff --git a/default-configs/mips64-softmmu.mak b/default-configs/mips64-softmmu.mak
+index 8e05cd2..2ce9fb3 100644
+--- a/default-configs/mips64-softmmu.mak
++++ b/default-configs/mips64-softmmu.mak
+@@ -15,6 +15,9 @@ CONFIG_PCSPK=y
+ CONFIG_PCKBD=y
+ CONFIG_FDC=y
+ CONFIG_ACPI=y
++CONFIG_ACPI_X86=y
++CONFIG_ACPI_MEMORY_HOTPLUG=y
++CONFIG_ACPI_CPU_HOTPLUG=y
+ CONFIG_APM=y
+ CONFIG_I8257=y
+ CONFIG_PIIX4=y
+diff --git a/default-configs/mips64el-softmmu.mak b/default-configs/mips64el-softmmu.mak
+index cb0afb9..0e978e7 100644
+--- a/default-configs/mips64el-softmmu.mak
++++ b/default-configs/mips64el-softmmu.mak
+@@ -15,6 +15,9 @@ CONFIG_PCSPK=y
+ CONFIG_PCKBD=y
+ CONFIG_FDC=y
+ CONFIG_ACPI=y
++CONFIG_ACPI_X86=y
++CONFIG_ACPI_MEMORY_HOTPLUG=y
++CONFIG_ACPI_CPU_HOTPLUG=y
+ CONFIG_APM=y
+ CONFIG_I8257=y
+ CONFIG_PIIX4=y
+diff --git a/default-configs/mipsel-softmmu.mak b/default-configs/mipsel-softmmu.mak
+index d217d5a..17cce79 100644
+--- a/default-configs/mipsel-softmmu.mak
++++ b/default-configs/mipsel-softmmu.mak
+@@ -15,6 +15,9 @@ CONFIG_PCSPK=y
+ CONFIG_PCKBD=y
+ CONFIG_FDC=y
+ CONFIG_ACPI=y
++CONFIG_ACPI_X86=y
++CONFIG_ACPI_MEMORY_HOTPLUG=y
++CONFIG_ACPI_CPU_HOTPLUG=y
+ CONFIG_APM=y
+ CONFIG_I8257=y
+ CONFIG_PIIX4=y
+diff --git a/default-configs/x86_64-softmmu.mak b/default-configs/x86_64-softmmu.mak
+index 4076f89..f218e06 100644
+--- a/default-configs/x86_64-softmmu.mak
++++ b/default-configs/x86_64-softmmu.mak
+@@ -13,6 +13,9 @@ CONFIG_PCSPK=y
+ CONFIG_PCKBD=y
+ CONFIG_FDC=y
+ CONFIG_ACPI=y
++CONFIG_ACPI_X86=y
++CONFIG_ACPI_MEMORY_HOTPLUG=y
++CONFIG_ACPI_CPU_HOTPLUG=y
+ CONFIG_APM=y
+ CONFIG_I8257=y
+ CONFIG_IDE_PIIX=y
+diff --git a/hw/acpi/Makefile.objs b/hw/acpi/Makefile.objs
+index b9fefa7..29d46d8 100644
+--- a/hw/acpi/Makefile.objs
++++ b/hw/acpi/Makefile.objs
+@@ -1,5 +1,6 @@
+-common-obj-$(CONFIG_ACPI) += core.o piix4.o ich9.o pcihp.o cpu_hotplug.o
+-common-obj-$(CONFIG_ACPI) += memory_hotplug.o
++common-obj-$(CONFIG_ACPI_X86) += core.o piix4.o ich9.o pcihp.o
++common-obj-$(CONFIG_ACPI_CPU_HOTPLUG) += cpu_hotplug.o
++common-obj-$(CONFIG_ACPI_MEMORY_HOTPLUG) += memory_hotplug.o
+ common-obj-$(CONFIG_ACPI) += acpi_interface.o
+ common-obj-$(CONFIG_ACPI) += bios-linker-loader.o
+ common-obj-$(CONFIG_ACPI) += aml-build.o
+diff --git a/hw/i2c/Makefile.objs b/hw/i2c/Makefile.objs
+index 648278e..0f13060 100644
+--- a/hw/i2c/Makefile.objs
++++ b/hw/i2c/Makefile.objs
+@@ -1,6 +1,6 @@
+ common-obj-y += core.o smbus.o smbus_eeprom.o
+ common-obj-$(CONFIG_VERSATILE_I2C) += versatile_i2c.o
+-common-obj-$(CONFIG_ACPI) += smbus_ich9.o
++common-obj-$(CONFIG_ACPI_X86) += smbus_ich9.o
+ common-obj-$(CONFIG_APM) += pm_smbus.o
+ common-obj-$(CONFIG_BITBANG_I2C) += bitbang_i2c.o
+ common-obj-$(CONFIG_EXYNOS4) += exynos4210_i2c.o
+-- 
+1.8.3.1
+

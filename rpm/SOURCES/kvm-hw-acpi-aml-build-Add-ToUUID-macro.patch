@@ -1,0 +1,111 @@
+From bcf6f3cd1d2a73b1bc7d18c67b8f48b6ed69d6dd Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:32 +0200
+Subject: [PATCH 28/44] hw/acpi/aml-build: Add ToUUID macro
+
+Message-id: <1434455325-23399-21-git-send-email-drjones@redhat.com>
+Patchwork-id: 66251
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 20/33] hw/acpi/aml-build: Add ToUUID macro
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Add ToUUID macro, this is useful for generating PCIe ACPI table.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Message-id: 1432522520-8068-16-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit b930fb9db4aa07abb8f3871eb7379242edbdf2a5)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 53 +++++++++++++++++++++++++++++++++++++++++++++
+ include/hw/acpi/aml-build.h |  1 +
+ 2 files changed, 54 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 82a8306..e2f5845 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -963,6 +963,59 @@ Aml *aml_qword_memory(AmlDecode dec, AmlMinFixed min_fixed,
+                              addr_trans, len, flags);
+ }
+ 
++static uint8_t Hex2Byte(const char *src)
++{
++    int hi, lo;
++
++    hi = Hex2Digit(src[0]);
++    assert(hi >= 0);
++    assert(hi <= 15);
++
++    lo = Hex2Digit(src[1]);
++    assert(lo >= 0);
++    assert(lo <= 15);
++    return (hi << 4) | lo;
++}
++
++/*
++ * ACPI 3.0: 17.5.124 ToUUID (Convert String to UUID Macro)
++ * e.g. UUID: aabbccdd-eeff-gghh-iijj-kkllmmnnoopp
++ * call aml_touuid("aabbccdd-eeff-gghh-iijj-kkllmmnnoopp");
++ */
++Aml *aml_touuid(const char *uuid)
++{
++    Aml *var = aml_bundle(0x11 /* BufferOp */, AML_BUFFER);
++
++    assert(strlen(uuid) == 36);
++    assert(uuid[8] == '-');
++    assert(uuid[13] == '-');
++    assert(uuid[18] == '-');
++    assert(uuid[23] == '-');
++
++    build_append_byte(var->buf, Hex2Byte(uuid + 6));  /* dd - at offset 00 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 4));  /* cc - at offset 01 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 2));  /* bb - at offset 02 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 0));  /* aa - at offset 03 */
++
++    build_append_byte(var->buf, Hex2Byte(uuid + 11)); /* ff - at offset 04 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 9));  /* ee - at offset 05 */
++
++    build_append_byte(var->buf, Hex2Byte(uuid + 16)); /* hh - at offset 06 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 14)); /* gg - at offset 07 */
++
++    build_append_byte(var->buf, Hex2Byte(uuid + 19)); /* ii - at offset 08 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 21)); /* jj - at offset 09 */
++
++    build_append_byte(var->buf, Hex2Byte(uuid + 24)); /* kk - at offset 10 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 26)); /* ll - at offset 11 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 28)); /* mm - at offset 12 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 30)); /* nn - at offset 13 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 32)); /* oo - at offset 14 */
++    build_append_byte(var->buf, Hex2Byte(uuid + 34)); /* pp - at offset 15 */
++
++    return var;
++}
++
+ void
+ build_header(GArray *linker, GArray *table_data,
+              AcpiTableHeader *h, const char *sig, int len, uint8_t rev)
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index d6388de..29b7dbe 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -257,6 +257,7 @@ Aml *aml_buffer(int buffer_size, uint8_t *byte_list);
+ Aml *aml_resource_template(void);
+ Aml *aml_field(const char *name, AmlAccessType type, AmlUpdateRule rule);
+ Aml *aml_varpackage(uint32_t num_elements);
++Aml *aml_touuid(const char *uuid);
+ 
+ void
+ build_header(GArray *linker, GArray *table_data,
+-- 
+1.8.3.1
+

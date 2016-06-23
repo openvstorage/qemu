@@ -1,0 +1,108 @@
+From 1219d52595e3321acdaf800ae6f0316bb8e95df1 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Thu, 18 Sep 2014 23:49:29 +0200
+Subject: ivshmem: RHEL-only: remove unsupported code
+
+Message-id: <1411084171-28836-3-git-send-email-drjones@redhat.com>
+Patchwork-id: 61305
+O-Subject: [PATCH RHEV-7.1 qemu-kvm-rhev 2/4] ivshmem: RHEL-only: remove unsupported code
+Bugzilla: 1104063
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel.a@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+The objective here is to strip the device down to the bare minimum
+needed for supporting memnic. Removing properties goes a long way
+in creating deadcode, but a couple additional #if's were needed
+as well to kill bar0's interrupt support, and to ensure role
+'peer' is always selected (we want ivshmem to always disable
+migration).
+
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+diff --git a/hw/misc/ivshmem.c b/hw/misc/ivshmem.c
+index 5d272c8..1b574ad 100644
+--- a/hw/misc/ivshmem.c
++++ b/hw/misc/ivshmem.c
+@@ -186,6 +186,15 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
+     uint16_t dest = val >> 16;
+     uint16_t vector = val & 0xff;
+ 
++#if 1 /* Ignore writes for Red Hat Enterprise Linux */
++    static bool complained = false;
++    if (!complained) {
++        error_report("Red Hat: %s: ivshmem interrupts are disabled", __func__);
++        complained = true;
++    }
++    return;
++#endif
++
+     addr &= 0xfc;
+ 
+     IVSHMEM_DPRINTF("writing to addr " TARGET_FMT_plx "\n", addr);
+@@ -224,6 +233,15 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+     IVShmemState *s = opaque;
+     uint32_t ret;
+ 
++#if 1 /* Always read zero for Red Hat Enterprise Linux */
++    static bool complained = false;
++    if (!complained) {
++        error_report("Red Hat: %s: ivshmem interrupts are disabled", __func__);
++        complained = true;
++    }
++    return 0;
++#endif
++
+     switch (addr)
+     {
+         case INTRMASK:
+@@ -728,6 +746,7 @@ static int pci_ivshmem_init(PCIDevice *dev)
+     if (s->role) {
+         if (strncmp(s->role, "peer", 5) == 0) {
+             s->role_val = IVSHMEM_PEER;
++#if 0 /* Red Hat Enterprise Linux requires role=peer */
+         } else if (strncmp(s->role, "master", 7) == 0) {
+             s->role_val = IVSHMEM_MASTER;
+         } else {
+@@ -736,6 +755,12 @@ static int pci_ivshmem_init(PCIDevice *dev)
+         }
+     } else {
+         s->role_val = IVSHMEM_MASTER; /* default */
++#else
++        } else {
++            error_report("Red Hat: 'role' must be specified, and set to 'peer'");
++            exit(1);
++        }
++#endif
+     }
+ 
+     if (s->role_val == IVSHMEM_PEER) {
+@@ -800,7 +825,11 @@ static int pci_ivshmem_init(PCIDevice *dev)
+         int fd;
+ 
+         if (s->shmobj == NULL) {
++#if 0 /* Red Hat Enterprise Linux doesn't support 'chardev' */
+             error_report("Must specify 'chardev' or 'shm' to ivshmem");
++#else
++            error_report("Red Hat: 'shm' must be specified");
++#endif
+             exit(1);
+         }
+ 
+@@ -851,11 +880,15 @@ static void pci_ivshmem_uninit(PCIDevice *dev)
+ }
+ 
+ static Property ivshmem_properties[] = {
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     DEFINE_PROP_CHR("chardev", IVShmemState, server_chr),
++#endif
+     DEFINE_PROP_STRING("size", IVShmemState, sizearg),
++#if 0 /* Disabled for Red Hat Enterprise Linux */
+     DEFINE_PROP_UINT32("vectors", IVShmemState, vectors, 1),
+     DEFINE_PROP_BIT("ioeventfd", IVShmemState, features, IVSHMEM_IOEVENTFD, false),
+     DEFINE_PROP_BIT("msi", IVShmemState, features, IVSHMEM_MSI, true),
++#endif
+     DEFINE_PROP_STRING("shm", IVShmemState, shmobj),
+     DEFINE_PROP_STRING("role", IVShmemState, role),
+     DEFINE_PROP_UINT32("use64", IVShmemState, ivshmem_64bit, 1),

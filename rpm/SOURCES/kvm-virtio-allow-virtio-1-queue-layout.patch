@@ -1,0 +1,203 @@
+From 2b2a67e966c190fccd2da5614cae481266ca600b Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:29 +0200
+Subject: [PATCH 055/100] virtio: allow virtio-1 queue layout
+
+Message-id: <1436260751-25015-27-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66801
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 26/68] virtio: allow virtio-1 queue layout
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+For virtio-1 devices, we allow a more complex queue layout that doesn't
+require descriptor table and rings on a physically-contigous memory area:
+add virtio_queue_set_rings() to allow transports to set this up.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit ab223c9518e8c7eb542ef3133de1a34475b69790)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-mmio.c    |  3 +++
+ hw/virtio/virtio.c         | 53 +++++++++++++++++++++++++++++-----------------
+ include/hw/virtio/virtio.h |  3 +++
+ 3 files changed, 40 insertions(+), 19 deletions(-)
+
+diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
+index a3cfd30..a368a39 100644
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -243,8 +243,11 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
+     case VIRTIO_MMIO_QUEUENUM:
+         DPRINTF("mmio_queue write %d max %d\n", (int)value, VIRTQUEUE_MAX_SIZE);
+         virtio_queue_set_num(vdev, vdev->queue_sel, value);
++        /* Note: only call this function for legacy devices */
++        virtio_queue_update_rings(vdev, vdev->queue_sel);
+         break;
+     case VIRTIO_MMIO_QUEUEALIGN:
++        /* Note: this is only valid for legacy devices */
+         virtio_queue_set_align(vdev, vdev->queue_sel, value);
+         break;
+     case VIRTIO_MMIO_QUEUEPFN:
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index d37d27b..c27e975 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -69,7 +69,6 @@ typedef struct VRing
+ struct VirtQueue
+ {
+     VRing vring;
+-    hwaddr pa;
+     uint16_t last_avail_idx;
+     /* Last used index value we have signalled on */
+     uint16_t signalled_used;
+@@ -93,15 +92,18 @@ struct VirtQueue
+ };
+ 
+ /* virt queue functions */
+-static void virtqueue_init(VirtQueue *vq)
++void virtio_queue_update_rings(VirtIODevice *vdev, int n)
+ {
+-    hwaddr pa = vq->pa;
++    VRing *vring = &vdev->vq[n].vring;
+ 
+-    vq->vring.desc = pa;
+-    vq->vring.avail = pa + vq->vring.num * sizeof(VRingDesc);
+-    vq->vring.used = vring_align(vq->vring.avail +
+-                                 offsetof(VRingAvail, ring[vq->vring.num]),
+-                                 vq->vring.align);
++    if (!vring->desc) {
++        /* not yet setup -> nothing to do */
++        return;
++    }
++    vring->avail = vring->desc + vring->num * sizeof(VRingDesc);
++    vring->used = vring_align(vring->avail +
++                              offsetof(VRingAvail, ring[vring->num]),
++                              vring->align);
+ }
+ 
+ static inline uint64_t vring_desc_addr(VirtIODevice *vdev, hwaddr desc_pa,
+@@ -605,7 +607,6 @@ void virtio_reset(void *opaque)
+         vdev->vq[i].vring.avail = 0;
+         vdev->vq[i].vring.used = 0;
+         vdev->vq[i].last_avail_idx = 0;
+-        vdev->vq[i].pa = 0;
+         virtio_queue_set_vector(vdev, i, VIRTIO_NO_VECTOR);
+         vdev->vq[i].signalled_used = 0;
+         vdev->vq[i].signalled_used_valid = false;
+@@ -708,13 +709,21 @@ void virtio_config_writel(VirtIODevice *vdev, uint32_t addr, uint32_t data)
+ 
+ void virtio_queue_set_addr(VirtIODevice *vdev, int n, hwaddr addr)
+ {
+-    vdev->vq[n].pa = addr;
+-    virtqueue_init(&vdev->vq[n]);
++    vdev->vq[n].vring.desc = addr;
++    virtio_queue_update_rings(vdev, n);
+ }
+ 
+ hwaddr virtio_queue_get_addr(VirtIODevice *vdev, int n)
+ {
+-    return vdev->vq[n].pa;
++    return vdev->vq[n].vring.desc;
++}
++
++void virtio_queue_set_rings(VirtIODevice *vdev, int n, hwaddr desc,
++                            hwaddr avail, hwaddr used)
++{
++    vdev->vq[n].vring.desc = desc;
++    vdev->vq[n].vring.avail = avail;
++    vdev->vq[n].vring.used = used;
+ }
+ 
+ void virtio_queue_set_num(VirtIODevice *vdev, int n, int num)
+@@ -728,7 +737,6 @@ void virtio_queue_set_num(VirtIODevice *vdev, int n, int num)
+         return;
+     }
+     vdev->vq[n].vring.num = num;
+-    virtqueue_init(&vdev->vq[n]);
+ }
+ 
+ VirtQueue *virtio_vector_first_queue(VirtIODevice *vdev, uint16_t vector)
+@@ -771,6 +779,11 @@ void virtio_queue_set_align(VirtIODevice *vdev, int n, int align)
+     BusState *qbus = qdev_get_parent_bus(DEVICE(vdev));
+     VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(qbus);
+ 
++    /* virtio-1 compliant devices cannot change the alignment */
++    if (virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
++        error_report("tried to modify queue alignment for virtio-1 device");
++        return;
++    }
+     /* Check that the transport told us it was going to do this
+      * (so a buggy transport will immediately assert rather than
+      * silently failing to migrate this state)
+@@ -778,7 +791,7 @@ void virtio_queue_set_align(VirtIODevice *vdev, int n, int align)
+     assert(k->has_variable_vring_alignment);
+ 
+     vdev->vq[n].vring.align = align;
+-    virtqueue_init(&vdev->vq[n]);
++    virtio_queue_update_rings(vdev, n);
+ }
+ 
+ void virtio_queue_notify_vq(VirtQueue *vq)
+@@ -992,7 +1005,8 @@ void virtio_save(VirtIODevice *vdev, QEMUFile *f)
+         if (k->has_variable_vring_alignment) {
+             qemu_put_be32(f, vdev->vq[i].vring.align);
+         }
+-        qemu_put_be64(f, vdev->vq[i].pa);
++        /* XXX virtio-1 devices */
++        qemu_put_be64(f, vdev->vq[i].vring.desc);
+         qemu_put_be16s(f, &vdev->vq[i].last_avail_idx);
+         if (k->save_queue) {
+             k->save_queue(qbus->parent, i, f);
+@@ -1076,13 +1090,14 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f, int version_id)
+         if (k->has_variable_vring_alignment) {
+             vdev->vq[i].vring.align = qemu_get_be32(f);
+         }
+-        vdev->vq[i].pa = qemu_get_be64(f);
++        vdev->vq[i].vring.desc = qemu_get_be64(f);
+         qemu_get_be16s(f, &vdev->vq[i].last_avail_idx);
+         vdev->vq[i].signalled_used_valid = false;
+         vdev->vq[i].notification = true;
+ 
+-        if (vdev->vq[i].pa) {
+-            virtqueue_init(&vdev->vq[i]);
++        if (vdev->vq[i].vring.desc) {
++            /* XXX virtio-1 devices */
++            virtio_queue_update_rings(vdev, i);
+         } else if (vdev->vq[i].last_avail_idx) {
+             error_report("VQ %d address 0x0 "
+                          "inconsistent with Host index 0x%x",
+@@ -1138,7 +1153,7 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f, int version_id)
+     }
+ 
+     for (i = 0; i < num; i++) {
+-        if (vdev->vq[i].pa) {
++        if (vdev->vq[i].vring.desc) {
+             uint16_t nheads;
+             nheads = vring_avail_idx(&vdev->vq[i]) - vdev->vq[i].last_avail_idx;
+             /* Check it isn't doing strange things with descriptor numbers. */
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index eed7f4f..7583eac 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -177,6 +177,9 @@ hwaddr virtio_queue_get_addr(VirtIODevice *vdev, int n);
+ void virtio_queue_set_num(VirtIODevice *vdev, int n, int num);
+ int virtio_queue_get_num(VirtIODevice *vdev, int n);
+ int virtio_get_num_queues(VirtIODevice *vdev);
++void virtio_queue_set_rings(VirtIODevice *vdev, int n, hwaddr desc,
++                            hwaddr avail, hwaddr used);
++void virtio_queue_update_rings(VirtIODevice *vdev, int n);
+ void virtio_queue_set_align(VirtIODevice *vdev, int n, int align);
+ void virtio_queue_notify(VirtIODevice *vdev, int n);
+ uint16_t virtio_queue_vector(VirtIODevice *vdev, int n);
+-- 
+1.8.3.1
+

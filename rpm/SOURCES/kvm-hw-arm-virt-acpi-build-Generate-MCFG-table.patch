@@ -1,0 +1,84 @@
+From 09777e3ecfcb4bab1c42d4274a0c6a46e659df52 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:30 +0200
+Subject: [PATCH 26/44] hw/arm/virt-acpi-build: Generate MCFG table
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-19-git-send-email-drjones@redhat.com>
+Patchwork-id: 66250
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 18/33] hw/arm/virt-acpi-build: Generate MCFG table
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+Generate MCFG table for PCIe controller.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Message-id: 1432522520-8068-14-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 8434488400971c6793893b8c9547bc6b97e076ce)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/arm/virt-acpi-build.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index f8c1dd8..95c83ee 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -39,6 +39,7 @@
+ #include "hw/loader.h"
+ #include "hw/hw.h"
+ #include "hw/acpi/aml-build.h"
++#include "hw/pci/pcie_host.h"
+ 
+ #define ARM_SPI_BASE 32
+ 
+@@ -180,6 +181,25 @@ build_rsdp(GArray *rsdp_table, GArray *linker, unsigned rsdt)
+     return rsdp_table;
+ }
+ 
++static void
++build_mcfg(GArray *table_data, GArray *linker, VirtGuestInfo *guest_info)
++{
++    AcpiTableMcfg *mcfg;
++    const MemMapEntry *memmap = guest_info->memmap;
++    int len = sizeof(*mcfg) + sizeof(mcfg->allocation[0]);
++
++    mcfg = acpi_data_push(table_data, len);
++    mcfg->allocation[0].address = cpu_to_le64(memmap[VIRT_PCIE_ECAM].base);
++
++    /* Only a single allocation so no need to play with segments */
++    mcfg->allocation[0].pci_segment = cpu_to_le16(0);
++    mcfg->allocation[0].start_bus_number = 0;
++    mcfg->allocation[0].end_bus_number = (memmap[VIRT_PCIE_ECAM].size
++                                          / PCIE_MMCFG_SIZE_MIN) - 1;
++
++    build_header(linker, table_data, (void *)mcfg, "MCFG", len, 5);
++}
++
+ /* GTDT */
+ static void
+ build_gtdt(GArray *table_data, GArray *linker)
+@@ -350,6 +370,9 @@ void virt_acpi_build(VirtGuestInfo *guest_info, AcpiBuildTables *tables)
+     acpi_add_table(table_offsets, tables_blob);
+     build_gtdt(tables_blob, tables->linker);
+ 
++    acpi_add_table(table_offsets, tables_blob);
++    build_mcfg(tables_blob, tables->linker, guest_info);
++
+     /* RSDT is pointed to by RSDP */
+     rsdt = tables_blob->len;
+     build_rsdt(tables_blob, tables->linker, table_offsets);
+-- 
+1.8.3.1
+

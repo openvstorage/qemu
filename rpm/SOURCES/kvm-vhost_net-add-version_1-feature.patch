@@ -1,0 +1,51 @@
+From 79f62806ee7263b1bff10ffcf06b23768b9f2d8b Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:35 +0200
+Subject: [PATCH 061/100] vhost_net: add version_1 feature
+
+Message-id: <1436260751-25015-33-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66807
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 32/68] vhost_net: add version_1 feature
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+Add VERSION_1 to list of features that we should
+test at the backend.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit b1506132001eee6b11cf23b5968cd66ec141a9ed)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/vhost_net.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index 3e4b0f2..760f4fc 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -53,6 +53,7 @@ static const int kernel_feature_bits[] = {
+     VIRTIO_RING_F_INDIRECT_DESC,
+     VIRTIO_RING_F_EVENT_IDX,
+     VIRTIO_NET_F_MRG_RXBUF,
++    VIRTIO_F_VERSION_1,
+     VHOST_INVALID_FEATURE_BIT
+ };
+ 
+@@ -63,6 +64,7 @@ static const int user_feature_bits[] = {
+     VIRTIO_RING_F_EVENT_IDX,
+ 
+     VIRTIO_F_ANY_LAYOUT,
++    VIRTIO_F_VERSION_1,
+     VIRTIO_NET_F_CSUM,
+     VIRTIO_NET_F_GUEST_CSUM,
+     VIRTIO_NET_F_GSO,
+-- 
+1.8.3.1
+

@@ -1,0 +1,104 @@
+From f6cb2c420fba4dbef76362a1bbbc0f7861881ae7 Mon Sep 17 00:00:00 2001
+Message-Id: <f6cb2c420fba4dbef76362a1bbbc0f7861881ae7.1448914830.git.jen@redhat.com>
+In-Reply-To: <bcfe0f8f7ca6c670783cfaa98f45b6985fcbcc39.1448914830.git.jen@redhat.com>
+References: <bcfe0f8f7ca6c670783cfaa98f45b6985fcbcc39.1448914830.git.jen@redhat.com>
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 25 Nov 2015 05:13:13 -0600
+Subject: [CHANGE 3/5] spapr: Allocate HTAB from machine init
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: David Gibson <dgibson@redhat.com>
+Message-id: <1448428394-23427-2-git-send-email-dgibson@redhat.com>
+Patchwork-id: 68462
+O-Subject: [RHEL-7.2.z qemu-kvm-rhev PATCH 1/2] spapr: Allocate HTAB from machine init
+Bugzilla: 1282833 1285337
+RH-Acked-by: Gerd Hoffmann <kraxel@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+
+Allocate HTAB from ppc_spapr_init() so that we can abort the guest
+if requested HTAB size is't allocated by the host. However retain the
+htab reset call in spapr_reset_htab() so that HTAB gets reset (and
+not allocated) during machine reset.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+(cherry picked from commit b817772a2521defba513b64b1d08238f24c50657)
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1282833
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ hw/ppc/spapr.c | 34 +++++++++++++++++++++++++++-------
+ 1 file changed, 27 insertions(+), 7 deletions(-)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index e85ed24..7eba589 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -985,7 +985,7 @@ static void emulate_spapr_hypercall(PowerPCCPU *cpu)
+ #define CLEAN_HPTE(_hpte)  ((*(uint64_t *)(_hpte)) &= tswap64(~HPTE64_V_HPTE_DIRTY))
+ #define DIRTY_HPTE(_hpte)  ((*(uint64_t *)(_hpte)) |= tswap64(HPTE64_V_HPTE_DIRTY))
+ 
+-static void spapr_reset_htab(sPAPRMachineState *spapr)
++static void spapr_alloc_htab(sPAPRMachineState *spapr)
+ {
+     long shift;
+     int index;
+@@ -1000,18 +1000,37 @@ static void spapr_reset_htab(sPAPRMachineState *spapr)
+         /* Kernel handles htab, we don't need to allocate one */
+         spapr->htab_shift = shift;
+         kvmppc_kern_htab = true;
++    } else {
++        /* Allocate htab */
++        spapr->htab = qemu_memalign(HTAB_SIZE(spapr), HTAB_SIZE(spapr));
+ 
++        /* And clear it */
++        memset(spapr->htab, 0, HTAB_SIZE(spapr));
++
++        for (index = 0; index < HTAB_SIZE(spapr) / HASH_PTE_SIZE_64; index++) {
++            DIRTY_HPTE(HPTE(spapr->htab, index));
++        }
++    }
++}
++
++/*
++ * Clear HTAB entries during reset.
++ *
++ * If host kernel has allocated HTAB, KVM_PPC_ALLOCATE_HTAB ioctl is
++ * used to clear HTAB. Otherwise QEMU-allocated HTAB is cleared manually.
++ */
++static void spapr_reset_htab(sPAPRMachineState *spapr)
++{
++    long shift;
++    int index;
++
++    shift = kvmppc_reset_htab(spapr->htab_shift);
++    if (shift > 0) {
+         /* Tell readers to update their file descriptor */
+         if (spapr->htab_fd >= 0) {
+             spapr->htab_fd_stale = true;
+         }
+     } else {
+-        if (!spapr->htab) {
+-            /* Allocate an htab if we don't yet have one */
+-            spapr->htab = qemu_memalign(HTAB_SIZE(spapr), HTAB_SIZE(spapr));
+-        }
+-
+-        /* And clear it */
+         memset(spapr->htab, 0, HTAB_SIZE(spapr));
+ 
+         for (index = 0; index < HTAB_SIZE(spapr) / HASH_PTE_SIZE_64; index++) {
+@@ -1720,6 +1739,7 @@ static void ppc_spapr_init(MachineState *machine)
+         }
+         spapr->htab_shift++;
+     }
++    spapr_alloc_htab(spapr);
+ 
+     /* Set up Interrupt Controller before we create the VCPUs */
+     spapr->icp = xics_system_init(machine,
+-- 
+2.5.0
+

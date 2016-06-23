@@ -1,0 +1,1394 @@
+From 26e2d8a82569917612e60a6ff98ae6c410aa9e87 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:26:03 +0200
+Subject: [PATCH 41/58] spapr: Merge sPAPREnvironment into sPAPRMachineState
+
+Message-id: <1437715580-14817-12-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67128
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 11/28] spapr: Merge sPAPREnvironment into sPAPRMachineState
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+The code for -machine pseries maintains a global sPAPREnvironment structure
+which keeps track of general state information about the guest platform.
+This predates the existence of the MachineState structure, but performs
+basically the same function.
+
+Now that we have the generic MachineState, fold sPAPREnvironment into
+sPAPRMachineState, the pseries specific subclass of MachineState.
+
+This is mostly a matter of search and replace, although a few places which
+relied on the global spapr variable are changed to find the structure via
+qdev_get_machine().
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 28e0204254c3f03e77106056a3a5730c4b8a2ac6)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/char/spapr_vty.c         |  6 ++--
+ hw/intc/xics.c              | 20 ++++++-------
+ hw/intc/xics_kvm.c          |  2 +-
+ hw/net/spapr_llan.c         | 12 ++++----
+ hw/nvram/spapr_nvram.c      |  4 +--
+ hw/ppc/spapr.c              | 73 +++++++++++++++++++--------------------------
+ hw/ppc/spapr_events.c       | 13 +++++---
+ hw/ppc/spapr_hcall.c        | 36 +++++++++++-----------
+ hw/ppc/spapr_iommu.c        |  8 ++---
+ hw/ppc/spapr_pci.c          | 37 ++++++++++++-----------
+ hw/ppc/spapr_rtas.c         | 38 +++++++++++------------
+ hw/ppc/spapr_rtc.c          |  4 +--
+ hw/ppc/spapr_vio.c          | 15 +++++-----
+ include/hw/pci-host/spapr.h | 10 ++++---
+ include/hw/ppc/spapr.h      | 33 ++++++++++++++------
+ include/hw/ppc/spapr_vio.h  |  4 ++-
+ 16 files changed, 167 insertions(+), 148 deletions(-)
+
+diff --git a/hw/char/spapr_vty.c b/hw/char/spapr_vty.c
+index 4e464bd..1d53035 100644
+--- a/hw/char/spapr_vty.c
++++ b/hw/char/spapr_vty.c
+@@ -74,7 +74,7 @@ static void spapr_vty_realize(VIOsPAPRDevice *sdev, Error **errp)
+ }
+ 
+ /* Forward declaration */
+-static target_ulong h_put_term_char(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_put_term_char(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                     target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+@@ -101,7 +101,7 @@ static target_ulong h_put_term_char(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_get_term_char(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_get_term_char(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                     target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+@@ -214,7 +214,7 @@ VIOsPAPRDevice *spapr_vty_get_default(VIOsPAPRBus *bus)
+     return selected;
+ }
+ 
+-VIOsPAPRDevice *vty_lookup(sPAPREnvironment *spapr, target_ulong reg)
++VIOsPAPRDevice *vty_lookup(sPAPRMachineState *spapr, target_ulong reg)
+ {
+     VIOsPAPRDevice *sdev;
+ 
+diff --git a/hw/intc/xics.c b/hw/intc/xics.c
+index 0fd2a84..924b1ae 100644
+--- a/hw/intc/xics.c
++++ b/hw/intc/xics.c
+@@ -806,7 +806,7 @@ void xics_free(XICSState *icp, int irq, int num)
+  * Guest interfaces
+  */
+ 
+-static target_ulong h_cppr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_cppr(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                            target_ulong opcode, target_ulong *args)
+ {
+     CPUState *cs = CPU(cpu);
+@@ -816,7 +816,7 @@ static target_ulong h_cppr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_ipi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_ipi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                           target_ulong opcode, target_ulong *args)
+ {
+     target_ulong server = get_cpu_index_by_dt_id(args[0]);
+@@ -830,7 +830,7 @@ static target_ulong h_ipi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_xirr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_xirr(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                            target_ulong opcode, target_ulong *args)
+ {
+     CPUState *cs = CPU(cpu);
+@@ -840,7 +840,7 @@ static target_ulong h_xirr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                              target_ulong opcode, target_ulong *args)
+ {
+     CPUState *cs = CPU(cpu);
+@@ -852,7 +852,7 @@ static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_eoi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_eoi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                           target_ulong opcode, target_ulong *args)
+ {
+     CPUState *cs = CPU(cpu);
+@@ -862,7 +862,7 @@ static target_ulong h_eoi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                             target_ulong opcode, target_ulong *args)
+ {
+     CPUState *cs = CPU(cpu);
+@@ -874,7 +874,7 @@ static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static void rtas_set_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_set_xive(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                           uint32_t token,
+                           uint32_t nargs, target_ulong args,
+                           uint32_t nret, target_ulong rets)
+@@ -902,7 +902,7 @@ static void rtas_set_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+ }
+ 
+-static void rtas_get_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_get_xive(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                           uint32_t token,
+                           uint32_t nargs, target_ulong args,
+                           uint32_t nret, target_ulong rets)
+@@ -927,7 +927,7 @@ static void rtas_get_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     rtas_st(rets, 2, ics->irqs[nr - ics->offset].priority);
+ }
+ 
+-static void rtas_int_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_int_off(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                          uint32_t token,
+                          uint32_t nargs, target_ulong args,
+                          uint32_t nret, target_ulong rets)
+@@ -953,7 +953,7 @@ static void rtas_int_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+ }
+ 
+-static void rtas_int_on(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_int_on(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                         uint32_t token,
+                         uint32_t nargs, target_ulong args,
+                         uint32_t nret, target_ulong rets)
+diff --git a/hw/intc/xics_kvm.c b/hw/intc/xics_kvm.c
+index c15453f..ea886da 100644
+--- a/hw/intc/xics_kvm.c
++++ b/hw/intc/xics_kvm.c
+@@ -368,7 +368,7 @@ static void xics_kvm_set_nr_servers(XICSState *icp, uint32_t nr_servers,
+     }
+ }
+ 
+-static void rtas_dummy(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_dummy(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                        uint32_t token,
+                        uint32_t nargs, target_ulong args,
+                        uint32_t nret, target_ulong rets)
+diff --git a/hw/net/spapr_llan.c b/hw/net/spapr_llan.c
+index 2dd5ec1..1ca5e9c 100644
+--- a/hw/net/spapr_llan.c
++++ b/hw/net/spapr_llan.c
+@@ -284,7 +284,7 @@ static int check_bd(VIOsPAPRVLANDevice *dev, vlan_bd_t bd,
+ }
+ 
+ static target_ulong h_register_logical_lan(PowerPCCPU *cpu,
+-                                           sPAPREnvironment *spapr,
++                                           sPAPRMachineState *spapr,
+                                            target_ulong opcode,
+                                            target_ulong *args)
+ {
+@@ -349,7 +349,8 @@ static target_ulong h_register_logical_lan(PowerPCCPU *cpu,
+ }
+ 
+ 
+-static target_ulong h_free_logical_lan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_free_logical_lan(PowerPCCPU *cpu,
++                                       sPAPRMachineState *spapr,
+                                        target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+@@ -371,7 +372,7 @@ static target_ulong h_free_logical_lan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+ }
+ 
+ static target_ulong h_add_logical_lan_buffer(PowerPCCPU *cpu,
+-                                             sPAPREnvironment *spapr,
++                                             sPAPRMachineState *spapr,
+                                              target_ulong opcode,
+                                              target_ulong *args)
+ {
+@@ -421,7 +422,8 @@ static target_ulong h_add_logical_lan_buffer(PowerPCCPU *cpu,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_send_logical_lan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_send_logical_lan(PowerPCCPU *cpu,
++                                       sPAPRMachineState *spapr,
+                                        target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+@@ -490,7 +492,7 @@ static target_ulong h_send_logical_lan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_multicast_ctrl(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_multicast_ctrl(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                      target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+diff --git a/hw/nvram/spapr_nvram.c b/hw/nvram/spapr_nvram.c
+index 11332d1..fcaa77d 100644
+--- a/hw/nvram/spapr_nvram.c
++++ b/hw/nvram/spapr_nvram.c
+@@ -45,7 +45,7 @@ typedef struct sPAPRNVRAM {
+ #define DEFAULT_NVRAM_SIZE 65536
+ #define MAX_NVRAM_SIZE 1048576
+ 
+-static void rtas_nvram_fetch(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_nvram_fetch(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                              uint32_t token, uint32_t nargs,
+                              target_ulong args,
+                              uint32_t nret, target_ulong rets)
+@@ -86,7 +86,7 @@ static void rtas_nvram_fetch(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     rtas_st(rets, 1, len);
+ }
+ 
+-static void rtas_nvram_store(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_nvram_store(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                              uint32_t token, uint32_t nargs,
+                              target_ulong args,
+                              uint32_t nret, target_ulong rets)
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 8686547..1285aac 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -90,25 +90,6 @@
+ 
+ #define HTAB_SIZE(spapr)        (1ULL << ((spapr)->htab_shift))
+ 
+-typedef struct sPAPRMachineState sPAPRMachineState;
+-
+-#define TYPE_SPAPR_MACHINE      "spapr-machine"
+-#define SPAPR_MACHINE(obj) \
+-    OBJECT_CHECK(sPAPRMachineState, (obj), TYPE_SPAPR_MACHINE)
+-
+-/**
+- * sPAPRMachineState:
+- */
+-struct sPAPRMachineState {
+-    /*< private >*/
+-    MachineState parent_obj;
+-
+-    /*< public >*/
+-    char *kvm_type;
+-};
+-
+-sPAPREnvironment *spapr;
+-
+ static XICSState *try_create_xics(const char *type, int nr_servers,
+                                   int nr_irqs, Error **errp)
+ {
+@@ -184,7 +165,7 @@ static int spapr_fixup_cpu_smt_dt(void *fdt, int offset, PowerPCCPU *cpu,
+     return ret;
+ }
+ 
+-static int spapr_fixup_cpu_dt(void *fdt, sPAPREnvironment *spapr)
++static int spapr_fixup_cpu_dt(void *fdt, sPAPRMachineState *spapr)
+ {
+     int ret = 0, offset, cpus_offset;
+     CPUState *cs;
+@@ -604,7 +585,8 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
+     return fdt;
+ }
+ 
+-int spapr_h_cas_compose_response(target_ulong addr, target_ulong size)
++int spapr_h_cas_compose_response(sPAPRMachineState *spapr,
++                                 target_ulong addr, target_ulong size)
+ {
+     void *fdt, *fdt_skel;
+     sPAPRDeviceTreeUpdateHeader hdr = { .version_id = 1 };
+@@ -665,7 +647,7 @@ static void spapr_populate_memory_node(void *fdt, int nodeid, hwaddr start,
+                       sizeof(associativity))));
+ }
+ 
+-static int spapr_populate_memory(sPAPREnvironment *spapr, void *fdt)
++static int spapr_populate_memory(sPAPRMachineState *spapr, void *fdt)
+ {
+     hwaddr mem_start, node_size;
+     int i, nb_nodes = nb_numa_nodes;
+@@ -714,7 +696,7 @@ static int spapr_populate_memory(sPAPREnvironment *spapr, void *fdt)
+     return 0;
+ }
+ 
+-static void spapr_finalize_fdt(sPAPREnvironment *spapr,
++static void spapr_finalize_fdt(sPAPRMachineState *spapr,
+                                hwaddr fdt_addr,
+                                hwaddr rtas_addr,
+                                hwaddr rtas_size)
+@@ -830,7 +812,7 @@ static void emulate_spapr_hypercall(PowerPCCPU *cpu)
+ #define CLEAN_HPTE(_hpte)  ((*(uint64_t *)(_hpte)) &= tswap64(~HPTE64_V_HPTE_DIRTY))
+ #define DIRTY_HPTE(_hpte)  ((*(uint64_t *)(_hpte)) |= tswap64(HPTE64_V_HPTE_DIRTY))
+ 
+-static void spapr_reset_htab(sPAPREnvironment *spapr)
++static void spapr_reset_htab(sPAPRMachineState *spapr)
+ {
+     long shift;
+     int index;
+@@ -892,7 +874,7 @@ static int find_unknown_sysbus_device(SysBusDevice *sbdev, void *opaque)
+  * A guest reset will cause spapr->htab_fd to become stale if being used.
+  * Reopen the file descriptor to make sure the whole HTAB is properly read.
+  */
+-static int spapr_check_htab_fd(sPAPREnvironment *spapr)
++static int spapr_check_htab_fd(sPAPRMachineState *spapr)
+ {
+     int rc = 0;
+ 
+@@ -912,6 +894,7 @@ static int spapr_check_htab_fd(sPAPREnvironment *spapr)
+ 
+ static void ppc_spapr_reset(void)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     PowerPCCPU *first_ppc_cpu;
+     uint32_t rtas_limit;
+ 
+@@ -951,6 +934,7 @@ static void ppc_spapr_reset(void)
+ 
+ static void spapr_cpu_reset(void *opaque)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     PowerPCCPU *cpu = opaque;
+     CPUState *cs = CPU(cpu);
+     CPUPPCState *env = &cpu->env;
+@@ -979,12 +963,12 @@ static void spapr_cpu_reset(void *opaque)
+      * We have 8 hpte per group, and each hpte is 16 bytes.
+      * ie have 128 bytes per hpte entry.
+      */
+-    env->htab_mask = (1ULL << ((spapr)->htab_shift - 7)) - 1;
++    env->htab_mask = (1ULL << (spapr->htab_shift - 7)) - 1;
+     env->spr[SPR_SDR1] = (target_ulong)(uintptr_t)spapr->htab |
+         (spapr->htab_shift - 18);
+ }
+ 
+-static void spapr_create_nvram(sPAPREnvironment *spapr)
++static void spapr_create_nvram(sPAPRMachineState *spapr)
+ {
+     DeviceState *dev = qdev_create(&spapr->vio_bus->bus, "spapr-nvram");
+     DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
+@@ -998,7 +982,7 @@ static void spapr_create_nvram(sPAPREnvironment *spapr)
+     spapr->nvram = (struct sPAPRNVRAM *)dev;
+ }
+ 
+-static void spapr_rtc_create(sPAPREnvironment *spapr)
++static void spapr_rtc_create(sPAPRMachineState *spapr)
+ {
+     DeviceState *dev = qdev_create(NULL, TYPE_SPAPR_RTC);
+ 
+@@ -1028,7 +1012,7 @@ static int spapr_vga_init(PCIBus *pci_bus)
+ 
+ static int spapr_post_load(void *opaque, int version_id)
+ {
+-    sPAPREnvironment *spapr = (sPAPREnvironment *)opaque;
++    sPAPRMachineState *spapr = (sPAPRMachineState *)opaque;
+     int err = 0;
+ 
+     /* In earlier versions, there was no seperate qdev for the PAPR
+@@ -1057,16 +1041,16 @@ static const VMStateDescription vmstate_spapr = {
+         VMSTATE_UNUSED_BUFFER(version_before_3, 0, 4),
+ 
+         /* RTC offset */
+-        VMSTATE_UINT64_TEST(rtc_offset, sPAPREnvironment, version_before_3),
++        VMSTATE_UINT64_TEST(rtc_offset, sPAPRMachineState, version_before_3),
+ 
+-        VMSTATE_PPC_TIMEBASE_V(tb, sPAPREnvironment, 2),
++        VMSTATE_PPC_TIMEBASE_V(tb, sPAPRMachineState, 2),
+         VMSTATE_END_OF_LIST()
+     },
+ };
+ 
+ static int htab_save_setup(QEMUFile *f, void *opaque)
+ {
+-    sPAPREnvironment *spapr = opaque;
++    sPAPRMachineState *spapr = opaque;
+ 
+     /* "Iteration" header */
+     qemu_put_be32(f, spapr->htab_shift);
+@@ -1090,7 +1074,7 @@ static int htab_save_setup(QEMUFile *f, void *opaque)
+     return 0;
+ }
+ 
+-static void htab_save_first_pass(QEMUFile *f, sPAPREnvironment *spapr,
++static void htab_save_first_pass(QEMUFile *f, sPAPRMachineState *spapr,
+                                  int64_t max_ns)
+ {
+     int htabslots = HTAB_SIZE(spapr) / HASH_PTE_SIZE_64;
+@@ -1140,7 +1124,7 @@ static void htab_save_first_pass(QEMUFile *f, sPAPREnvironment *spapr,
+     spapr->htab_save_index = index;
+ }
+ 
+-static int htab_save_later_pass(QEMUFile *f, sPAPREnvironment *spapr,
++static int htab_save_later_pass(QEMUFile *f, sPAPRMachineState *spapr,
+                                 int64_t max_ns)
+ {
+     bool final = max_ns < 0;
+@@ -1222,7 +1206,7 @@ static int htab_save_later_pass(QEMUFile *f, sPAPREnvironment *spapr,
+ 
+ static int htab_save_iterate(QEMUFile *f, void *opaque)
+ {
+-    sPAPREnvironment *spapr = opaque;
++    sPAPRMachineState *spapr = opaque;
+     int rc = 0;
+ 
+     /* Iteration header */
+@@ -1257,7 +1241,7 @@ static int htab_save_iterate(QEMUFile *f, void *opaque)
+ 
+ static int htab_save_complete(QEMUFile *f, void *opaque)
+ {
+-    sPAPREnvironment *spapr = opaque;
++    sPAPRMachineState *spapr = opaque;
+ 
+     /* Iteration header */
+     qemu_put_be32(f, 0);
+@@ -1292,7 +1276,7 @@ static int htab_save_complete(QEMUFile *f, void *opaque)
+ 
+ static int htab_load(QEMUFile *f, void *opaque, int version_id)
+ {
+-    sPAPREnvironment *spapr = opaque;
++    sPAPRMachineState *spapr = opaque;
+     uint32_t section_hdr;
+     int fd = -1;
+ 
+@@ -1389,6 +1373,7 @@ static void spapr_boot_set(void *opaque, const char *boot_device,
+ /* pSeries LPAR / sPAPR hardware init */
+ static void ppc_spapr_init(MachineState *machine)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(machine);
+     ram_addr_t ram_size = machine->ram_size;
+     const char *cpu_model = machine->cpu_model;
+     const char *kernel_filename = machine->kernel_filename;
+@@ -1412,7 +1397,6 @@ static void ppc_spapr_init(MachineState *machine)
+ 
+     msi_supported = true;
+ 
+-    spapr = g_malloc0(sizeof(*spapr));
+     QLIST_INIT(&spapr->phbs);
+ 
+     cpu_ppc_hypercall = emulate_spapr_hypercall;
+@@ -1660,6 +1644,9 @@ static void ppc_spapr_init(MachineState *machine)
+ 
+     spapr->entry_point = 0x100;
+ 
++    /* FIXME: Should register things through the MachineState's qdev
++     * interface, this is a legacy from the sPAPREnvironment structure
++     * which predated MachineState but had a similar function */
+     vmstate_register(NULL, 0, &vmstate_spapr, spapr);
+     register_savevm_live(NULL, "spapr/htab", -1, 1,
+                          &savevm_htab_handlers, spapr);
+@@ -1755,17 +1742,17 @@ static char *spapr_get_fw_dev_path(FWPathProvider *p, BusState *bus,
+ 
+ static char *spapr_get_kvm_type(Object *obj, Error **errp)
+ {
+-    sPAPRMachineState *sm = SPAPR_MACHINE(obj);
++    sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
+ 
+-    return g_strdup(sm->kvm_type);
++    return g_strdup(spapr->kvm_type);
+ }
+ 
+ static void spapr_set_kvm_type(Object *obj, const char *value, Error **errp)
+ {
+-    sPAPRMachineState *sm = SPAPR_MACHINE(obj);
++    sPAPRMachineState *spapr = SPAPR_MACHINE(obj);
+ 
+-    g_free(sm->kvm_type);
+-    sm->kvm_type = g_strdup(value);
++    g_free(spapr->kvm_type);
++    spapr->kvm_type = g_strdup(value);
+ }
+ 
+ static void spapr_machine_initfn(Object *obj)
+diff --git a/hw/ppc/spapr_events.c b/hw/ppc/spapr_events.c
+index fda9e35..f626eb7 100644
+--- a/hw/ppc/spapr_events.c
++++ b/hw/ppc/spapr_events.c
+@@ -238,6 +238,7 @@ void spapr_events_fdt_skel(void *fdt, uint32_t check_exception_irq)
+ 
+ static void rtas_event_log_queue(int log_type, void *data, bool exception)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     sPAPREventLogEntry *entry = g_new(sPAPREventLogEntry, 1);
+ 
+     g_assert(data);
+@@ -250,6 +251,7 @@ static void rtas_event_log_queue(int log_type, void *data, bool exception)
+ static sPAPREventLogEntry *rtas_event_log_dequeue(uint32_t event_mask,
+                                                   bool exception)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     sPAPREventLogEntry *entry = NULL;
+ 
+     /* we only queue EPOW events atm. */
+@@ -278,6 +280,7 @@ static sPAPREventLogEntry *rtas_event_log_dequeue(uint32_t event_mask,
+ 
+ static bool rtas_event_log_contains(uint32_t event_mask, bool exception)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     sPAPREventLogEntry *entry = NULL;
+ 
+     /* we only queue EPOW events atm. */
+@@ -314,6 +317,7 @@ static void spapr_init_v6hdr(struct rtas_event_log_v6 *v6hdr)
+ static void spapr_init_maina(struct rtas_event_log_v6_maina *maina,
+                              int section_count)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     struct tm tm;
+     int year;
+ 
+@@ -336,7 +340,7 @@ static void spapr_init_maina(struct rtas_event_log_v6_maina *maina,
+ 
+ static void spapr_powerdown_req(Notifier *n, void *opaque)
+ {
+-    sPAPREnvironment *spapr = container_of(n, sPAPREnvironment, epow_notifier);
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     struct rtas_error_log *hdr;
+     struct rtas_event_log_v6 *v6hdr;
+     struct rtas_event_log_v6_maina *maina;
+@@ -384,6 +388,7 @@ static void spapr_powerdown_req(Notifier *n, void *opaque)
+ 
+ static void spapr_hotplug_req_event(sPAPRDRConnector *drc, uint8_t hp_action)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     struct hp_log_full *new_hp;
+     struct rtas_error_log *hdr;
+     struct rtas_event_log_v6 *v6hdr;
+@@ -453,7 +458,7 @@ void spapr_hotplug_req_remove_event(sPAPRDRConnector *drc)
+     spapr_hotplug_req_event(drc, RTAS_LOG_V6_HP_ACTION_REMOVE);
+ }
+ 
+-static void check_exception(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void check_exception(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                             uint32_t token, uint32_t nargs,
+                             target_ulong args,
+                             uint32_t nret, target_ulong rets)
+@@ -508,7 +513,7 @@ out_no_events:
+     rtas_st(rets, 0, RTAS_OUT_NO_ERRORS_FOUND);
+ }
+ 
+-static void event_scan(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void event_scan(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                        uint32_t token, uint32_t nargs,
+                        target_ulong args,
+                        uint32_t nret, target_ulong rets)
+@@ -548,7 +553,7 @@ out_no_events:
+     rtas_st(rets, 0, RTAS_OUT_NO_ERRORS_FOUND);
+ }
+ 
+-void spapr_events_init(sPAPREnvironment *spapr)
++void spapr_events_init(sPAPRMachineState *spapr)
+ {
+     QTAILQ_INIT(&spapr->pending_events);
+     spapr->check_exception_irq = xics_alloc(spapr->icp, 0, 0, false);
+diff --git a/hw/ppc/spapr_hcall.c b/hw/ppc/spapr_hcall.c
+index 4f76f1c..1a20884 100644
+--- a/hw/ppc/spapr_hcall.c
++++ b/hw/ppc/spapr_hcall.c
+@@ -84,7 +84,7 @@ static inline bool valid_pte_index(CPUPPCState *env, target_ulong pte_index)
+     return true;
+ }
+ 
+-static target_ulong h_enter(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_enter(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                             target_ulong opcode, target_ulong *args)
+ {
+     CPUPPCState *env = &cpu->env;
+@@ -205,7 +205,7 @@ static RemoveResult remove_hpte(CPUPPCState *env, target_ulong ptex,
+     return REMOVE_SUCCESS;
+ }
+ 
+-static target_ulong h_remove(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_remove(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                              target_ulong opcode, target_ulong *args)
+ {
+     CPUPPCState *env = &cpu->env;
+@@ -252,7 +252,7 @@ static target_ulong h_remove(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+ 
+ #define H_BULK_REMOVE_MAX_BATCH        4
+ 
+-static target_ulong h_bulk_remove(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_bulk_remove(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                   target_ulong opcode, target_ulong *args)
+ {
+     CPUPPCState *env = &cpu->env;
+@@ -299,7 +299,7 @@ static target_ulong h_bulk_remove(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_protect(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_protect(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                               target_ulong opcode, target_ulong *args)
+ {
+     CPUPPCState *env = &cpu->env;
+@@ -337,7 +337,7 @@ static target_ulong h_protect(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_read(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_read(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                            target_ulong opcode, target_ulong *args)
+ {
+     CPUPPCState *env = &cpu->env;
+@@ -367,7 +367,7 @@ static target_ulong h_read(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_set_dabr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_set_dabr(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                target_ulong opcode, target_ulong *args)
+ {
+     /* FIXME: actually implement this */
+@@ -506,7 +506,7 @@ static target_ulong deregister_dtl(CPUPPCState *env, target_ulong addr)
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_register_vpa(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_register_vpa(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                    target_ulong opcode, target_ulong *args)
+ {
+     target_ulong flags = args[0];
+@@ -551,7 +551,7 @@ static target_ulong h_register_vpa(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return ret;
+ }
+ 
+-static target_ulong h_cede(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_cede(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                            target_ulong opcode, target_ulong *args)
+ {
+     CPUPPCState *env = &cpu->env;
+@@ -567,7 +567,7 @@ static target_ulong h_cede(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_rtas(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_rtas(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                            target_ulong opcode, target_ulong *args)
+ {
+     target_ulong rtas_r3 = args[0];
+@@ -579,7 +579,7 @@ static target_ulong h_rtas(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+                            nret, rtas_r3 + 12 + 4*nargs);
+ }
+ 
+-static target_ulong h_logical_load(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_logical_load(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                    target_ulong opcode, target_ulong *args)
+ {
+     CPUState *cs = CPU(cpu);
+@@ -603,7 +603,7 @@ static target_ulong h_logical_load(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_PARAMETER;
+ }
+ 
+-static target_ulong h_logical_store(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_logical_store(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                     target_ulong opcode, target_ulong *args)
+ {
+     CPUState *cs = CPU(cpu);
+@@ -629,7 +629,7 @@ static target_ulong h_logical_store(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_PARAMETER;
+ }
+ 
+-static target_ulong h_logical_memop(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_logical_memop(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                     target_ulong opcode, target_ulong *args)
+ {
+     CPUState *cs = CPU(cpu);
+@@ -698,14 +698,14 @@ static target_ulong h_logical_memop(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_logical_icbi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_logical_icbi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                    target_ulong opcode, target_ulong *args)
+ {
+     /* Nothing to do on emulation, KVM will trap this in the kernel */
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_logical_dcbf(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_logical_dcbf(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                    target_ulong opcode, target_ulong *args)
+ {
+     /* Nothing to do on emulation, KVM will trap this in the kernel */
+@@ -788,7 +788,7 @@ static target_ulong h_set_mode_resource_addr_trans_mode(PowerPCCPU *cpu,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_set_mode(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_set_mode(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                target_ulong opcode, target_ulong *args)
+ {
+     target_ulong resource = args[1];
+@@ -828,7 +828,7 @@ static void do_set_compat(void *arg)
+     ((cpuver) == CPU_POWERPC_LOGICAL_2_07) ? 2070 : 0)
+ 
+ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
+-                                                  sPAPREnvironment *spapr,
++                                                  sPAPRMachineState *spapr,
+                                                   target_ulong opcode,
+                                                   target_ulong *args)
+ {
+@@ -921,7 +921,7 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
+         return H_SUCCESS;
+     }
+ 
+-    if (spapr_h_cas_compose_response(args[1], args[2])) {
++    if (spapr_h_cas_compose_response(spapr, args[1], args[2])) {
+         qemu_system_reset_request();
+     }
+ 
+@@ -952,6 +952,8 @@ void spapr_register_hypercall(target_ulong opcode, spapr_hcall_fn fn)
+ target_ulong spapr_hypercall(PowerPCCPU *cpu, target_ulong opcode,
+                              target_ulong *args)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
++
+     if ((opcode <= MAX_HCALL_OPCODE)
+         && ((opcode & 0x3) == 0)) {
+         spapr_hcall_fn fn = papr_hypercall_table[opcode / 4];
+diff --git a/hw/ppc/spapr_iommu.c b/hw/ppc/spapr_iommu.c
+index f3990fd..bcca430 100644
+--- a/hw/ppc/spapr_iommu.c
++++ b/hw/ppc/spapr_iommu.c
+@@ -238,7 +238,7 @@ static target_ulong put_tce_emu(sPAPRTCETable *tcet, target_ulong ioba,
+ }
+ 
+ static target_ulong h_put_tce_indirect(PowerPCCPU *cpu,
+-                                       sPAPREnvironment *spapr,
++                                       sPAPRMachineState *spapr,
+                                        target_ulong opcode, target_ulong *args)
+ {
+     int i;
+@@ -285,7 +285,7 @@ static target_ulong h_put_tce_indirect(PowerPCCPU *cpu,
+     return ret;
+ }
+ 
+-static target_ulong h_stuff_tce(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_stuff_tce(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                               target_ulong opcode, target_ulong *args)
+ {
+     int i;
+@@ -320,7 +320,7 @@ static target_ulong h_stuff_tce(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return ret;
+ }
+ 
+-static target_ulong h_put_tce(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_put_tce(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                               target_ulong opcode, target_ulong *args)
+ {
+     target_ulong liobn = args[0];
+@@ -357,7 +357,7 @@ static target_ulong get_tce_emu(sPAPRTCETable *tcet, target_ulong ioba,
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_get_tce(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_get_tce(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                               target_ulong opcode, target_ulong *args)
+ {
+     target_ulong liobn = args[0];
+diff --git a/hw/ppc/spapr_pci.c b/hw/ppc/spapr_pci.c
+index fdd059d..88b43aa 100644
+--- a/hw/ppc/spapr_pci.c
++++ b/hw/ppc/spapr_pci.c
+@@ -58,7 +58,7 @@
+         }                                                          \
+     } while (0)
+ 
+-sPAPRPHBState *spapr_pci_find_phb(sPAPREnvironment *spapr, uint64_t buid)
++sPAPRPHBState *spapr_pci_find_phb(sPAPRMachineState *spapr, uint64_t buid)
+ {
+     sPAPRPHBState *sphb;
+ 
+@@ -72,7 +72,7 @@ sPAPRPHBState *spapr_pci_find_phb(sPAPREnvironment *spapr, uint64_t buid)
+     return NULL;
+ }
+ 
+-PCIDevice *spapr_pci_find_dev(sPAPREnvironment *spapr, uint64_t buid,
++PCIDevice *spapr_pci_find_dev(sPAPRMachineState *spapr, uint64_t buid,
+                               uint32_t config_addr)
+ {
+     sPAPRPHBState *sphb = spapr_pci_find_phb(spapr, buid);
+@@ -93,7 +93,7 @@ static uint32_t rtas_pci_cfgaddr(uint32_t arg)
+     return ((arg >> 20) & 0xf00) | (arg & 0xff);
+ }
+ 
+-static void finish_read_pci_config(sPAPREnvironment *spapr, uint64_t buid,
++static void finish_read_pci_config(sPAPRMachineState *spapr, uint64_t buid,
+                                    uint32_t addr, uint32_t size,
+                                    target_ulong rets)
+ {
+@@ -123,7 +123,7 @@ static void finish_read_pci_config(sPAPREnvironment *spapr, uint64_t buid,
+     rtas_st(rets, 1, val);
+ }
+ 
+-static void rtas_ibm_read_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_ibm_read_pci_config(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                      uint32_t token, uint32_t nargs,
+                                      target_ulong args,
+                                      uint32_t nret, target_ulong rets)
+@@ -143,7 +143,7 @@ static void rtas_ibm_read_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     finish_read_pci_config(spapr, buid, addr, size, rets);
+ }
+ 
+-static void rtas_read_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_read_pci_config(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args,
+                                  uint32_t nret, target_ulong rets)
+@@ -161,7 +161,7 @@ static void rtas_read_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     finish_read_pci_config(spapr, 0, addr, size, rets);
+ }
+ 
+-static void finish_write_pci_config(sPAPREnvironment *spapr, uint64_t buid,
++static void finish_write_pci_config(sPAPRMachineState *spapr, uint64_t buid,
+                                     uint32_t addr, uint32_t size,
+                                     uint32_t val, target_ulong rets)
+ {
+@@ -189,7 +189,7 @@ static void finish_write_pci_config(sPAPREnvironment *spapr, uint64_t buid,
+     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+ }
+ 
+-static void rtas_ibm_write_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_ibm_write_pci_config(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                       uint32_t token, uint32_t nargs,
+                                       target_ulong args,
+                                       uint32_t nret, target_ulong rets)
+@@ -210,7 +210,7 @@ static void rtas_ibm_write_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     finish_write_pci_config(spapr, buid, addr, size, val, rets);
+ }
+ 
+-static void rtas_write_pci_config(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_write_pci_config(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                   uint32_t token, uint32_t nargs,
+                                   target_ulong args,
+                                   uint32_t nret, target_ulong rets)
+@@ -259,7 +259,7 @@ static void spapr_msi_setmsg(PCIDevice *pdev, hwaddr addr, bool msix,
+     }
+ }
+ 
+-static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_ibm_change_msi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                 uint32_t token, uint32_t nargs,
+                                 target_ulong args, uint32_t nret,
+                                 target_ulong rets)
+@@ -377,7 +377,7 @@ out:
+ }
+ 
+ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
+-                                                   sPAPREnvironment *spapr,
++                                                   sPAPRMachineState *spapr,
+                                                    uint32_t token,
+                                                    uint32_t nargs,
+                                                    target_ulong args,
+@@ -418,7 +418,7 @@ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
+ }
+ 
+ static void rtas_ibm_set_eeh_option(PowerPCCPU *cpu,
+-                                    sPAPREnvironment *spapr,
++                                    sPAPRMachineState *spapr,
+                                     uint32_t token, uint32_t nargs,
+                                     target_ulong args, uint32_t nret,
+                                     target_ulong rets)
+@@ -463,7 +463,7 @@ param_error_exit:
+ }
+ 
+ static void rtas_ibm_get_config_addr_info2(PowerPCCPU *cpu,
+-                                           sPAPREnvironment *spapr,
++                                           sPAPRMachineState *spapr,
+                                            uint32_t token, uint32_t nargs,
+                                            target_ulong args, uint32_t nret,
+                                            target_ulong rets)
+@@ -519,7 +519,7 @@ param_error_exit:
+ }
+ 
+ static void rtas_ibm_read_slot_reset_state2(PowerPCCPU *cpu,
+-                                            sPAPREnvironment *spapr,
++                                            sPAPRMachineState *spapr,
+                                             uint32_t token, uint32_t nargs,
+                                             target_ulong args, uint32_t nret,
+                                             target_ulong rets)
+@@ -563,7 +563,7 @@ param_error_exit:
+ }
+ 
+ static void rtas_ibm_set_slot_reset(PowerPCCPU *cpu,
+-                                    sPAPREnvironment *spapr,
++                                    sPAPRMachineState *spapr,
+                                     uint32_t token, uint32_t nargs,
+                                     target_ulong args, uint32_t nret,
+                                     target_ulong rets)
+@@ -599,7 +599,7 @@ param_error_exit:
+ }
+ 
+ static void rtas_ibm_configure_pe(PowerPCCPU *cpu,
+-                                  sPAPREnvironment *spapr,
++                                  sPAPRMachineState *spapr,
+                                   uint32_t token, uint32_t nargs,
+                                   target_ulong args, uint32_t nret,
+                                   target_ulong rets)
+@@ -634,7 +634,7 @@ param_error_exit:
+ 
+ /* To support it later */
+ static void rtas_ibm_slot_error_detail(PowerPCCPU *cpu,
+-                                       sPAPREnvironment *spapr,
++                                       sPAPRMachineState *spapr,
+                                        uint32_t token, uint32_t nargs,
+                                        target_ulong args, uint32_t nret,
+                                        target_ulong rets)
+@@ -725,6 +725,7 @@ static PCIINTxRoute spapr_route_intx_pin_to_irq(void *opaque, int pin)
+ static void spapr_msi_write(void *opaque, hwaddr addr,
+                             uint64_t data, unsigned size)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     uint32_t irq = data;
+ 
+     trace_spapr_pci_msi_write(addr, data, irq);
+@@ -1117,6 +1118,7 @@ static void spapr_phb_hot_unplug_child(HotplugHandler *plug_handler,
+ 
+ static void spapr_phb_realize(DeviceState *dev, Error **errp)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     SysBusDevice *s = SYS_BUS_DEVICE(dev);
+     sPAPRPHBState *sphb = SPAPR_PCI_HOST_BRIDGE(s);
+     PCIHostState *phb = PCI_HOST_BRIDGE(s);
+@@ -1471,7 +1473,7 @@ static const TypeInfo spapr_phb_info = {
+     }
+ };
+ 
+-PCIHostState *spapr_create_phb(sPAPREnvironment *spapr, int index)
++PCIHostState *spapr_create_phb(sPAPRMachineState *spapr, int index)
+ {
+     DeviceState *dev;
+ 
+@@ -1658,6 +1660,7 @@ static int spapr_switch_one_vga(DeviceState *dev, void *opaque)
+ 
+ void spapr_pci_switch_vga(bool big_endian)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     sPAPRPHBState *sphb;
+ 
+     /*
+diff --git a/hw/ppc/spapr_rtas.c b/hw/ppc/spapr_rtas.c
+index fa28d43..3b95dfc 100644
+--- a/hw/ppc/spapr_rtas.c
++++ b/hw/ppc/spapr_rtas.c
+@@ -47,7 +47,7 @@
+     do { } while (0)
+ #endif
+ 
+-static sPAPRConfigureConnectorState *spapr_ccs_find(sPAPREnvironment *spapr,
++static sPAPRConfigureConnectorState *spapr_ccs_find(sPAPRMachineState *spapr,
+                                                     uint32_t drc_index)
+ {
+     sPAPRConfigureConnectorState *ccs = NULL;
+@@ -61,14 +61,14 @@ static sPAPRConfigureConnectorState *spapr_ccs_find(sPAPREnvironment *spapr,
+     return ccs;
+ }
+ 
+-static void spapr_ccs_add(sPAPREnvironment *spapr,
++static void spapr_ccs_add(sPAPRMachineState *spapr,
+                           sPAPRConfigureConnectorState *ccs)
+ {
+     g_assert(!spapr_ccs_find(spapr, ccs->drc_index));
+     QTAILQ_INSERT_HEAD(&spapr->ccs_list, ccs, next);
+ }
+ 
+-static void spapr_ccs_remove(sPAPREnvironment *spapr,
++static void spapr_ccs_remove(sPAPRMachineState *spapr,
+                              sPAPRConfigureConnectorState *ccs)
+ {
+     QTAILQ_REMOVE(&spapr->ccs_list, ccs, next);
+@@ -77,7 +77,7 @@ static void spapr_ccs_remove(sPAPREnvironment *spapr,
+ 
+ void spapr_ccs_reset_hook(void *opaque)
+ {
+-    sPAPREnvironment *spapr = opaque;
++    sPAPRMachineState *spapr = opaque;
+     sPAPRConfigureConnectorState *ccs, *ccs_tmp;
+ 
+     QTAILQ_FOREACH_SAFE(ccs, &spapr->ccs_list, next, ccs_tmp) {
+@@ -85,7 +85,7 @@ void spapr_ccs_reset_hook(void *opaque)
+     }
+ }
+ 
+-static void rtas_display_character(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_display_character(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                    uint32_t token, uint32_t nargs,
+                                    target_ulong args,
+                                    uint32_t nret, target_ulong rets)
+@@ -101,7 +101,7 @@ static void rtas_display_character(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     }
+ }
+ 
+-static void rtas_power_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_power_off(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                            uint32_t token, uint32_t nargs, target_ulong args,
+                            uint32_t nret, target_ulong rets)
+ {
+@@ -113,7 +113,7 @@ static void rtas_power_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+ }
+ 
+-static void rtas_system_reboot(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_system_reboot(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                uint32_t token, uint32_t nargs,
+                                target_ulong args,
+                                uint32_t nret, target_ulong rets)
+@@ -127,7 +127,7 @@ static void rtas_system_reboot(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+ }
+ 
+ static void rtas_query_cpu_stopped_state(PowerPCCPU *cpu_,
+-                                         sPAPREnvironment *spapr,
++                                         sPAPRMachineState *spapr,
+                                          uint32_t token, uint32_t nargs,
+                                          target_ulong args,
+                                          uint32_t nret, target_ulong rets)
+@@ -157,7 +157,7 @@ static void rtas_query_cpu_stopped_state(PowerPCCPU *cpu_,
+     rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+ }
+ 
+-static void rtas_start_cpu(PowerPCCPU *cpu_, sPAPREnvironment *spapr,
++static void rtas_start_cpu(PowerPCCPU *cpu_, sPAPRMachineState *spapr,
+                            uint32_t token, uint32_t nargs,
+                            target_ulong args,
+                            uint32_t nret, target_ulong rets)
+@@ -204,7 +204,7 @@ static void rtas_start_cpu(PowerPCCPU *cpu_, sPAPREnvironment *spapr,
+     rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+ }
+ 
+-static void rtas_stop_self(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_stop_self(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                            uint32_t token, uint32_t nargs,
+                            target_ulong args,
+                            uint32_t nret, target_ulong rets)
+@@ -227,7 +227,7 @@ static void rtas_stop_self(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+ }
+ 
+ static void rtas_ibm_get_system_parameter(PowerPCCPU *cpu,
+-                                          sPAPREnvironment *spapr,
++                                          sPAPRMachineState *spapr,
+                                           uint32_t token, uint32_t nargs,
+                                           target_ulong args,
+                                           uint32_t nret, target_ulong rets)
+@@ -262,7 +262,7 @@ static void rtas_ibm_get_system_parameter(PowerPCCPU *cpu,
+ }
+ 
+ static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
+-                                          sPAPREnvironment *spapr,
++                                          sPAPRMachineState *spapr,
+                                           uint32_t token, uint32_t nargs,
+                                           target_ulong args,
+                                           uint32_t nret, target_ulong rets)
+@@ -282,7 +282,7 @@ static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
+ }
+ 
+ static void rtas_ibm_os_term(PowerPCCPU *cpu,
+-                            sPAPREnvironment *spapr,
++                            sPAPRMachineState *spapr,
+                             uint32_t token, uint32_t nargs,
+                             target_ulong args,
+                             uint32_t nret, target_ulong rets)
+@@ -294,7 +294,7 @@ static void rtas_ibm_os_term(PowerPCCPU *cpu,
+     rtas_st(rets, 0, ret);
+ }
+ 
+-static void rtas_set_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_set_power_level(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args, uint32_t nret,
+                                  target_ulong rets)
+@@ -319,7 +319,7 @@ static void rtas_set_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     rtas_st(rets, 1, 100);
+ }
+ 
+-static void rtas_get_power_level(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_get_power_level(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                   uint32_t token, uint32_t nargs,
+                                   target_ulong args, uint32_t nret,
+                                   target_ulong rets)
+@@ -356,7 +356,7 @@ static bool sensor_type_is_dr(uint32_t sensor_type)
+     return false;
+ }
+ 
+-static void rtas_set_indicator(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_set_indicator(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                uint32_t token, uint32_t nargs,
+                                target_ulong args, uint32_t nret,
+                                target_ulong rets)
+@@ -427,7 +427,7 @@ out_unimplemented:
+     rtas_st(rets, 0, RTAS_OUT_NOT_SUPPORTED);
+ }
+ 
+-static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                   uint32_t token, uint32_t nargs,
+                                   target_ulong args, uint32_t nret,
+                                   target_ulong rets)
+@@ -481,7 +481,7 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+ #define CC_WA_LEN 4096
+ 
+ static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
+-                                         sPAPREnvironment *spapr,
++                                         sPAPRMachineState *spapr,
+                                          uint32_t token, uint32_t nargs,
+                                          target_ulong args, uint32_t nret,
+                                          target_ulong rets)
+@@ -601,7 +601,7 @@ static struct rtas_call {
+     spapr_rtas_fn fn;
+ } rtas_table[RTAS_TOKEN_MAX - RTAS_TOKEN_BASE];
+ 
+-target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                              uint32_t token, uint32_t nargs, target_ulong args,
+                              uint32_t nret, target_ulong rets)
+ {
+diff --git a/hw/ppc/spapr_rtc.c b/hw/ppc/spapr_rtc.c
+index 83eb7c1..22a1ab5 100644
+--- a/hw/ppc/spapr_rtc.c
++++ b/hw/ppc/spapr_rtc.c
+@@ -77,7 +77,7 @@ int spapr_rtc_import_offset(DeviceState *dev, int64_t legacy_offset)
+     return 0;
+ }
+ 
+-static void rtas_get_time_of_day(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_get_time_of_day(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args,
+                                  uint32_t nret, target_ulong rets)
+@@ -107,7 +107,7 @@ static void rtas_get_time_of_day(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     rtas_st(rets, 7, ns);
+ }
+ 
+-static void rtas_set_time_of_day(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_set_time_of_day(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                  uint32_t token, uint32_t nargs,
+                                  target_ulong args,
+                                  uint32_t nret, target_ulong rets)
+diff --git a/hw/ppc/spapr_vio.c b/hw/ppc/spapr_vio.c
+index 1360b97..a494024 100644
+--- a/hw/ppc/spapr_vio.c
++++ b/hw/ppc/spapr_vio.c
+@@ -161,7 +161,7 @@ static int vio_make_devnode(VIOsPAPRDevice *dev,
+ /*
+  * CRQ handling
+  */
+-static target_ulong h_reg_crq(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_reg_crq(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                               target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+@@ -219,7 +219,7 @@ static target_ulong free_crq(VIOsPAPRDevice *dev)
+     return H_SUCCESS;
+ }
+ 
+-static target_ulong h_free_crq(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_free_crq(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+@@ -233,7 +233,7 @@ static target_ulong h_free_crq(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return free_crq(dev);
+ }
+ 
+-static target_ulong h_send_crq(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_send_crq(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+@@ -256,7 +256,7 @@ static target_ulong h_send_crq(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     return H_HARDWARE;
+ }
+ 
+-static target_ulong h_enable_crq(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_enable_crq(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                  target_ulong opcode, target_ulong *args)
+ {
+     target_ulong reg = args[0];
+@@ -334,7 +334,7 @@ void spapr_vio_set_bypass(VIOsPAPRDevice *dev, bool bypass)
+     dev->tcet->bypass = bypass;
+ }
+ 
+-static void rtas_set_tce_bypass(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_set_tce_bypass(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                 uint32_t token,
+                                 uint32_t nargs, target_ulong args,
+                                 uint32_t nret, target_ulong rets)
+@@ -365,7 +365,7 @@ static void rtas_set_tce_bypass(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+ }
+ 
+-static void rtas_quiesce(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static void rtas_quiesce(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                          uint32_t token,
+                          uint32_t nargs, target_ulong args,
+                          uint32_t nret, target_ulong rets)
+@@ -427,6 +427,7 @@ static void spapr_vio_busdev_reset(DeviceState *qdev)
+ 
+ static void spapr_vio_busdev_realize(DeviceState *qdev, Error **errp)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+     VIOsPAPRDevice *dev = (VIOsPAPRDevice *)qdev;
+     VIOsPAPRDeviceClass *pc = VIO_SPAPR_DEVICE_GET_CLASS(dev);
+     char *id;
+@@ -492,7 +493,7 @@ static void spapr_vio_busdev_realize(DeviceState *qdev, Error **errp)
+     pc->realize(dev, errp);
+ }
+ 
+-static target_ulong h_vio_signal(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++static target_ulong h_vio_signal(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                                  target_ulong opcode,
+                                  target_ulong *args)
+ {
+diff --git a/include/hw/pci-host/spapr.h b/include/hw/pci-host/spapr.h
+index 97d23b2..03e3ca1 100644
+--- a/include/hw/pci-host/spapr.h
++++ b/include/hw/pci-host/spapr.h
+@@ -117,21 +117,23 @@ struct sPAPRPHBVFIOState {
+ 
+ static inline qemu_irq spapr_phb_lsi_qirq(struct sPAPRPHBState *phb, int pin)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
++
+     return xics_get_qirq(spapr->icp, phb->lsi_table[pin].irq);
+ }
+ 
+-PCIHostState *spapr_create_phb(sPAPREnvironment *spapr, int index);
++PCIHostState *spapr_create_phb(sPAPRMachineState *spapr, int index);
+ 
+ int spapr_populate_pci_dt(sPAPRPHBState *phb,
+                           uint32_t xics_phandle,
+                           void *fdt);
+ 
+-void spapr_pci_msi_init(sPAPREnvironment *spapr, hwaddr addr);
++void spapr_pci_msi_init(sPAPRMachineState *spapr, hwaddr addr);
+ 
+ void spapr_pci_rtas_init(void);
+ 
+-sPAPRPHBState *spapr_pci_find_phb(sPAPREnvironment *spapr, uint64_t buid);
+-PCIDevice *spapr_pci_find_dev(sPAPREnvironment *spapr, uint64_t buid,
++sPAPRPHBState *spapr_pci_find_phb(sPAPRMachineState *spapr, uint64_t buid);
++PCIDevice *spapr_pci_find_dev(sPAPRMachineState *spapr, uint64_t buid,
+                               uint32_t config_addr);
+ 
+ #endif /* __HW_SPAPR_PCI_H__ */
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index 313dcee..7f2524e 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -2,6 +2,7 @@
+ #define __HW_SPAPR_H__
+ 
+ #include "sysemu/dma.h"
++#include "hw/boards.h"
+ #include "hw/ppc/xics.h"
+ #include "hw/ppc/spapr_drc.h"
+ 
+@@ -13,7 +14,19 @@ typedef struct sPAPREventLogEntry sPAPREventLogEntry;
+ 
+ #define HPTE64_V_HPTE_DIRTY     0x0000000000000040ULL
+ 
+-typedef struct sPAPREnvironment {
++typedef struct sPAPRMachineState sPAPRMachineState;
++
++#define TYPE_SPAPR_MACHINE      "spapr-machine"
++#define SPAPR_MACHINE(obj) \
++    OBJECT_CHECK(sPAPRMachineState, (obj), TYPE_SPAPR_MACHINE)
++
++/**
++ * sPAPRMachineState:
++ */
++struct sPAPRMachineState {
++    /*< private >*/
++    MachineState parent_obj;
++
+     struct VIOsPAPRBus *vio_bus;
+     QLIST_HEAD(, sPAPRPHBState) phbs;
+     struct sPAPRNVRAM *nvram;
+@@ -46,7 +59,10 @@ typedef struct sPAPREnvironment {
+ 
+     /* RTAS state */
+     QTAILQ_HEAD(, sPAPRConfigureConnectorState) ccs_list;
+-} sPAPREnvironment;
++
++    /*< public >*/
++    char *kvm_type;
++};
+ 
+ #define H_SUCCESS         0
+ #define H_BUSY            1        /* Hardware busy -- retry later */
+@@ -319,8 +335,6 @@ typedef struct sPAPREnvironment {
+ #define KVMPPC_H_CAS            (KVMPPC_HCALL_BASE + 0x2)
+ #define KVMPPC_HCALL_MAX        KVMPPC_H_CAS
+ 
+-extern sPAPREnvironment *spapr;
+-
+ typedef struct sPAPRDeviceTreeUpdateHeader {
+     uint32_t version_id;
+ } sPAPRDeviceTreeUpdateHeader;
+@@ -335,7 +349,7 @@ typedef struct sPAPRDeviceTreeUpdateHeader {
+     do { } while (0)
+ #endif
+ 
+-typedef target_ulong (*spapr_hcall_fn)(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++typedef target_ulong (*spapr_hcall_fn)(PowerPCCPU *cpu, sPAPRMachineState *sm,
+                                        target_ulong opcode,
+                                        target_ulong *args);
+ 
+@@ -490,12 +504,12 @@ static inline void rtas_st_buffer(target_ulong phys, target_ulong phys_len,
+     rtas_st_buffer_direct(phys + 2, phys_len - 2, buffer, buffer_len);
+ }
+ 
+-typedef void (*spapr_rtas_fn)(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++typedef void (*spapr_rtas_fn)(PowerPCCPU *cpu, sPAPRMachineState *sm,
+                               uint32_t token,
+                               uint32_t nargs, target_ulong args,
+                               uint32_t nret, target_ulong rets);
+ void spapr_rtas_register(int token, const char *name, spapr_rtas_fn fn);
+-target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPREnvironment *spapr,
++target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPRMachineState *sm,
+                              uint32_t token, uint32_t nargs, target_ulong args,
+                              uint32_t nret, target_ulong rets);
+ int spapr_rtas_device_tree_setup(void *fdt, hwaddr rtas_addr,
+@@ -540,9 +554,10 @@ struct sPAPREventLogEntry {
+     QTAILQ_ENTRY(sPAPREventLogEntry) next;
+ };
+ 
+-void spapr_events_init(sPAPREnvironment *spapr);
++void spapr_events_init(sPAPRMachineState *sm);
+ void spapr_events_fdt_skel(void *fdt, uint32_t epow_irq);
+-int spapr_h_cas_compose_response(target_ulong addr, target_ulong size);
++int spapr_h_cas_compose_response(sPAPRMachineState *sm,
++                                 target_ulong addr, target_ulong size);
+ sPAPRTCETable *spapr_tce_new_table(DeviceState *owner, uint32_t liobn,
+                                    uint64_t bus_offset,
+                                    uint32_t page_shift,
+diff --git a/include/hw/ppc/spapr_vio.h b/include/hw/ppc/spapr_vio.h
+index f95016a..2299a54 100644
+--- a/include/hw/ppc/spapr_vio.h
++++ b/include/hw/ppc/spapr_vio.h
+@@ -88,6 +88,8 @@ extern int spapr_vio_signal(VIOsPAPRDevice *dev, target_ulong mode);
+ 
+ static inline qemu_irq spapr_vio_qirq(VIOsPAPRDevice *dev)
+ {
++    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
++
+     return xics_get_qirq(spapr->icp, dev->irq);
+ }
+ 
+@@ -126,7 +128,7 @@ static inline int spapr_vio_dma_set(VIOsPAPRDevice *dev, uint64_t taddr,
+ 
+ int spapr_vio_send_crq(VIOsPAPRDevice *dev, uint8_t *crq);
+ 
+-VIOsPAPRDevice *vty_lookup(sPAPREnvironment *spapr, target_ulong reg);
++VIOsPAPRDevice *vty_lookup(sPAPRMachineState *spapr, target_ulong reg);
+ void vty_putchars(VIOsPAPRDevice *sdev, uint8_t *buf, int len);
+ void spapr_vty_create(VIOsPAPRBus *bus, CharDriverState *chardev);
+ void spapr_vlan_create(VIOsPAPRBus *bus, NICInfo *nd);
+-- 
+1.8.3.1
+

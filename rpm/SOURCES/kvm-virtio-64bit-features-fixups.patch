@@ -1,0 +1,105 @@
+From 8ea838a36d7b18a23d527c659733c9261fb266de Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:27 +0200
+Subject: [PATCH 053/100] virtio: 64bit features fixups.
+
+Message-id: <1436260751-25015-25-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66799
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 24/68] virtio: 64bit features fixups.
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Commit "019a3ed virtio: make features 64bit wide" missed a few changes,
+as I've noticed while trying to rebase the virtio-1 branch to latest
+master.  This patch adds them.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit d5aaa1b0456033fc9ff723ac881ebe1b61360cca)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/virtio-net.c        |  2 +-
+ hw/virtio/virtio.c         |  2 +-
+ include/hw/virtio/virtio.h | 10 +++++-----
+ 3 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 1d7ce09..a4397b4 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -517,7 +517,7 @@ static inline uint64_t virtio_net_supported_guest_offloads(VirtIONet *n)
+     return virtio_net_guest_offloads_by_features(vdev->guest_features);
+ }
+ 
+-static void virtio_net_set_features(VirtIODevice *vdev, uint32_t features)
++static void virtio_net_set_features(VirtIODevice *vdev, uint64_t features)
+ {
+     VirtIONet *n = VIRTIO_NET(vdev);
+     int i;
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index 596e3d8..8ac6156 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -1003,7 +1003,7 @@ void virtio_save(VirtIODevice *vdev, QEMUFile *f)
+     vmstate_save_state(f, &vmstate_virtio, vdev, NULL);
+ }
+ 
+-int virtio_set_features(VirtIODevice *vdev, uint32_t val)
++int virtio_set_features(VirtIODevice *vdev, uint64_t val)
+ {
+     VirtioDeviceClass *k = VIRTIO_DEVICE_GET_CLASS(vdev);
+     bool bad = (val & ~(vdev->host_features)) != 0;
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 180b077..8e8b72d 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -98,7 +98,7 @@ typedef struct VirtioDeviceClass {
+     DeviceUnrealize unrealize;
+     uint64_t (*get_features)(VirtIODevice *vdev, uint64_t requested_features);
+     uint64_t (*bad_features)(VirtIODevice *vdev);
+-    void (*set_features)(VirtIODevice *vdev, uint32_t val);
++    void (*set_features)(VirtIODevice *vdev, uint64_t val);
+     void (*get_config)(VirtIODevice *vdev, uint8_t *config);
+     void (*set_config)(VirtIODevice *vdev, const uint8_t *config);
+     void (*reset)(VirtIODevice *vdev);
+@@ -184,7 +184,7 @@ void virtio_queue_set_vector(VirtIODevice *vdev, int n, uint16_t vector);
+ void virtio_set_status(VirtIODevice *vdev, uint8_t val);
+ void virtio_reset(void *opaque);
+ void virtio_update_irq(VirtIODevice *vdev);
+-int virtio_set_features(VirtIODevice *vdev, uint32_t val);
++int virtio_set_features(VirtIODevice *vdev, uint64_t val);
+ 
+ /* Base devices.  */
+ typedef struct VirtIOBlkConf VirtIOBlkConf;
+@@ -230,19 +230,19 @@ VirtQueue *virtio_vector_next_queue(VirtQueue *vq);
+ static inline void virtio_add_feature(uint64_t *features, unsigned int fbit)
+ {
+     assert(fbit < 64);
+-    *features |= (1 << fbit);
++    *features |= (1ULL << fbit);
+ }
+ 
+ static inline void virtio_clear_feature(uint64_t *features, unsigned int fbit)
+ {
+     assert(fbit < 64);
+-    *features &= ~(1 << fbit);
++    *features &= ~(1ULL << fbit);
+ }
+ 
+ static inline bool __virtio_has_feature(uint64_t features, unsigned int fbit)
+ {
+     assert(fbit < 64);
+-    return !!(features & (1 << fbit));
++    return !!(features & (1ULL << fbit));
+ }
+ 
+ static inline bool virtio_has_feature(VirtIODevice *vdev, unsigned int fbit)
+-- 
+1.8.3.1
+

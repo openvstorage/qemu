@@ -1,0 +1,176 @@
+From 05b869d225c26c4ef9b0ed0c4e58723b1fc25914 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:19:07 +0200
+Subject: [PATCH 093/100] virtio-input: move properties, use
+ virtio_instance_init_common
+
+Message-id: <1436260751-25015-65-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66839
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 64/68] virtio-input: move properties, use virtio_instance_init_common
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Move properties from virtio-*-pci to virtio-*-device.
+Also make better use of QOM and attach common properties
+to the abstract parent classes (virtio-input-device and
+virtio-input-pci-device).
+
+Switch the hid device instance init functions over to use
+virtio_instance_init_common, so we get the properties of the
+virtio device aliased properly to the virtio pci proxy.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+(cherry picked from commit 6f2b9a5b24c488d38ace01910c684749ff922e26)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/input/virtio-input.c          |  8 +++++++-
+ hw/virtio/virtio-pci.c           | 27 +++++++++++----------------
+ include/hw/virtio/virtio-input.h |  9 +--------
+ 3 files changed, 19 insertions(+), 25 deletions(-)
+
+diff --git a/hw/input/virtio-input.c b/hw/input/virtio-input.c
+index c4f4b3c..7f5b8d6 100644
+--- a/hw/input/virtio-input.c
++++ b/hw/input/virtio-input.c
+@@ -216,7 +216,7 @@ static void virtio_input_device_realize(DeviceState *dev, Error **errp)
+     }
+ 
+     virtio_input_idstr_config(vinput, VIRTIO_INPUT_CFG_ID_SERIAL,
+-                              vinput->input.serial);
++                              vinput->serial);
+ 
+     QTAILQ_FOREACH(cfg, &vinput->cfg_list, node) {
+         if (vinput->cfg_size < cfg->config.size) {
+@@ -248,11 +248,17 @@ static void virtio_input_device_unrealize(DeviceState *dev, Error **errp)
+     virtio_cleanup(vdev);
+ }
+ 
++static Property virtio_input_properties[] = {
++    DEFINE_PROP_STRING("serial", VirtIOInput, serial),
++    DEFINE_PROP_END_OF_LIST(),
++};
++
+ static void virtio_input_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);
+ 
++    dc->props          = virtio_input_properties;
+     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
+     vdc->realize      = virtio_input_device_realize;
+     vdc->unrealize    = virtio_input_device_unrealize;
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 9b5f009..c69f066 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1928,8 +1928,7 @@ static const TypeInfo virtio_rng_pci_info = {
+ 
+ /* virtio-input-pci */
+ 
+-static Property virtio_input_hid_pci_properties[] = {
+-    DEFINE_VIRTIO_INPUT_PROPERTIES(VirtIOInputPCI, vdev.input),
++static Property virtio_input_pci_properties[] = {
+     DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 2),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+@@ -1952,19 +1951,13 @@ static void virtio_input_pci_class_init(ObjectClass *klass, void *data)
+     VirtioPCIClass *k = VIRTIO_PCI_CLASS(klass);
+     PCIDeviceClass *pcidev_k = PCI_DEVICE_CLASS(klass);
+ 
++    dc->props = virtio_input_pci_properties;
+     k->realize = virtio_input_pci_realize;
+     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
+ 
+     pcidev_k->class_id = PCI_CLASS_INPUT_OTHER;
+ }
+ 
+-static void virtio_input_hid_pci_class_init(ObjectClass *klass, void *data)
+-{
+-    DeviceClass *dc = DEVICE_CLASS(klass);
+-
+-    dc->props = virtio_input_hid_pci_properties;
+-}
+-
+ static void virtio_input_hid_kbd_pci_class_init(ObjectClass *klass, void *data)
+ {
+     PCIDeviceClass *pcidev_k = PCI_DEVICE_CLASS(klass);
+@@ -1983,22 +1976,25 @@ static void virtio_input_hid_mouse_pci_class_init(ObjectClass *klass,
+ static void virtio_keyboard_initfn(Object *obj)
+ {
+     VirtIOInputHIDPCI *dev = VIRTIO_INPUT_HID_PCI(obj);
+-    object_initialize(&dev->vdev, sizeof(dev->vdev), TYPE_VIRTIO_KEYBOARD);
+-    object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
++
++    virtio_instance_init_common(obj, &dev->vdev, sizeof(dev->vdev),
++                                TYPE_VIRTIO_KEYBOARD);
+ }
+ 
+ static void virtio_mouse_initfn(Object *obj)
+ {
+     VirtIOInputHIDPCI *dev = VIRTIO_INPUT_HID_PCI(obj);
+-    object_initialize(&dev->vdev, sizeof(dev->vdev), TYPE_VIRTIO_MOUSE);
+-    object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
++
++    virtio_instance_init_common(obj, &dev->vdev, sizeof(dev->vdev),
++                                TYPE_VIRTIO_MOUSE);
+ }
+ 
+ static void virtio_tablet_initfn(Object *obj)
+ {
+     VirtIOInputHIDPCI *dev = VIRTIO_INPUT_HID_PCI(obj);
+-    object_initialize(&dev->vdev, sizeof(dev->vdev), TYPE_VIRTIO_TABLET);
+-    object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
++
++    virtio_instance_init_common(obj, &dev->vdev, sizeof(dev->vdev),
++                                TYPE_VIRTIO_TABLET);
+ }
+ 
+ static const TypeInfo virtio_input_pci_info = {
+@@ -2013,7 +2009,6 @@ static const TypeInfo virtio_input_hid_pci_info = {
+     .name          = TYPE_VIRTIO_INPUT_HID_PCI,
+     .parent        = TYPE_VIRTIO_INPUT_PCI,
+     .instance_size = sizeof(VirtIOInputHIDPCI),
+-    .class_init    = virtio_input_hid_pci_class_init,
+     .abstract      = true,
+ };
+ 
+diff --git a/include/hw/virtio/virtio-input.h b/include/hw/virtio/virtio-input.h
+index 8134178..8160dd6 100644
+--- a/include/hw/virtio/virtio-input.h
++++ b/include/hw/virtio/virtio-input.h
+@@ -50,18 +50,11 @@ typedef struct virtio_input_event virtio_input_event;
+ #define VIRTIO_INPUT_HID_GET_PARENT_CLASS(obj) \
+         OBJECT_GET_PARENT_CLASS(obj, TYPE_VIRTIO_INPUT_HID)
+ 
+-#define DEFINE_VIRTIO_INPUT_PROPERTIES(_state, _field)       \
+-        DEFINE_PROP_STRING("serial", _state, _field.serial)
+-
+ typedef struct VirtIOInput VirtIOInput;
+ typedef struct VirtIOInputClass VirtIOInputClass;
+ typedef struct VirtIOInputConfig VirtIOInputConfig;
+ typedef struct VirtIOInputHID VirtIOInputHID;
+ 
+-struct virtio_input_conf {
+-    char *serial;
+-};
+-
+ struct VirtIOInputConfig {
+     virtio_input_config               config;
+     QTAILQ_ENTRY(VirtIOInputConfig)   node;
+@@ -74,7 +67,7 @@ struct VirtIOInput {
+     uint32_t                          cfg_size;
+     QTAILQ_HEAD(, VirtIOInputConfig)  cfg_list;
+     VirtQueue                         *evt, *sts;
+-    virtio_input_conf                 input;
++    char                              *serial;
+ 
+     virtio_input_event                *queue;
+     uint32_t                          qindex, qsize;
+-- 
+1.8.3.1
+

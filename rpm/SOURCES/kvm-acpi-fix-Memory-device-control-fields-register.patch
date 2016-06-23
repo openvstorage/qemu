@@ -1,0 +1,64 @@
+From 0db251c5deae5f093461a14b343b8042f233976d Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 8 Jun 2015 00:52:04 +0200
+Subject: [PATCH 06/44] acpi: fix "Memory device control fields" register
+
+Message-id: <1433724727-46928-7-git-send-email-imammedo@redhat.com>
+Patchwork-id: 65395
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 6/9] acpi: fix "Memory device control fields" register
+Bugzilla: 1120706
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+
+0 bit in Memory device control fields must be cleared before writing to
+register. But now this field isn't cleared when other fields are written.
+
+To solve this bug, This patch fixes UpdateRule to WriteAsZeros in "Memory
+device control fields" register.
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 660e8ec70065c8b1fd68b2cb137de16d831959f4)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/acpi_mem_hotplug.txt | 5 ++++-
+ hw/i386/acpi-build.c            | 2 +-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/docs/specs/acpi_mem_hotplug.txt b/docs/specs/acpi_mem_hotplug.txt
+index dcc4808..68daa14 100644
+--- a/docs/specs/acpi_mem_hotplug.txt
++++ b/docs/specs/acpi_mem_hotplug.txt
+@@ -31,7 +31,10 @@ Memory hot-plug interface (IO port 0xa00-0xa17, 1-4 byte access):
+       [0xc-0x13] reserved, writes into it are ignored
+       [0x14] Memory device control fields
+           bits:
+-              0: reserved, OSPM must clear it before writing to register
++              0: reserved, OSPM must clear it before writing to register.
++                 Due to BUG in versions prior 2.4 that field isn't cleared
++                 when other fields are written. Keep it reserved and don't
++                 try to reuse it.
+               1: if set to 1 clears device insert event, set by OSPM
+                  after it has emitted device check event for the
+                  selected memory device
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index 5977a5b..795af4e 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -927,7 +927,7 @@ build_ssdt(GArray *table_data, GArray *linker,
+         aml_append(scope, field);
+ 
+         field = aml_field(stringify(MEMORY_HOTPLUG_IO_REGION), aml_byte_acc,
+-                          aml_preserve);
++                          aml_write_as_zeros);
+         aml_append(field, aml_reserved_field(160 /* bits, Offset(20) */));
+         aml_append(field, /* 1 if enabled, read only */
+             aml_named_field(stringify(MEMORY_SLOT_ENABLED), 1));
+-- 
+1.8.3.1
+

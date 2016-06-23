@@ -1,0 +1,63 @@
+From 4a5ad49968bc31ee539dc9d002790297359b97d9 Mon Sep 17 00:00:00 2001
+Message-Id: <4a5ad49968bc31ee539dc9d002790297359b97d9.1440703553.git.ymankad@redhat.com>
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Wed, 26 Aug 2015 01:26:57 -0400
+Subject: [CHANGE 1/2] pseries: define coldplugged devices as "configured"
+To: rhvirt-patches@redhat.com,
+    ymankad@redhat.com
+
+Message-id: <1440552417-18432-1-git-send-email-lvivier@redhat.com>
+Patchwork-id: 67617
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH] pseries: define coldplugged devices as "configured"
+Bugzilla: 1243721
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+When a device is hotplugged, attach() sets "configured" to
+false, waiting an action from the OS to configure it and then
+to call ibm,configure-connector. On ibm,configure-connector,
+the hypervisor sets "configured" to true.
+
+In case of coldplugged device, attach() sets "configured" to
+false, but firmware and OS never call the ibm,configure-connector
+in this case, so it remains set to false.
+
+It could be harmless, but when we unplug a device, hypervisor
+waits the device becomes configured because for it, a not configured
+device is a device being configured, so it waits the end of configuration
+to unplug it... and it never happens, so it is never unplugged.
+
+This patch set by default coldplugged device to "configured=true",
+hotplugged device to "configured=false".
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Reviewed-by: Michael Roth <mdroth@linux.vnet.ibm.com>
+
+This patch is not already upstream but has been reviewed by the author
+of the code and approved. As it is trivial (one word change) it could
+be taken as is and be easily reverted if needed. This is a bug fix.
+
+Upstream: not already merged
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: ymankad <ymankad@redhat.com>
+---
+ hw/ppc/spapr_drc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/ppc/spapr_drc.c b/hw/ppc/spapr_drc.c
+index ef98538..5732b49 100644
+--- a/hw/ppc/spapr_drc.c
++++ b/hw/ppc/spapr_drc.c
+@@ -310,7 +310,7 @@ static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
+     drc->dev = d;
+     drc->fdt = fdt;
+     drc->fdt_start_offset = fdt_start_offset;
+-    drc->configured = false;
++    drc->configured = coldplug;
+ 
+     object_property_add_link(OBJECT(drc), "device",
+                              object_get_typename(OBJECT(drc->dev)),
+-- 
+2.4.3
+

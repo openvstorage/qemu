@@ -1,0 +1,62 @@
+From c14270c78b65b15129dd61ab43407154edcde7b3 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Thu, 25 Jun 2015 13:44:32 +0200
+Subject: [PATCH 007/100] spapr: add rtas_st_buffer_direct() helper
+
+Message-id: <1435239881-28541-6-git-send-email-lvivier@redhat.com>
+Patchwork-id: 66485
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 05/14] spapr: add rtas_st_buffer_direct() helper
+Bugzilla: 1172478
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Michael Roth <mdroth@linux.vnet.ibm.com>
+
+This is similar to the existing rtas_st_buffer(), but for cases
+where the guest is not expecting a length-encoded byte array.
+Namely, for calls where a "work area" buffer is used to pass
+around arbitrary fields/data.
+
+Signed-off-by: Michael Roth <mdroth@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit ab316865db8ee97c53cd70c91b1b160c474102f8)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/ppc/spapr.h | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/include/hw/ppc/spapr.h b/include/hw/ppc/spapr.h
+index a13e777..919eec6 100644
+--- a/include/hw/ppc/spapr.h
++++ b/include/hw/ppc/spapr.h
+@@ -464,6 +464,13 @@ static inline void rtas_st(target_ulong phys, int n, uint32_t val)
+     stl_be_phys(&address_space_memory, ppc64_phys_to_real(phys + 4*n), val);
+ }
+ 
++static inline void rtas_st_buffer_direct(target_ulong phys,
++                                         target_ulong phys_len,
++                                         uint8_t *buffer, uint16_t buffer_len)
++{
++    cpu_physical_memory_write(ppc64_phys_to_real(phys), buffer,
++                              MIN(buffer_len, phys_len));
++}
+ 
+ static inline void rtas_st_buffer(target_ulong phys, target_ulong phys_len,
+                                   uint8_t *buffer, uint16_t buffer_len)
+@@ -473,8 +480,7 @@ static inline void rtas_st_buffer(target_ulong phys, target_ulong phys_len,
+     }
+     stw_be_phys(&address_space_memory,
+                 ppc64_phys_to_real(phys), buffer_len);
+-    cpu_physical_memory_write(ppc64_phys_to_real(phys + 2),
+-                              buffer, MIN(buffer_len, phys_len - 2));
++    rtas_st_buffer_direct(phys + 2, phys_len - 2, buffer, buffer_len);
+ }
+ 
+ typedef void (*spapr_rtas_fn)(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+-- 
+1.8.3.1
+

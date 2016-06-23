@@ -1,0 +1,197 @@
+From a29aefaa69183d1e07837130f4873c562e8e66e5 Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Mon, 13 Jul 2015 03:27:20 +0200
+Subject: [PATCH 02/58] qmp: Add optional bool "unmap" to drive-mirror
+
+Message-id: <1436758047-4639-3-git-send-email-famz@redhat.com>
+Patchwork-id: 66960
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 2/9] qmp: Add optional bool "unmap" to drive-mirror
+Bugzilla: 1242316
+RH-Acked-by: Jeffrey Cody <jcody@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+If specified as "true", it allows discarding on target sectors where source is
+not allocated.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 0fc9f8ea2800b76eaea20a8a3a91fbeeb4bfa81b)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ block/mirror.c            | 8 ++++++--
+ blockdev.c                | 5 +++++
+ hmp.c                     | 2 +-
+ include/block/block_int.h | 2 ++
+ qapi/block-core.json      | 8 +++++++-
+ qmp-commands.hx           | 3 +++
+ 6 files changed, 24 insertions(+), 4 deletions(-)
+
+diff --git a/block/mirror.c b/block/mirror.c
+index 4056164..1814523 100644
+--- a/block/mirror.c
++++ b/block/mirror.c
+@@ -57,6 +57,7 @@ typedef struct MirrorBlockJob {
+     int in_flight;
+     int sectors_in_flight;
+     int ret;
++    bool unmap;
+ } MirrorBlockJob;
+ 
+ typedef struct MirrorOp {
+@@ -660,6 +661,7 @@ static void mirror_start_job(BlockDriverState *bs, BlockDriverState *target,
+                              int64_t buf_size,
+                              BlockdevOnError on_source_error,
+                              BlockdevOnError on_target_error,
++                             bool unmap,
+                              BlockCompletionFunc *cb,
+                              void *opaque, Error **errp,
+                              const BlockJobDriver *driver,
+@@ -702,6 +704,7 @@ static void mirror_start_job(BlockDriverState *bs, BlockDriverState *target,
+     s->base = base;
+     s->granularity = granularity;
+     s->buf_size = MAX(buf_size, granularity);
++    s->unmap = unmap;
+ 
+     s->dirty_bitmap = bdrv_create_dirty_bitmap(bs, granularity, errp);
+     if (!s->dirty_bitmap) {
+@@ -720,6 +723,7 @@ void mirror_start(BlockDriverState *bs, BlockDriverState *target,
+                   int64_t speed, int64_t granularity, int64_t buf_size,
+                   MirrorSyncMode mode, BlockdevOnError on_source_error,
+                   BlockdevOnError on_target_error,
++                  bool unmap,
+                   BlockCompletionFunc *cb,
+                   void *opaque, Error **errp)
+ {
+@@ -730,7 +734,7 @@ void mirror_start(BlockDriverState *bs, BlockDriverState *target,
+     base = mode == MIRROR_SYNC_MODE_TOP ? bs->backing_hd : NULL;
+     mirror_start_job(bs, target, replaces,
+                      speed, granularity, buf_size,
+-                     on_source_error, on_target_error, cb, opaque, errp,
++                     on_source_error, on_target_error, unmap, cb, opaque, errp,
+                      &mirror_job_driver, is_none_mode, base);
+ }
+ 
+@@ -778,7 +782,7 @@ void commit_active_start(BlockDriverState *bs, BlockDriverState *base,
+ 
+     bdrv_ref(base);
+     mirror_start_job(bs, base, NULL, speed, 0, 0,
+-                     on_error, on_error, cb, opaque, &local_err,
++                     on_error, on_error, false, cb, opaque, &local_err,
+                      &commit_active_job_driver, false, base);
+     if (local_err) {
+         error_propagate(errp, local_err);
+diff --git a/blockdev.c b/blockdev.c
+index 8347e30..4f81cda 100644
+--- a/blockdev.c
++++ b/blockdev.c
+@@ -2461,6 +2461,7 @@ void qmp_drive_mirror(const char *device, const char *target,
+                       bool has_buf_size, int64_t buf_size,
+                       bool has_on_source_error, BlockdevOnError on_source_error,
+                       bool has_on_target_error, BlockdevOnError on_target_error,
++                      bool has_unmap, bool unmap,
+                       Error **errp)
+ {
+     BlockBackend *blk;
+@@ -2492,6 +2493,9 @@ void qmp_drive_mirror(const char *device, const char *target,
+     if (!has_buf_size) {
+         buf_size = DEFAULT_MIRROR_BUF_SIZE;
+     }
++    if (!has_unmap) {
++        unmap = true;
++    }
+ 
+     if (granularity != 0 && (granularity < 512 || granularity > 1048576 * 64)) {
+         error_set(errp, QERR_INVALID_PARAMETER_VALUE, "granularity",
+@@ -2631,6 +2635,7 @@ void qmp_drive_mirror(const char *device, const char *target,
+                  has_replaces ? replaces : NULL,
+                  speed, granularity, buf_size, sync,
+                  on_source_error, on_target_error,
++                 unmap,
+                  block_job_cb, bs, &local_err);
+     if (local_err != NULL) {
+         bdrv_unref(target_bs);
+diff --git a/hmp.c b/hmp.c
+index b1423a1..b6ba8be 100644
+--- a/hmp.c
++++ b/hmp.c
+@@ -1034,7 +1034,7 @@ void hmp_drive_mirror(Monitor *mon, const QDict *qdict)
+                      false, NULL, false, NULL,
+                      full ? MIRROR_SYNC_MODE_FULL : MIRROR_SYNC_MODE_TOP,
+                      true, mode, false, 0, false, 0, false, 0,
+-                     false, 0, false, 0, &err);
++                     false, 0, false, 0, false, true, &err);
+     hmp_handle_error(mon, &err);
+ }
+ 
+diff --git a/include/block/block_int.h b/include/block/block_int.h
+index dccb092..3f70228 100644
+--- a/include/block/block_int.h
++++ b/include/block/block_int.h
+@@ -579,6 +579,7 @@ void commit_active_start(BlockDriverState *bs, BlockDriverState *base,
+  * @mode: Whether to collapse all images in the chain to the target.
+  * @on_source_error: The action to take upon error reading from the source.
+  * @on_target_error: The action to take upon error writing to the target.
++ * @unmap: Whether to unmap target where source sectors only contain zeroes.
+  * @cb: Completion function for the job.
+  * @opaque: Opaque pointer value passed to @cb.
+  * @errp: Error object.
+@@ -593,6 +594,7 @@ void mirror_start(BlockDriverState *bs, BlockDriverState *target,
+                   int64_t speed, int64_t granularity, int64_t buf_size,
+                   MirrorSyncMode mode, BlockdevOnError on_source_error,
+                   BlockdevOnError on_target_error,
++                  bool unmap,
+                   BlockCompletionFunc *cb,
+                   void *opaque, Error **errp);
+ 
+diff --git a/qapi/block-core.json b/qapi/block-core.json
+index 8796eaf..f7acf42 100644
+--- a/qapi/block-core.json
++++ b/qapi/block-core.json
+@@ -943,6 +943,11 @@
+ # @on-target-error: #optional the action to take on an error on the target,
+ #                   default 'report' (no limitations, since this applies to
+ #                   a different block device than @device).
++# @unmap: #optional Whether to try to unmap target sectors where source has
++#         only zero. If true, and target unallocated sectors will read as zero,
++#         target image sectors will be unmapped; otherwise, zeroes will be
++#         written. Both will result in identical contents.
++#         Default is true. (Since 2.4)
+ #
+ # Returns: nothing on success
+ #          If @device is not a valid block device, DeviceNotFound
+@@ -955,7 +960,8 @@
+             'sync': 'MirrorSyncMode', '*mode': 'NewImageMode',
+             '*speed': 'int', '*granularity': 'uint32',
+             '*buf-size': 'int', '*on-source-error': 'BlockdevOnError',
+-            '*on-target-error': 'BlockdevOnError' } }
++            '*on-target-error': 'BlockdevOnError',
++            '*unmap': 'bool' } }
+ 
+ ##
+ # @block_set_io_throttle:
+diff --git a/qmp-commands.hx b/qmp-commands.hx
+index 4abb90d..a835f9f 100644
+--- a/qmp-commands.hx
++++ b/qmp-commands.hx
+@@ -1477,6 +1477,7 @@ EQMP
+         .args_type  = "sync:s,device:B,target:s,speed:i?,mode:s?,format:s?,"
+                       "node-name:s?,replaces:s?,"
+                       "on-source-error:s?,on-target-error:s?,"
++                      "unmap:b?,"
+                       "granularity:i?,buf-size:i?",
+         .mhandler.cmd_new = qmp_marshal_input_drive_mirror,
+     },
+@@ -1516,6 +1517,8 @@ Arguments:
+   (BlockdevOnError, default 'report')
+ - "on-target-error": the action to take on an error on the target
+   (BlockdevOnError, default 'report')
++- "unmap": whether the target sectors should be discarded where source has only
++  zeroes. (json-bool, optional, default true)
+ 
+ The default value of the granularity is the image cluster size clamped
+ between 4096 and 65536, if the image format defines one.  If the format
+-- 
+1.8.3.1
+

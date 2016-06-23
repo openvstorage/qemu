@@ -1,0 +1,62 @@
+From 484e4417df71f87cd65b25e9af3f755a239f8bdc Mon Sep 17 00:00:00 2001
+Message-Id: <484e4417df71f87cd65b25e9af3f755a239f8bdc.1448914830.git.jen@redhat.com>
+In-Reply-To: <bcfe0f8f7ca6c670783cfaa98f45b6985fcbcc39.1448914830.git.jen@redhat.com>
+References: <bcfe0f8f7ca6c670783cfaa98f45b6985fcbcc39.1448914830.git.jen@redhat.com>
+From: Fam Zheng <famz@redhat.com>
+Date: Wed, 25 Nov 2015 03:49:12 -0600
+Subject: [CHANGE 2/5] virtio-blk: Move resetting of req->mr_next to
+ virtio_blk_handle_rw_error
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Fam Zheng <famz@redhat.com>
+Message-id: <1448423352-12857-3-git-send-email-famz@redhat.com>
+Patchwork-id: 68459
+O-Subject: [RHEL-7.2.z qemu-kvm-rhev v2 PATCH 2/2] virtio-blk: Move resetting of req->mr_next to virtio_blk_handle_rw_error
+Bugzilla: 1283987
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+"werror=report" would free the req in virtio_blk_handle_rw_error, we
+mustn't write to it in that case.
+
+Reported-by: Paolo Bonzini <pbonzini@redhat.com>
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Message-id: 1448239280-15025-1-git-send-email-famz@redhat.com
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 466138dc689b6b14f31d5d20316affb4b4efd177)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ hw/block/virtio-blk.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/hw/block/virtio-blk.c b/hw/block/virtio-blk.c
+index 5d96f20..e00e6e6 100644
+--- a/hw/block/virtio-blk.c
++++ b/hw/block/virtio-blk.c
+@@ -72,6 +72,9 @@ static int virtio_blk_handle_rw_error(VirtIOBlockReq *req, int error,
+     VirtIOBlock *s = req->dev;
+ 
+     if (action == BLOCK_ERROR_ACTION_STOP) {
++        /* Break the link as the next request is going to be parsed from the
++         * ring again. Otherwise we may end up doing a double completion! */
++        req->mr_next = NULL;
+         req->next = s->rq;
+         s->rq = req;
+     } else if (action == BLOCK_ERROR_ACTION_REPORT) {
+@@ -112,10 +115,6 @@ static void virtio_blk_rw_complete(void *opaque, int ret)
+              * happen on the other side of the migration).
+              */
+             if (virtio_blk_handle_rw_error(req, -ret, is_read)) {
+-                /* Break the link in case the next request is added to the
+-                 * restart queue and is going to be parsed from the ring again.
+-                 */
+-                req->mr_next = NULL;
+                 continue;
+             }
+         }
+-- 
+2.5.0
+

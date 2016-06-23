@@ -1,0 +1,71 @@
+From ba6d9487eba7012a4d1ee97a962bab0ae2b19620 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:25 +0200
+Subject: [PATCH 16/31] hw/acpi: add support for i440fx 'snooping' root busses
+
+Message-id: <1435154016-26233-33-git-send-email-marcel@redhat.com>
+Patchwork-id: 66458
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 32/43] hw/acpi: add support for i440fx 'snooping' root busses
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+If the machine has extra root busses that are snooping to
+the i440fx host bridge, we need to add them to
+acpi in order to be properly detected by guests.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit a4894206e3672f8a5e5443d72b705495e022b638)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index ea77a3f..ea6abe6 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -624,6 +624,7 @@ build_ssdt(GArray *table_data, GArray *linker,
+     uint32_t nr_mem = machine->ram_slots;
+     unsigned acpi_cpus = guest_info->apic_id_limit;
+     Aml *ssdt, *sb_scope, *scope, *pkg, *dev, *method, *crs, *field, *ifctx;
++    PCIBus *bus = NULL;
+     int i;
+ 
+     ssdt = init_aml_allocator();
+@@ -635,6 +636,28 @@ build_ssdt(GArray *table_data, GArray *linker,
+     /* Reserve space for header */
+     acpi_data_push(ssdt->buf, sizeof(AcpiTableHeader));
+ 
++    /* Extra PCI root buses are implemented  only for i440fx */
++    bus = find_i440fx();
++    if (bus) {
++        QLIST_FOREACH(bus, &bus->child, sibling) {
++            uint8_t bus_num = pci_bus_num(bus);
++
++            /* look only for expander root buses */
++            if (!pci_bus_is_root(bus)) {
++                continue;
++            }
++
++            scope = aml_scope("\\_SB");
++            dev = aml_device("PC%.02X", bus_num);
++            aml_append(dev,
++                       aml_name_decl("_UID", aml_string("PC%.02X", bus_num)));
++            aml_append(dev, aml_name_decl("_HID", aml_string("PNP0A03")));
++            aml_append(dev, aml_name_decl("_BBN", aml_int(bus_num)));
++            aml_append(scope, dev);
++            aml_append(ssdt, scope);
++        }
++    }
++
+     scope = aml_scope("\\_SB.PCI0");
+     /* build PCI0._CRS */
+     crs = aml_resource_template();
+-- 
+1.8.3.1
+

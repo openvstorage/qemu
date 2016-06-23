@@ -1,0 +1,50 @@
+From 8e8107cb36924e14a027173e07d3b94afba64b23 Mon Sep 17 00:00:00 2001
+From: Eduardo Habkost <ehabkost@redhat.com>
+Date: Wed, 3 Dec 2014 17:29:13 -0600
+Subject: numa: Don't allow memdev= on RHEL-6 machine-types
+
+RH-Author: Eduardo Habkost <ehabkost@redhat.com>
+Message-id: <1417627753-6012-1-git-send-email-ehabkost@redhat.com>
+Patchwork-id: 62655
+O-Subject: [RHEV-7.1 qemu-kvm-rhev PATCH] numa: Don't allow memdev= on RHEL-6 machine-types
+Bugzilla: 1170093
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert (git) <dgilbert@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+The hack added to fix bz#1027565 breaks when using the "-numa
+...,memdev=..." option, because multiple blocks are registered for RAM
+(one for each NUMA node).
+
+As RHEL-6 didn't support "-numa memdev=", simply disallow the memdev
+option when running machine-types that have the BIOS shadowing hack
+(rhel6.*). This is safer than changing the hack to work on a case that
+was never supported before.
+
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+
+diff --git a/numa.c b/numa.c
+index c975fb2..bd6119a 100644
+--- a/numa.c
++++ b/numa.c
+@@ -355,6 +355,19 @@ void memory_region_allocate_system_memory(MemoryRegion *mr, Object *owner,
+         return;
+     }
+ 
++    /* The shadow_bios_after_incoming hack at savevm.c:shadow_bios() is not
++     * able to handle the multiple memory blocks added when using NUMA
++     * memdevs. We can disallow -numa memdev= when using rhel6.* machine-types
++     * because RHEL-6 didn't support the NUMA memdev option.
++     */
++    if (shadow_bios_after_incoming) {
++        MachineClass *mc;
++        mc = MACHINE_GET_CLASS(current_machine);
++        error_report("-numa memdev is not supported by machine %s",
++                     mc->name);
++        exit(1);
++    }
++
+     memory_region_init(mr, owner, name, ram_size);
+     for (i = 0; i < MAX_NODES; i++) {
+         Error *local_err = NULL;

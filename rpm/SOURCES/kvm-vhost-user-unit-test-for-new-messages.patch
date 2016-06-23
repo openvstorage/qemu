@@ -1,0 +1,74 @@
+From eaffb9979ca868f0e2b20b6af67f71f492c1d163 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:59 +0100
+Subject: [PATCH 30/44] vhost-user: unit test for new messages
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-24-git-send-email-mst@redhat.com>
+Patchwork-id: 68382
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 23/36] vhost-user: unit test for new messages
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+Data is empty for now, but do make sure master
+sets the new feature bit flag.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 8a9b6b37dabf00388e8069a2f5c0f659626693b3)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/vhost-user-test.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/tests/vhost-user-test.c b/tests/vhost-user-test.c
+index 79e39dd..3c68465 100644
+--- a/tests/vhost-user-test.c
++++ b/tests/vhost-user-test.c
+@@ -46,6 +46,8 @@
+ 
+ #define VHOST_MEMORY_MAX_NREGIONS    8
+ 
++#define VHOST_USER_F_PROTOCOL_FEATURES 30
++
+ typedef enum VhostUserRequest {
+     VHOST_USER_NONE = 0,
+     VHOST_USER_GET_FEATURES = 1,
+@@ -62,6 +64,8 @@ typedef enum VhostUserRequest {
+     VHOST_USER_SET_VRING_KICK = 12,
+     VHOST_USER_SET_VRING_CALL = 13,
+     VHOST_USER_SET_VRING_ERR = 14,
++    VHOST_USER_GET_PROTOCOL_FEATURES = 15,
++    VHOST_USER_SET_PROTOCOL_FEATURES = 16,
+     VHOST_USER_MAX
+ } VhostUserRequest;
+ 
+@@ -224,6 +228,20 @@ static void chr_read(void *opaque, const uint8_t *buf, int size)
+         /* send back features to qemu */
+         msg.flags |= VHOST_USER_REPLY_MASK;
+         msg.size = sizeof(m.u64);
++        msg.u64 = 0x1ULL << VHOST_USER_F_PROTOCOL_FEATURES;
++        p = (uint8_t *) &msg;
++        qemu_chr_fe_write_all(chr, p, VHOST_USER_HDR_SIZE + msg.size);
++        break;
++
++    case VHOST_USER_SET_FEATURES:
++	g_assert_cmpint(msg.u64 & (0x1ULL << VHOST_USER_F_PROTOCOL_FEATURES),
++			!=, 0ULL);
++        break;
++
++    case VHOST_USER_GET_PROTOCOL_FEATURES:
++        /* send back features to qemu */
++        msg.flags |= VHOST_USER_REPLY_MASK;
++        msg.size = sizeof(m.u64);
+         msg.u64 = 0;
+         p = (uint8_t *) &msg;
+         qemu_chr_fe_write_all(chr, p, VHOST_USER_HDR_SIZE + msg.size);
+-- 
+1.8.3.1
+

@@ -1,0 +1,184 @@
+From be539a19decbbf8b4f7ae486eac4f936b65a8d6e Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 9 Nov 2015 10:36:51 +0100
+Subject: [PATCH 06/44] acpi: add acpi_send_gpe_event() to rise sci for hotplug
+
+Message-id: <1447065412-176891-2-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68309
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev 1/2] acpi: add acpi_send_gpe_event() to rise sci for hotplug
+Bugzilla: 1283072
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+===
+  Add a new API named acpi_send_gpe_event() to send hotplug SCI.
+  This API can be used by pci, cpu and memory hotplug.
+
+  This patch is rebased on master.
+
+Signed-off-by: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+==
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+
+cherry-picked from ca9b46bcecc0f06882eec1b152b71f93a066da79
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/core.c                   |  7 +++++++
+ hw/acpi/cpu_hotplug.c            |  3 +--
+ hw/acpi/memory_hotplug.c         |  6 ++----
+ hw/acpi/pcihp.c                  |  7 ++-----
+ include/hw/acpi/acpi.h           | 10 ++++++++++
+ include/hw/acpi/memory_hotplug.h |  2 --
+ include/hw/acpi/pc-hotplug.h     |  1 -
+ 7 files changed, 22 insertions(+), 14 deletions(-)
+
+diff --git a/hw/acpi/core.c b/hw/acpi/core.c
+index f70377f..0f201d8 100644
+--- a/hw/acpi/core.c
++++ b/hw/acpi/core.c
+@@ -679,6 +679,13 @@ uint32_t acpi_gpe_ioport_readb(ACPIREGS *ar, uint32_t addr)
+     return val;
+ }
+ 
++void acpi_send_gpe_event(ACPIREGS *ar, qemu_irq irq,
++                         AcpiGPEStatusBits status)
++{
++    ar->gpe.sts[0] |= status;
++    acpi_update_sci(ar, irq);
++}
++
+ void acpi_update_sci(ACPIREGS *regs, qemu_irq irq)
+ {
+     int sci_level, pm1a_sts;
+diff --git a/hw/acpi/cpu_hotplug.c b/hw/acpi/cpu_hotplug.c
+index b8ebfad..f5b9972 100644
+--- a/hw/acpi/cpu_hotplug.c
++++ b/hw/acpi/cpu_hotplug.c
+@@ -59,8 +59,7 @@ void acpi_cpu_plug_cb(ACPIREGS *ar, qemu_irq irq,
+         return;
+     }
+ 
+-    ar->gpe.sts[0] |= ACPI_CPU_HOTPLUG_STATUS;
+-    acpi_update_sci(ar, irq);
++    acpi_send_gpe_event(ar, irq, ACPI_CPU_HOTPLUG_STATUS);
+ }
+ 
+ void acpi_cpu_hotplug_init(MemoryRegion *parent, Object *owner,
+diff --git a/hw/acpi/memory_hotplug.c b/hw/acpi/memory_hotplug.c
+index 34cef1e..2ff0d5c 100644
+--- a/hw/acpi/memory_hotplug.c
++++ b/hw/acpi/memory_hotplug.c
+@@ -241,8 +241,7 @@ void acpi_memory_plug_cb(ACPIREGS *ar, qemu_irq irq, MemHotplugState *mem_st,
+     mdev->is_inserting = true;
+ 
+     /* do ACPI magic */
+-    ar->gpe.sts[0] |= ACPI_MEMORY_HOTPLUG_STATUS;
+-    acpi_update_sci(ar, irq);
++    acpi_send_gpe_event(ar, irq, ACPI_MEMORY_HOTPLUG_STATUS);
+     return;
+ }
+ 
+@@ -260,8 +259,7 @@ void acpi_memory_unplug_request_cb(ACPIREGS *ar, qemu_irq irq,
+     mdev->is_removing = true;
+ 
+     /* Do ACPI magic */
+-    ar->gpe.sts[0] |= ACPI_MEMORY_HOTPLUG_STATUS;
+-    acpi_update_sci(ar, irq);
++    acpi_send_gpe_event(ar, irq, ACPI_MEMORY_HOTPLUG_STATUS);
+ }
+ 
+ void acpi_memory_unplug_cb(MemHotplugState *mem_st,
+diff --git a/hw/acpi/pcihp.c b/hw/acpi/pcihp.c
+index 422603d..36a6801 100644
+--- a/hw/acpi/pcihp.c
++++ b/hw/acpi/pcihp.c
+@@ -45,7 +45,6 @@
+ # define ACPI_PCIHP_DPRINTF(format, ...)     do { } while (0)
+ #endif
+ 
+-#define ACPI_PCI_HOTPLUG_STATUS 2
+ #define ACPI_PCIHP_ADDR 0xae00
+ #define ACPI_PCIHP_SIZE 0x0014
+ #define ACPI_PCIHP_LEGACY_SIZE 0x000f
+@@ -202,8 +201,7 @@ void acpi_pcihp_device_plug_cb(ACPIREGS *ar, qemu_irq irq, AcpiPciHpState *s,
+ 
+     s->acpi_pcihp_pci_status[bsel].up |= (1U << slot);
+ 
+-    ar->gpe.sts[0] |= ACPI_PCI_HOTPLUG_STATUS;
+-    acpi_update_sci(ar, irq);
++    acpi_send_gpe_event(ar, irq, ACPI_PCI_HOTPLUG_STATUS);
+ }
+ 
+ void acpi_pcihp_device_unplug_cb(ACPIREGS *ar, qemu_irq irq, AcpiPciHpState *s,
+@@ -220,8 +218,7 @@ void acpi_pcihp_device_unplug_cb(ACPIREGS *ar, qemu_irq irq, AcpiPciHpState *s,
+ 
+     s->acpi_pcihp_pci_status[bsel].down |= (1U << slot);
+ 
+-    ar->gpe.sts[0] |= ACPI_PCI_HOTPLUG_STATUS;
+-    acpi_update_sci(ar, irq);
++    acpi_send_gpe_event(ar, irq, ACPI_PCI_HOTPLUG_STATUS);
+ }
+ 
+ static uint64_t pci_read(void *opaque, hwaddr addr, unsigned int size)
+diff --git a/include/hw/acpi/acpi.h b/include/hw/acpi/acpi.h
+index b0ce094..b20bd55 100644
+--- a/include/hw/acpi/acpi.h
++++ b/include/hw/acpi/acpi.h
+@@ -91,6 +91,13 @@
+ /* PM2_CNT */
+ #define ACPI_BITMASK_ARB_DISABLE                0x0001
+ 
++/* These values are part of guest ABI, and can not be changed */
++typedef enum {
++    ACPI_PCI_HOTPLUG_STATUS = 2,
++    ACPI_CPU_HOTPLUG_STATUS = 4,
++    ACPI_MEMORY_HOTPLUG_STATUS = 8,
++} AcpiGPEStatusBits;
++
+ /* structs */
+ typedef struct ACPIPMTimer ACPIPMTimer;
+ typedef struct ACPIPM1EVT ACPIPM1EVT;
+@@ -173,6 +180,9 @@ void acpi_gpe_reset(ACPIREGS *ar);
+ void acpi_gpe_ioport_writeb(ACPIREGS *ar, uint32_t addr, uint32_t val);
+ uint32_t acpi_gpe_ioport_readb(ACPIREGS *ar, uint32_t addr);
+ 
++void acpi_send_gpe_event(ACPIREGS *ar, qemu_irq irq,
++                         AcpiGPEStatusBits status);
++
+ void acpi_update_sci(ACPIREGS *acpi_regs, qemu_irq irq);
+ 
+ /* acpi.c */
+diff --git a/include/hw/acpi/memory_hotplug.h b/include/hw/acpi/memory_hotplug.h
+index 986223b..1342adb 100644
+--- a/include/hw/acpi/memory_hotplug.h
++++ b/include/hw/acpi/memory_hotplug.h
+@@ -5,8 +5,6 @@
+ #include "hw/acpi/acpi.h"
+ #include "migration/vmstate.h"
+ 
+-#define ACPI_MEMORY_HOTPLUG_STATUS 8
+-
+ /**
+  * MemStatus:
+  * @is_removing: the memory device in slot has been requested to be ejected.
+diff --git a/include/hw/acpi/pc-hotplug.h b/include/hw/acpi/pc-hotplug.h
+index 0513c1c..77b1569 100644
+--- a/include/hw/acpi/pc-hotplug.h
++++ b/include/hw/acpi/pc-hotplug.h
+@@ -16,7 +16,6 @@
+  * ONLY DEFINEs are permited in this file since it's shared
+  * between C and ASL code.
+  */
+-#define ACPI_CPU_HOTPLUG_STATUS 4
+ 
+ /* Limit for CPU arch IDs for CPU hotplug. All hotpluggable CPUs should
+  * have CPUClass.get_arch_id() < ACPI_CPU_HOTPLUG_ID_LIMIT.
+-- 
+1.8.3.1
+

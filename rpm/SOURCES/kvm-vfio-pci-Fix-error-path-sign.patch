@@ -1,0 +1,47 @@
+From 6d8a5069b61de64aaeef016ddabde71e42e8ae63 Mon Sep 17 00:00:00 2001
+From: Alex Williamson <alex.williamson@redhat.com>
+Date: Mon, 22 Jun 2015 16:42:46 +0200
+Subject: [PATCH 1/5] vfio-pci: Fix error path sign
+
+Message-id: <20150622164246.23137.52840.stgit@gimli.home>
+Patchwork-id: 66349
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 1/2] vfio-pci: Fix error path sign
+Bugzilla: 1219090
+RH-Acked-by: Bandan Das <bsd@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+This is an impossible error path due to the fact that we're reading a
+kernel provided, rather than user provided link, which will certainly
+always fit in PATH_MAX.  Currently it returns a fixed 26 char path
+plus %d group number, which typically maxes out at double digits.
+However, the caller of the initfn certainly expects a less-than zero
+return value on error, not just a non-zero value.  Therefore we
+should correct the sign here.
+
+Upstream: c6d231e2fd3773ef9a566ca24962f2314cb78f73
+
+Reported-by: Laszlo Ersek <lersek@redhat.com>
+Reviewed-by: Laszlo Ersek <lersek@redhat.com>
+Signed-off-by: Alex Williamson <alex.williamson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/vfio/pci.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/vfio/pci.c b/hw/vfio/pci.c
+index 62fcb3d..3df2bbe 100644
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -3365,7 +3365,7 @@ static int vfio_initfn(PCIDevice *pdev)
+     len = readlink(path, iommu_group_path, sizeof(path));
+     if (len <= 0 || len >= sizeof(path)) {
+         error_report("vfio: error no iommu_group for device");
+-        return len < 0 ? -errno : ENAMETOOLONG;
++        return len < 0 ? -errno : -ENAMETOOLONG;
+     }
+ 
+     iommu_group_path[len] = 0;
+-- 
+1.8.3.1
+

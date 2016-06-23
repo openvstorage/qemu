@@ -330,6 +330,7 @@ glusterfs=""
 glusterfs_discard="no"
 glusterfs_zerofill="no"
 archipelago="no"
+openvstorage="no"
 gtk=""
 gtkabi=""
 gtk_gl="no"
@@ -1112,6 +1113,10 @@ for opt do
   ;;
   --enable-archipelago) archipelago="yes"
   ;;
+  --disable-openvstorage) openvstorage="no"
+  ;;
+  --enable-openvstorage) openvstorage="yes"
+  ;;
   --disable-virtio-blk-data-plane|--enable-virtio-blk-data-plane)
       echo "$0: $opt is obsolete, virtio-blk data-plane is always on" >&2
   ;;
@@ -1318,6 +1323,14 @@ Advanced options (experts only):
   --cpu=CPU                Build for host CPU [$cpu]
   --with-coroutine=BACKEND coroutine backend. Supported options:
                            gthread, ucontext, sigaltstack, windows
+  --disable-coroutine-pool disable coroutine freelist (worse performance)
+  --enable-coroutine-pool  enable coroutine freelist (better performance)
+  --enable-glusterfs       enable GlusterFS backend
+  --disable-glusterfs      disable GlusterFS backend
+  --enable-archipelago     enable Archipelago backend
+  --disable-archipelago    disable Archipelago backend
+  --enable-openvstorage    enable OpenvStorage backend
+  --disable-openvstorage   disable OpenvStorage backend
   --enable-gcov            enable test coverage analysis with gcov
   --gcov=GCOV              use specified gcov [$gcov_tool]
   --disable-blobs          disable installing provided firmware blobs
@@ -3396,6 +3409,30 @@ EOF
     fi
 fi
 
+##########################################
+# openvstorage probe
+if test "$openvstorage" != "no" ; then
+    cat > $TMPC <<EOF
+#include <stdio.h>
+#include <openvstorage/volumedriver.h>
+int main(void) {
+return sizeof(struct ovs_aiocb);
+}
+EOF
+    openvstorage_libs="-lovsvolumedriver -L/usr/lib/openvstorage"
+    if compile_prog "" "$openvstorage_libs"; then
+        openvstorage="yes"
+        libs_tools="$openvstorage_libs $libs_tools"
+        libs_softmmu="$openvstorage_libs $libs_softmmu"
+
+	echo "To disable OpenvStorage, use --disable-openvstorage"
+    else
+      if test "$openvstorage" = "yes" ; then
+        feature_not_found "OpenvStorage backend support" "Install volumedriver devel"
+      fi
+      openvstorage="no"
+    fi
+fi
 
 ##########################################
 # glusterfs probe
@@ -4830,6 +4867,7 @@ echo "coroutine backend $coroutine"
 echo "coroutine pool    $coroutine_pool"
 echo "GlusterFS support $glusterfs"
 echo "Archipelago support $archipelago"
+echo "OpenvStorage support $openvstorage"
 echo "gcov              $gcov_tool"
 echo "gcov enabled      $gcov"
 echo "TPM support       $tpm"
@@ -5324,6 +5362,11 @@ fi
 if test "$archipelago" = "yes" ; then
   echo "CONFIG_ARCHIPELAGO=m" >> $config_host_mak
   echo "ARCHIPELAGO_LIBS=$archipelago_libs" >> $config_host_mak
+fi
+
+if test "$openvstorage" = "yes" ; then
+  echo "CONFIG_OPENVSTORAGE=m" >> $config_host_mak
+  echo "OPENVSTORAGE_LIBS=$openvstorage_libs" >> $config_host_mak
 fi
 
 if test "$libssh2" = "yes" ; then

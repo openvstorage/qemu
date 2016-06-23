@@ -1,0 +1,117 @@
+From 98990c667978ff0aa887498b98bd71edd87b2c41 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 3 Jul 2015 04:56:16 +0200
+Subject: [PATCH 019/100] pseries: Enable in-kernel H_LOGICAL_CI_{LOAD, STORE}
+ implementations
+
+Message-id: <1435899376-15918-1-git-send-email-dgibson@redhat.com>
+Patchwork-id: 66618
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH] pseries: Enable in-kernel H_LOGICAL_CI_{LOAD, STORE} implementations
+Bugzilla: 1217277
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+qemu currently implements the hypercalls H_LOGICAL_CI_LOAD and
+H_LOGICAL_CI_STORE as PAPR extensions.  These are used by the SLOF firmware
+for IO, because performing cache inhibited MMIO accesses with the MMU off
+(real mode) is very awkward on POWER.
+
+This approach breaks when SLOF needs to access IO devices implemented
+within KVM instead of in qemu.  The simplest example would be virtio-blk
+using an iothread, because the iothread / dataplane mechanism relies on
+an in-kernel implementation of the virtio queue notification MMIO.
+
+To fix this, an in-kernel implementation of these hypercalls has been made,
+(kernel commit 99342cf "kvmppc: Implement H_LOGICAL_CI_{LOAD,STORE} in KVM"
+however, the hypercalls still need to be enabled from qemu.  This performs
+the necessary calls to do so.
+
+It would be nice to provide some warning if we encounter a problematic
+device with a kernel which doesn't support the new calls.  Unfortunately,
+I can't see a way to detect this case which won't either warn in far too
+many cases that will probably work, or which is horribly invasive.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit 026bfd89cb896c8a3460cc551cc4836219bd7ff9)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c       |  5 +++++
+ target-ppc/kvm.c     | 17 +++++++++++++++++
+ target-ppc/kvm_ppc.h |  5 +++++
+ 3 files changed, 27 insertions(+)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index 41930d8..21bb6da 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1506,6 +1506,11 @@ static void ppc_spapr_init(MachineState *machine)
+         qemu_register_reset(spapr_cpu_reset, cpu);
+     }
+ 
++    if (kvm_enabled()) {
++        /* Enable H_LOGICAL_CI_* so SLOF can talk to in-kernel devices */
++        kvmppc_enable_logical_ci_hcalls();
++    }
++
+     /* allocate RAM */
+     spapr->ram_limit = ram_size;
+     memory_region_allocate_system_memory(ram, NULL, "ppc_spapr.ram",
+diff --git a/target-ppc/kvm.c b/target-ppc/kvm.c
+index 12328a4..16f62b5 100644
+--- a/target-ppc/kvm.c
++++ b/target-ppc/kvm.c
+@@ -1882,6 +1882,23 @@ int kvmppc_get_hypercall(CPUPPCState *env, uint8_t *buf, int buf_len)
+     return 0;
+ }
+ 
++static inline int kvmppc_enable_hcall(KVMState *s, target_ulong hcall)
++{
++    return kvm_vm_enable_cap(s, KVM_CAP_PPC_ENABLE_HCALL, 0, hcall, 1);
++}
++
++void kvmppc_enable_logical_ci_hcalls(void)
++{
++    /*
++     * FIXME: it would be nice if we could detect the cases where
++     * we're using a device which requires the in kernel
++     * implementation of these hcalls, but the kernel lacks them and
++     * produce a warning.
++     */
++    kvmppc_enable_hcall(kvm_state, H_LOGICAL_CI_LOAD);
++    kvmppc_enable_hcall(kvm_state, H_LOGICAL_CI_STORE);
++}
++
+ void kvmppc_set_papr(PowerPCCPU *cpu)
+ {
+     CPUState *cs = CPU(cpu);
+diff --git a/target-ppc/kvm_ppc.h b/target-ppc/kvm_ppc.h
+index 2e0224c..4d30e27 100644
+--- a/target-ppc/kvm_ppc.h
++++ b/target-ppc/kvm_ppc.h
+@@ -24,6 +24,7 @@ bool kvmppc_get_host_serial(char **buf);
+ int kvmppc_get_hasidle(CPUPPCState *env);
+ int kvmppc_get_hypercall(CPUPPCState *env, uint8_t *buf, int buf_len);
+ int kvmppc_set_interrupt(PowerPCCPU *cpu, int irq, int level);
++void kvmppc_enable_logical_ci_hcalls(void);
+ void kvmppc_set_papr(PowerPCCPU *cpu);
+ int kvmppc_set_compat(PowerPCCPU *cpu, uint32_t cpu_version);
+ void kvmppc_set_mpic_proxy(PowerPCCPU *cpu, int mpic_proxy);
+@@ -107,6 +108,10 @@ static inline int kvmppc_set_interrupt(PowerPCCPU *cpu, int irq, int level)
+     return -1;
+ }
+ 
++static inline void kvmppc_enable_logical_ci_hcalls(void)
++{
++}
++
+ static inline void kvmppc_set_papr(PowerPCCPU *cpu)
+ {
+ }
+-- 
+1.8.3.1
+

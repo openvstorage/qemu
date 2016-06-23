@@ -1,0 +1,189 @@
+From 78e69f3d42e6d61e5eb11ef76c134991679d523f Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Fri, 24 Jul 2015 05:25:53 +0200
+Subject: [PATCH 31/58] pc,pc-dimm: Extract hotplug related fields in
+ PCMachineState to a structure
+
+Message-id: <1437715580-14817-2-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67118
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv3 01/28] pc, pc-dimm: Extract hotplug related fields in PCMachineState to a structure
+Bugzilla: 1211117
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Move hotplug_memory_base and hotplug_memory fields of PCMachineState
+into a separate structure so that the same can be made use of from
+other architectures supporing memory hotplug.
+
+Signed-off-by: Bharata B Rao <bharata@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Tested-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+(cherry picked from commit a7d69ff10b085ba6f8236600829532984cdea714)
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c     |  2 +-
+ hw/i386/pc.c             | 26 +++++++++++++-------------
+ include/hw/i386/pc.h     |  7 ++-----
+ include/hw/mem/pc-dimm.h | 11 +++++++++++
+ 4 files changed, 27 insertions(+), 19 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index 3bf7d4d..efacd78 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -1490,7 +1490,7 @@ build_srat(GArray *table_data, GArray *linker, PcGuestInfo *guest_info)
+      */
+     if (hotplugabble_address_space_size) {
+         numamem = acpi_data_push(table_data, sizeof *numamem);
+-        acpi_build_srat_memory(numamem, pcms->hotplug_memory_base,
++        acpi_build_srat_memory(numamem, pcms->hotplug_memory.base,
+                                hotplugabble_address_space_size, 0,
+                                MEM_AFFINITY_HOTPLUGGABLE |
+                                MEM_AFFINITY_ENABLED);
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index f87ffe4..00e71c6 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1374,7 +1374,7 @@ FWCfgState *pc_memory_init(MachineState *machine,
+             exit(EXIT_FAILURE);
+         }
+ 
+-        pcms->hotplug_memory_base =
++        pcms->hotplug_memory.base =
+             ROUND_UP(0x100000000ULL + above_4g_mem_size, 1ULL << 30);
+ 
+         if (pcms->enforce_aligned_dimm) {
+@@ -1382,17 +1382,17 @@ FWCfgState *pc_memory_init(MachineState *machine,
+             hotplug_mem_size += (1ULL << 30) * machine->ram_slots;
+         }
+ 
+-        if ((pcms->hotplug_memory_base + hotplug_mem_size) <
++        if ((pcms->hotplug_memory.base + hotplug_mem_size) <
+             hotplug_mem_size) {
+             error_report("unsupported amount of maximum memory: " RAM_ADDR_FMT,
+                          machine->maxram_size);
+             exit(EXIT_FAILURE);
+         }
+ 
+-        memory_region_init(&pcms->hotplug_memory, OBJECT(pcms),
++        memory_region_init(&pcms->hotplug_memory.mr, OBJECT(pcms),
+                            "hotplug-memory", hotplug_mem_size);
+-        memory_region_add_subregion(system_memory, pcms->hotplug_memory_base,
+-                                    &pcms->hotplug_memory);
++        memory_region_add_subregion(system_memory, pcms->hotplug_memory.base,
++                                    &pcms->hotplug_memory.mr);
+     }
+ 
+     /* Initialize PC system firmware */
+@@ -1410,9 +1410,9 @@ FWCfgState *pc_memory_init(MachineState *machine,
+     fw_cfg = bochs_bios_init();
+     rom_set_fw(fw_cfg);
+ 
+-    if (guest_info->has_reserved_memory && pcms->hotplug_memory_base) {
++    if (guest_info->has_reserved_memory && pcms->hotplug_memory.base) {
+         uint64_t *val = g_malloc(sizeof(*val));
+-        *val = cpu_to_le64(ROUND_UP(pcms->hotplug_memory_base, 0x1ULL << 30));
++        *val = cpu_to_le64(ROUND_UP(pcms->hotplug_memory.base, 0x1ULL << 30));
+         fw_cfg_add_file(fw_cfg, "etc/reserved-memory-end", val, sizeof(*val));
+     }
+ 
+@@ -1699,8 +1699,8 @@ static void pc_dimm_plug(HotplugHandler *hotplug_dev,
+         align = memory_region_get_alignment(mr);
+     }
+ 
+-    addr = pc_dimm_get_free_addr(pcms->hotplug_memory_base,
+-                                 memory_region_size(&pcms->hotplug_memory),
++    addr = pc_dimm_get_free_addr(pcms->hotplug_memory.base,
++                                 memory_region_size(&pcms->hotplug_memory.mr),
+                                  !addr ? NULL : &addr, align,
+                                  memory_region_size(mr), &local_err);
+     if (local_err) {
+@@ -1754,8 +1754,8 @@ static void pc_dimm_plug(HotplugHandler *hotplug_dev,
+         goto out;
+     }
+ 
+-    memory_region_add_subregion(&pcms->hotplug_memory,
+-                                addr - pcms->hotplug_memory_base, mr);
++    memory_region_add_subregion(&pcms->hotplug_memory.mr,
++                                addr - pcms->hotplug_memory.base, mr);
+     vmstate_register_ram(mr, dev);
+ 
+     hhc = HOTPLUG_HANDLER_GET_CLASS(pcms->acpi_dev);
+@@ -1801,7 +1801,7 @@ static void pc_dimm_unplug(HotplugHandler *hotplug_dev,
+         goto out;
+     }
+ 
+-    memory_region_del_subregion(&pcms->hotplug_memory, mr);
++    memory_region_del_subregion(&pcms->hotplug_memory.mr, mr);
+     vmstate_unregister_ram(mr, dev);
+ 
+     object_unparent(OBJECT(dev));
+@@ -1890,7 +1890,7 @@ pc_machine_get_hotplug_memory_region_size(Object *obj, Visitor *v, void *opaque,
+                                           const char *name, Error **errp)
+ {
+     PCMachineState *pcms = PC_MACHINE(obj);
+-    int64_t value = memory_region_size(&pcms->hotplug_memory);
++    int64_t value = memory_region_size(&pcms->hotplug_memory.mr);
+ 
+     visit_type_int(v, &value, name, errp);
+ }
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index 025a85c..f9129a0 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -15,14 +15,12 @@
+ #include "hw/pci/pci.h"
+ #include "hw/boards.h"
+ #include "hw/compat.h"
++#include "hw/mem/pc-dimm.h"
+ 
+ #define HPET_INTCAP "hpet-intcap"
+ 
+ /**
+  * PCMachineState:
+- * @hotplug_memory_base: address in guest RAM address space where hotplug memory
+- * address space begins.
+- * @hotplug_memory: hotplug memory addess space container
+  * @acpi_dev: link to ACPI PM device that performs ACPI hotplug handling
+  * @enforce_aligned_dimm: check that DIMM's address/size is aligned by
+  *                        backend's alignment value if provided
+@@ -32,8 +30,7 @@ struct PCMachineState {
+     MachineState parent_obj;
+ 
+     /* <public> */
+-    ram_addr_t hotplug_memory_base;
+-    MemoryRegion hotplug_memory;
++    MemoryHotplugState hotplug_memory;
+ 
+     HotplugHandler *acpi_dev;
+     ISADevice *rtc;
+diff --git a/include/hw/mem/pc-dimm.h b/include/hw/mem/pc-dimm.h
+index f7b80b4..4bace7b 100644
+--- a/include/hw/mem/pc-dimm.h
++++ b/include/hw/mem/pc-dimm.h
+@@ -70,6 +70,17 @@ typedef struct PCDIMMDeviceClass {
+     MemoryRegion *(*get_memory_region)(PCDIMMDevice *dimm);
+ } PCDIMMDeviceClass;
+ 
++/**
++ * MemoryHotplugState:
++ * @base: address in guest RAM address space where hotplug memory
++ * address space begins.
++ * @mr: hotplug memory address space container
++ */
++typedef struct MemoryHotplugState {
++    ram_addr_t base;
++    MemoryRegion mr;
++} MemoryHotplugState;
++
+ uint64_t pc_dimm_get_free_addr(uint64_t address_space_start,
+                                uint64_t address_space_size,
+                                uint64_t *hint, uint64_t align, uint64_t size,
+-- 
+1.8.3.1
+

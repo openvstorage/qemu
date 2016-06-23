@@ -1,0 +1,103 @@
+From 1d0b68971637a4970baed5f3a6bf51c1335ee1e8 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:42:01 +0200
+Subject: [PATCH 21/58] Rework ram block hash
+
+Message-id: <1436794926-1598-13-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66981
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 12/17] Rework ram block hash
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+RDMA uses a hash from block offset->RAM Block; this isn't needed
+on the destination, and it becomes harder to maintain after the next
+patch in the series that sorts the block list.
+
+Split the hash so that it's only generated on the source.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 760ff4bebc86d08b252809e0da7261c986d022ff)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/rdma.c | 32 ++++++++++++++++++++------------
+ 1 file changed, 20 insertions(+), 12 deletions(-)
+
+diff --git a/migration/rdma.c b/migration/rdma.c
+index 9784d64..404f539 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -533,23 +533,22 @@ static int rdma_add_block(RDMAContext *rdma, const char *block_name,
+                          ram_addr_t block_offset, uint64_t length)
+ {
+     RDMALocalBlocks *local = &rdma->local_ram_blocks;
+-    RDMALocalBlock *block = g_hash_table_lookup(rdma->blockmap,
+-        (void *)(uintptr_t)block_offset);
++    RDMALocalBlock *block;
+     RDMALocalBlock *old = local->block;
+ 
+-    assert(block == NULL);
+-
+     local->block = g_malloc0(sizeof(RDMALocalBlock) * (local->nb_blocks + 1));
+ 
+     if (local->nb_blocks) {
+         int x;
+ 
+-        for (x = 0; x < local->nb_blocks; x++) {
+-            g_hash_table_remove(rdma->blockmap,
+-                                (void *)(uintptr_t)old[x].offset);
+-            g_hash_table_insert(rdma->blockmap,
+-                                (void *)(uintptr_t)old[x].offset,
+-                                &local->block[x]);
++        if (rdma->blockmap) {
++            for (x = 0; x < local->nb_blocks; x++) {
++                g_hash_table_remove(rdma->blockmap,
++                                    (void *)(uintptr_t)old[x].offset);
++                g_hash_table_insert(rdma->blockmap,
++                                    (void *)(uintptr_t)old[x].offset,
++                                    &local->block[x]);
++            }
+         }
+         memcpy(local->block, old, sizeof(RDMALocalBlock) * local->nb_blocks);
+         g_free(old);
+@@ -571,7 +570,9 @@ static int rdma_add_block(RDMAContext *rdma, const char *block_name,
+ 
+     block->is_ram_block = local->init ? false : true;
+ 
+-    g_hash_table_insert(rdma->blockmap, (void *) block_offset, block);
++    if (rdma->blockmap) {
++        g_hash_table_insert(rdma->blockmap, (void *) block_offset, block);
++    }
+ 
+     trace_rdma_add_block(block_name, local->nb_blocks,
+                          (uintptr_t) block->local_host_addr,
+@@ -607,7 +608,6 @@ static int qemu_rdma_init_ram_blocks(RDMAContext *rdma)
+     RDMALocalBlocks *local = &rdma->local_ram_blocks;
+ 
+     assert(rdma->blockmap == NULL);
+-    rdma->blockmap = g_hash_table_new(g_direct_hash, g_direct_equal);
+     memset(local, 0, sizeof *local);
+     qemu_ram_foreach_block(qemu_rdma_init_one_block, rdma);
+     trace_qemu_rdma_init_ram_blocks(local->nb_blocks);
+@@ -2299,6 +2299,14 @@ static int qemu_rdma_source_init(RDMAContext *rdma, Error **errp, bool pin_all)
+         goto err_rdma_source_init;
+     }
+ 
++    /* Build the hash that maps from offset to RAMBlock */
++    rdma->blockmap = g_hash_table_new(g_direct_hash, g_direct_equal);
++    for (idx = 0; idx < rdma->local_ram_blocks.nb_blocks; idx++) {
++        g_hash_table_insert(rdma->blockmap,
++                (void *)(uintptr_t)rdma->local_ram_blocks.block[idx].offset,
++                &rdma->local_ram_blocks.block[idx]);
++    }
++
+     for (idx = 0; idx < RDMA_WRID_MAX; idx++) {
+         ret = qemu_rdma_reg_control(rdma, idx);
+         if (ret) {
+-- 
+1.8.3.1
+

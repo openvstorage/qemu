@@ -1,0 +1,103 @@
+From 8c6889d2975e8060462f2cbfcbadf9a83bd87e2f Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:46 +0200
+Subject: [PATCH 072/100] virtio-pci: correctly set host notifiers for modern
+ bar
+
+Message-id: <1436260751-25015-44-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66818
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 43/68] virtio-pci: correctly set host notifiers for modern bar
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+Currently, during host notifier set. We only add eventfd for legacy
+bar, this is not correct since:
+
+- Non-transitional device does not have legacy bar, so qemu will crash
+  since proxy->bar was not initialized.
+- Modern device uses modern bar and notify cap to notify the device,
+  we should add eventfd for proxy->notify.
+
+So this patch fixes the above two issues by adding eventfd based on
+whether legacy or modern device were supported.
+
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 975acc0ae6d60260859884a9235ae3c62e2969a2)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 31 +++++++++++++++++++++++++------
+ 1 file changed, 25 insertions(+), 6 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 4d80716..9677ec2 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -135,12 +135,21 @@ static int virtio_pci_load_queue(DeviceState *d, int n, QEMUFile *f)
+     return 0;
+ }
+ 
++#define QEMU_VIRTIO_PCI_QUEUE_MEM_MULT 0x1000
++
+ static int virtio_pci_set_host_notifier_internal(VirtIOPCIProxy *proxy,
+                                                  int n, bool assign, bool set_handler)
+ {
+     VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
+     VirtQueue *vq = virtio_get_queue(vdev, n);
+     EventNotifier *notifier = virtio_queue_get_host_notifier(vq);
++    bool legacy = !(proxy->flags & VIRTIO_PCI_FLAG_DISABLE_LEGACY);
++    bool modern = !(proxy->flags & VIRTIO_PCI_FLAG_DISABLE_MODERN);
++    MemoryRegion *modern_mr = &proxy->notify;
++    MemoryRegion *legacy_mr = &proxy->bar;
++    hwaddr modern_addr = QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
++                         virtio_get_queue_index(vq);
++    hwaddr legacy_addr = VIRTIO_PCI_QUEUE_NOTIFY;
+     int r = 0;
+ 
+     if (assign) {
+@@ -151,11 +160,23 @@ static int virtio_pci_set_host_notifier_internal(VirtIOPCIProxy *proxy,
+             return r;
+         }
+         virtio_queue_set_host_notifier_fd_handler(vq, true, set_handler);
+-        memory_region_add_eventfd(&proxy->bar, VIRTIO_PCI_QUEUE_NOTIFY, 2,
+-                                  true, n, notifier);
++        if (modern) {
++            memory_region_add_eventfd(modern_mr, modern_addr, 2,
++                                      true, n, notifier);
++        }
++        if (legacy) {
++            memory_region_add_eventfd(legacy_mr, legacy_addr, 2,
++                                      true, n, notifier);
++        }
+     } else {
+-        memory_region_del_eventfd(&proxy->bar, VIRTIO_PCI_QUEUE_NOTIFY, 2,
+-                                  true, n, notifier);
++        if (modern) {
++            memory_region_del_eventfd(modern_mr, modern_addr, 2,
++                                      true, n, notifier);
++        }
++        if (legacy) {
++            memory_region_del_eventfd(legacy_mr, legacy_addr, 2,
++                                      true, n, notifier);
++        }
+         virtio_queue_set_host_notifier_fd_handler(vq, false, false);
+         event_notifier_cleanup(notifier);
+     }
+@@ -934,8 +955,6 @@ static void virtio_pci_add_mem_cap(VirtIOPCIProxy *proxy,
+            cap->cap_len - PCI_CAP_FLAGS);
+ }
+ 
+-#define QEMU_VIRTIO_PCI_QUEUE_MEM_MULT 0x1000
+-
+ static uint64_t virtio_pci_common_read(void *opaque, hwaddr addr,
+                                        unsigned size)
+ {
+-- 
+1.8.3.1
+

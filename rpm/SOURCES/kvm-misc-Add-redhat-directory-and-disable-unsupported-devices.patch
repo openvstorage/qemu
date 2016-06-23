@@ -1,0 +1,196 @@
+--- /dev/null
++++ b/.gitpublish
+@@ -0,0 +1,17 @@
++# The default profile, rhev
++[gitpublishprofile "rhev"]
++base = rhev7/master-2.2.0
++prefix = RHEV-7.2 qemu-kvm-rhev PATCH
++to = rhvirt-patches@redhat.com
++suppresscc = all
++message = True
++
++# Special project, Acadia, for aarm64 architecture.
++[gitpublishprofile "acadia"]
++base = rhev7/master-2.2.0
++prefix = RHELSA qemu-kvm-rhev PATCH
++to = rhvirt-patches@redhat.com
++cc = virt-arm@redhat.com
++suppresscc = all
++message = True
++
+--- a/Makefile
++++ b/Makefile
+@@ -366,7 +366,7 @@ install-doc: $(DOCS)
+ 	$(INSTALL_DATA) qmp-commands.txt "$(DESTDIR)$(qemu_docdir)"
+ ifdef CONFIG_POSIX
+ 	$(INSTALL_DIR) "$(DESTDIR)$(mandir)/man1"
+-	$(INSTALL_DATA) qemu.1 "$(DESTDIR)$(mandir)/man1"
++	$(INSTALL_DATA) qemu.1 "$(DESTDIR)$(mandir)/man1/qemu-kvm.1"
+ ifneq ($(TOOLS),)
+ 	$(INSTALL_DATA) qemu-img.1 "$(DESTDIR)$(mandir)/man1"
+ 	$(INSTALL_DIR) "$(DESTDIR)$(mandir)/man8"
+--- a/configure
++++ b/configure
+@@ -335,8 +335,10 @@ tpm="yes"
+ libssh2=""
+ vhdx=""
+ quorum=""
++live_block_migration="no"
+ numa=""
+ 
++
+ # parse CC options first
+ for opt do
+   optarg=`expr "x$opt" : 'x[^=]*=\(.*\)'`
+@@ -1134,6 +1136,10 @@ for opt do
+   ;;
+   --enable-numa) numa="yes"
+   ;;
++  --disable-live-block-migration) live_block_migration="no"
++  ;;
++  --enable-live-block-migration) live_block_migration="yes"
++  ;;
+   *)
+       echo "ERROR: unknown option $opt"
+       echo "Try '$0 --help' for more information"
+@@ -1405,6 +1411,8 @@ Advanced options (experts only):
+   --enable-vhdx            enable support for the Microsoft VHDX image format
+   --disable-quorum         disable quorum block filter support
+   --enable-quorum          enable quorum block filter support
++  --disable-live-block-migration disable live block migration
++  --enable-live-block-migration  enable live block migration
+   --disable-numa           disable libnuma support
+   --enable-numa            enable libnuma support
+ 
+@@ -4440,6 +4448,7 @@ echo "Quorum            $quorum"
+ echo "lzo support       $lzo"
+ echo "snappy support    $snappy"
+ echo "bzip2 support     $bzip2"
++echo "Live block migration $live_block_migration"
+ echo "NUMA host support $numa"
+ 
+ if test "$sdl_too_old" = "yes"; then
+@@ -4907,6 +4916,10 @@ if test "$vhdx" = "yes" ; then
+   echo "CONFIG_VHDX=y" >> $config_host_mak
+ fi
+ 
++if test "$live_block_migration" = "yes" ; then
++  echo "CONFIG_LIVE_BLOCK_MIGRATION=y" >> $config_host_mak
++fi
++
+ # USB host support
+ if test "$libusb" = "yes"; then
+   echo "HOST_USB=libusb legacy" >> $config_host_mak
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -455,6 +455,13 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
+     params.blk = has_blk && blk;
+     params.shared = has_inc && inc;
+ 
++#ifndef CONFIG_LIVE_BLOCK_MIGRATION
++    if (params.blk || params.shared) {
++        error_set(errp, QERR_UNSUPPORTED);
++        return;
++    }
++#endif
++
+     if (s->state == MIGRATION_STATUS_ACTIVE ||
+         s->state == MIGRATION_STATUS_SETUP ||
+         s->state == MIGRATION_STATUS_CANCELLING) {
+--- a/os-posix.c
++++ b/os-posix.c
+@@ -79,7 +79,7 @@ void os_setup_signal_handling(void)
+ /* Find a likely location for support files using the location of the binary.
+    For installed binaries this will be "$bindir/../share/qemu".  When
+    running from the build tree this will be "$bindir/../pc-bios".  */
+-#define SHARE_SUFFIX "/share/qemu"
++#define SHARE_SUFFIX "/share/qemu-kvm"
+ #define BUILD_SUFFIX "/pc-bios"
+ char *os_find_datadir(void)
+ {
+--- a/scripts/qemu-guest-agent/fsfreeze-hook
++++ b/scripts/qemu-guest-agent/fsfreeze-hook
+@@ -1,4 +1,4 @@
+-#!/bin/sh
++#!/bin/bash
+ 
+ # This script is executed when a guest agent receives fsfreeze-freeze and
+ # fsfreeze-thaw command, if it is specified in --fsfreeze-hook (-F)
+@@ -7,8 +7,7 @@
+ # "freeze" argument before the filesystem is frozen. And for fsfreeze-thaw
+ # request, it is issued with "thaw" argument after filesystem is thawed.
+ 
+-LOGFILE=/var/log/qga-fsfreeze-hook.log
+-FSFREEZE_D=$(dirname -- "$0")/fsfreeze-hook.d
++LOGFILE=/var/log/qemu-ga/fsfreeze-hook.log
+ 
+ # Check whether file $1 is a backup or rpm-generated file and should be ignored
+ is_ignored_file() {
+@@ -19,15 +18,26 @@ is_ignored_file() {
+     return 1
+ }
+ 
+-# Iterate executables in directory "fsfreeze-hook.d" with the specified args
+-[ ! -d "$FSFREEZE_D" ] && exit 0
+-for file in "$FSFREEZE_D"/* ; do
+-    is_ignored_file "$file" && continue
+-    [ -x "$file" ] || continue
+-    printf "$(date): execute $file $@\n" >>$LOGFILE
+-    "$file" "$@" >>$LOGFILE 2>&1
++shopt -s nullglob
++RELPATH=qemu-ga/fsfreeze-hook.d
++
++for DIR in lib etc run; do
++  for FILE in /"$DIR/$RELPATH"/*; do
++    if is_ignored_file "$FILE" || ! [ -x "$FILE" ]; then
++      continue
++    fi
++    BNAME=$(basename -- "$FILE")
++    if ( [ lib = "$DIR" ] && ( [ -e /etc/"$RELPATH/$BNAME" ] ||
++                               [ -e /run/"$RELPATH/$BNAME" ] ) ) ||
++       ( [ etc = "$DIR" ] && ( [ -e /run/"$RELPATH/$BNAME" ] ) ); then
++      continue
++    fi
++
++    printf "$(date): execute $FILE $@\n" >>$LOGFILE
++    "$FILE" "$@" >>$LOGFILE 2>&1
+     STATUS=$?
+-    printf "$(date): $file finished with status=$STATUS\n" >>$LOGFILE
++    printf "$(date): $FILE finished with status=$STATUS\n" >>$LOGFILE
++  done
+ done
+ 
+ exit 0
+--- a/stubs/Makefile.objs
++++ b/stubs/Makefile.objs
+@@ -39,3 +39,4 @@ stub-obj-$(CONFIG_WIN32) += fd-register.o
+ stub-obj-y += cpus.o
+ stub-obj-y += kvm.o
+ stub-obj-y += qmp_pc_dimm_device_list.o
++stub-obj-y += ide-isa.o
+--- /dev/null
++++ b/stubs/ide-isa.c
+@@ -0,0 +1,12 @@
++#include <hw/ide.h>
++#include <stdlib.h>
++
++ISADevice *isa_ide_init(ISABus *bus, int iobase, int iobase2, int isairq,
++                        DriveInfo *hd0, DriveInfo *hd1)
++{
++    /*
++     * In theory the real isa_ide_init() function can return NULL, but no
++     * caller actually checks for that. Make sure we go out with a clear bang.
++     */
++    abort();
++}
+--- a/ui/vnc.c
++++ b/ui/vnc.c
+@@ -3630,7 +3630,7 @@ void vnc_display_open(const char *id, Error **errp)
+     vnc_display_setup_auth(vs, password, sasl, tls, x509, websocket);
+ 
+ #ifdef CONFIG_VNC_SASL
+-    if ((saslErr = sasl_server_init(NULL, "qemu")) != SASL_OK) {
++    if ((saslErr = sasl_server_init(NULL, "qemu-kvm")) != SASL_OK) {
+         error_setg(errp, "Failed to initialize SASL auth: %s",
+                    sasl_errstring(saslErr, NULL, NULL));
+         goto fail;

@@ -1,0 +1,61 @@
+From b444d5f65ee664643f742c5e70f03d92c7bb28a0 Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:17 +0200
+Subject: [PATCH 09/31] acpi: add aml_increment() term
+
+Message-id: <1435154016-26233-25-git-send-email-marcel@redhat.com>
+Patchwork-id: 66451
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 24/43] acpi: add aml_increment() term
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Add encoding for ACPI DefIncrement Opcode.
+
+Reviewed-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit af39d5363f373e6c1168a0e84658d6e4ef57fa8c)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 8 ++++++++
+ include/hw/acpi/aml-build.h | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 57e6cf4..2bebf23 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -495,6 +495,14 @@ Aml *aml_add(Aml *arg1, Aml *arg2)
+     return var;
+ }
+ 
++/* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefIncrement */
++Aml *aml_increment(Aml *arg)
++{
++    Aml *var = aml_opcode(0x75 /* IncrementOp */);
++    aml_append(var, arg);
++    return var;
++}
++
+ /* ACPI 1.0b: 16.2.5.4 Type 2 Opcodes Encoding: DefIndex */
+ Aml *aml_index(Aml *arg1, Aml *idx)
+ {
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 9abb4c3..1a891a2 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -206,6 +206,7 @@ Aml *aml_shiftleft(Aml *arg1, Aml *count);
+ Aml *aml_shiftright(Aml *arg1, Aml *count);
+ Aml *aml_lless(Aml *arg1, Aml *arg2);
+ Aml *aml_add(Aml *arg1, Aml *arg2);
++Aml *aml_increment(Aml *arg);
+ Aml *aml_index(Aml *arg1, Aml *idx);
+ Aml *aml_notify(Aml *arg1, Aml *arg2);
+ Aml *aml_call1(const char *method, Aml *arg1);
+-- 
+1.8.3.1
+

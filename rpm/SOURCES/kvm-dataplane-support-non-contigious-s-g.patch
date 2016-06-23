@@ -1,0 +1,175 @@
+From 93d1e006c65272f2a18361b8af5b187ecf0e253d Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 20 Nov 2015 10:44:42 +0100
+Subject: [PATCH 9/9] dataplane: support non-contigious s/g
+
+Message-id: <1448016282-257478-10-git-send-email-imammedo@redhat.com>
+Patchwork-id: 68414
+O-Subject: [RHEV-7.2.z qemu-kvm-rhev PATCH 9/9] dataplane: support non-contigious s/g
+Bugzilla: 1288096
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: Michael S. Tsirkin <mst@redhat.com>
+
+bring_map currently fails if one of the entries it's mapping is
+contigious in GPA but not HVA address space.  Introduce a mapped_len
+parameter so it can handle this, returning the actual mapped length.
+
+This will still fail if there's no space left in the sg, but luckily max
+queue size in use is currently 256, while max sg size is 1024, so we
+should be OK even is all entries happen to cross a single DIMM boundary.
+
+Won't work well with very small DIMM sizes, unfortunately:
+e.g. this will fail with 4K DIMMs where a single
+request might span a large number of DIMMs.
+
+Let's hope these are uncommon - at least we are not breaking things.
+
+Reported-by: Stefan Hajnoczi <stefanha@redhat.com>
+Reported-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Igor Mammedov <imammedo@redhat.com>
+Message-id: 1446047243-3221-2-git-send-email-mst@redhat.com
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit 8347c53243b58ad5e4d623d2403853404e9043a1)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/dataplane/vring.c | 68 ++++++++++++++++++++++++++++++---------------
+ 1 file changed, 46 insertions(+), 22 deletions(-)
+
+diff --git a/hw/virtio/dataplane/vring.c b/hw/virtio/dataplane/vring.c
+index de2115b..e72767a 100644
+--- a/hw/virtio/dataplane/vring.c
++++ b/hw/virtio/dataplane/vring.c
+@@ -25,15 +25,30 @@
+ 
+ /* vring_map can be coupled with vring_unmap or (if you still have the
+  * value returned in *mr) memory_region_unref.
++ * Returns NULL on failure.
++ * Callers that can handle a partial mapping must supply mapped_len pointer to
++ * get the actual length mapped.
++ * Passing mapped_len == NULL requires either a full mapping or a failure.
+  */
+-static void *vring_map(MemoryRegion **mr, hwaddr phys, hwaddr len,
++static void *vring_map(MemoryRegion **mr, hwaddr phys,
++                       hwaddr len, hwaddr *mapped_len,
+                        bool is_write)
+ {
+     MemoryRegionSection section = memory_region_find(get_system_memory(), phys, len);
++    uint64_t size;
+ 
+-    if (!section.mr || int128_get64(section.size) < len) {
++    if (!section.mr) {
+         goto out;
+     }
++
++    size = int128_get64(section.size);
++    assert(size);
++
++    /* Passing mapped_len == NULL requires either a full mapping or a failure. */
++    if (!mapped_len && size < len) {
++        goto out;
++    }
++
+     if (is_write && section.readonly) {
+         goto out;
+     }
+@@ -46,6 +61,10 @@ static void *vring_map(MemoryRegion **mr, hwaddr phys, hwaddr len,
+         goto out;
+     }
+ 
++    if (mapped_len) {
++        *mapped_len = MIN(size, len);
++    }
++
+     *mr = section.mr;
+     return memory_region_get_ram_ptr(section.mr) + section.offset_within_region;
+ 
+@@ -78,7 +97,7 @@ bool vring_setup(Vring *vring, VirtIODevice *vdev, int n)
+     addr = virtio_queue_get_desc_addr(vdev, n);
+     size = virtio_queue_get_desc_size(vdev, n);
+     /* Map the descriptor area as read only */
+-    ptr = vring_map(&vring->mr_desc, addr, size, false);
++    ptr = vring_map(&vring->mr_desc, addr, size, NULL, false);
+     if (!ptr) {
+         error_report("Failed to map 0x%" HWADDR_PRIx " byte for vring desc "
+                      "at 0x%" HWADDR_PRIx,
+@@ -92,7 +111,7 @@ bool vring_setup(Vring *vring, VirtIODevice *vdev, int n)
+     /* Add the size of the used_event_idx */
+     size += sizeof(uint16_t);
+     /* Map the driver area as read only */
+-    ptr = vring_map(&vring->mr_avail, addr, size, false);
++    ptr = vring_map(&vring->mr_avail, addr, size, NULL, false);
+     if (!ptr) {
+         error_report("Failed to map 0x%" HWADDR_PRIx " byte for vring avail "
+                      "at 0x%" HWADDR_PRIx,
+@@ -106,7 +125,7 @@ bool vring_setup(Vring *vring, VirtIODevice *vdev, int n)
+     /* Add the size of the avail_event_idx */
+     size += sizeof(uint16_t);
+     /* Map the device area as read-write */
+-    ptr = vring_map(&vring->mr_used, addr, size, true);
++    ptr = vring_map(&vring->mr_used, addr, size, NULL, true);
+     if (!ptr) {
+         error_report("Failed to map 0x%" HWADDR_PRIx " byte for vring used "
+                      "at 0x%" HWADDR_PRIx,
+@@ -206,6 +225,7 @@ static int get_desc(Vring *vring, VirtQueueElement *elem,
+     struct iovec *iov;
+     hwaddr *addr;
+     MemoryRegion *mr;
++    hwaddr len;
+ 
+     if (desc->flags & VRING_DESC_F_WRITE) {
+         num = &elem->in_num;
+@@ -224,26 +244,30 @@ static int get_desc(Vring *vring, VirtQueueElement *elem,
+         }
+     }
+ 
+-    /* Stop for now if there are not enough iovecs available. */
+-    if (*num >= VIRTQUEUE_MAX_SIZE) {
+-        error_report("Invalid SG num: %u", *num);
+-        return -EFAULT;
+-    }
++    while (desc->len) {
++        /* Stop for now if there are not enough iovecs available. */
++        if (*num >= VIRTQUEUE_MAX_SIZE) {
++            error_report("Invalid SG num: %u", *num);
++            return -EFAULT;
++        }
+ 
+-    /* TODO handle non-contiguous memory across region boundaries */
+-    iov->iov_base = vring_map(&mr, desc->addr, desc->len,
+-                              desc->flags & VRING_DESC_F_WRITE);
+-    if (!iov->iov_base) {
+-        error_report("Failed to map descriptor addr %#" PRIx64 " len %u",
+-                     (uint64_t)desc->addr, desc->len);
+-        return -EFAULT;
++        iov->iov_base = vring_map(&mr, desc->addr, desc->len, &len,
++                                  desc->flags & VRING_DESC_F_WRITE);
++        if (!iov->iov_base) {
++            error_report("Failed to map descriptor addr %#" PRIx64 " len %u",
++                         (uint64_t)desc->addr, desc->len);
++            return -EFAULT;
++        }
++
++        /* The MemoryRegion is looked up again and unref'ed later, leave the
++         * ref in place.  */
++        (iov++)->iov_len = len;
++        *addr++ = desc->addr;
++        desc->len -= len;
++        desc->addr += len;
++        *num += 1;
+     }
+ 
+-    /* The MemoryRegion is looked up again and unref'ed later, leave the
+-     * ref in place.  */
+-    iov->iov_len = desc->len;
+-    *addr = desc->addr;
+-    *num += 1;
+     return 0;
+ }
+ 
+-- 
+1.8.3.1
+

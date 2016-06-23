@@ -1,0 +1,106 @@
+From 2c6ae79ab04c5ed6fe2c41adca44a1967e0f586c Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:53 +0200
+Subject: [PATCH 079/100] virtio-pci: move cap type to VirtIOPCIRegion
+
+Message-id: <1436260751-25015-51-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66824
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 50/68] virtio-pci: move cap type to VirtIOPCIRegion
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Gerd Hoffmann <kraxel@redhat.com>
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit fc004905c5b4b7568aad50087c156a5f4dfae1a7)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/virtio-pci.c | 9 +++++----
+ hw/virtio/virtio-pci.h | 1 +
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index 3b61b21..9c509e0 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -1252,18 +1252,21 @@ static void virtio_pci_modern_regions_init(VirtIOPCIProxy *proxy)
+                           proxy,
+                           "virtio-pci-common", 0x1000);
+     proxy->common.offset = 0x0;
++    proxy->common.type = VIRTIO_PCI_CAP_COMMON_CFG;
+ 
+     memory_region_init_io(&proxy->isr.mr, OBJECT(proxy),
+                           &isr_ops,
+                           proxy,
+                           "virtio-pci-isr", 0x1000);
+     proxy->isr.offset = 0x1000;
++    proxy->isr.type = VIRTIO_PCI_CAP_ISR_CFG;
+ 
+     memory_region_init_io(&proxy->device.mr, OBJECT(proxy),
+                           &device_ops,
+                           virtio_bus_get_device(&proxy->bus),
+                           "virtio-pci-device", 0x1000);
+     proxy->device.offset = 0x2000;
++    proxy->device.type = VIRTIO_PCI_CAP_DEVICE_CFG;
+ 
+     memory_region_init_io(&proxy->notify.mr, OBJECT(proxy),
+                           &notify_ops,
+@@ -1272,6 +1275,7 @@ static void virtio_pci_modern_regions_init(VirtIOPCIProxy *proxy)
+                           QEMU_VIRTIO_PCI_QUEUE_MEM_MULT *
+                           VIRTIO_QUEUE_MAX);
+     proxy->notify.offset = 0x3000;
++    proxy->notify.type = VIRTIO_PCI_CAP_NOTIFY_CFG;
+ }
+ 
+ static void virtio_pci_modern_region_map(VirtIOPCIProxy *proxy,
+@@ -1282,6 +1286,7 @@ static void virtio_pci_modern_region_map(VirtIOPCIProxy *proxy,
+                                 region->offset,
+                                 &region->mr);
+ 
++    cap->cfg_type = region->type;
+     cap->offset = cpu_to_le32(region->offset);
+     cap->length = cpu_to_le32(memory_region_size(&region->mr));
+     virtio_pci_add_mem_cap(proxy, cap);
+@@ -1337,22 +1342,18 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+ 
+     if (modern) {
+         struct virtio_pci_cap common = {
+-            .cfg_type = VIRTIO_PCI_CAP_COMMON_CFG,
+             .cap_len = sizeof common,
+             .bar = modern_mem_bar,
+         };
+         struct virtio_pci_cap isr = {
+-            .cfg_type = VIRTIO_PCI_CAP_ISR_CFG,
+             .cap_len = sizeof isr,
+             .bar = modern_mem_bar,
+         };
+         struct virtio_pci_cap device = {
+-            .cfg_type = VIRTIO_PCI_CAP_DEVICE_CFG,
+             .cap_len = sizeof device,
+             .bar = modern_mem_bar,
+         };
+         struct virtio_pci_notify_cap notify = {
+-            .cap.cfg_type = VIRTIO_PCI_CAP_NOTIFY_CFG,
+             .cap.cap_len = sizeof notify,
+             .cap.bar = modern_mem_bar,
+             .notify_off_multiplier =
+diff --git a/hw/virtio/virtio-pci.h b/hw/virtio/virtio-pci.h
+index f5829b0..ea1343d 100644
+--- a/hw/virtio/virtio-pci.h
++++ b/hw/virtio/virtio-pci.h
+@@ -94,6 +94,7 @@ typedef struct VirtioPCIClass {
+ typedef struct VirtIOPCIRegion {
+     MemoryRegion mr;
+     uint32_t offset;
++    uint32_t type;
+ } VirtIOPCIRegion;
+ 
+ struct VirtIOPCIProxy {
+-- 
+1.8.3.1
+

@@ -1,0 +1,51 @@
+From 0601ea62622bb0bf587e72dba871fe67b2b659b1 Mon Sep 17 00:00:00 2001
+From: Markus Armbruster <armbru@redhat.com>
+Date: Mon, 21 Sep 2015 16:15:34 +0200
+Subject: [PATCH 06/10] loader: Fix memory_region_init_resizeable_ram() error
+ handling
+
+Message-id: <1442852135-32495-4-git-send-email-armbru@redhat.com>
+Patchwork-id: 67853
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 3/4] loader: Fix memory_region_init_resizeable_ram() error handling
+Bugzilla: 1232308
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+Commit ef701d7 screwed up handling of out-of-memory conditions.
+Before the commit, we report the error and exit(1), in one place.  The
+commit lifts the error handling up the call chain some, to three
+places.  Fine.  Except it uses &error_abort in these places, changing
+the behavior from exit(1) to abort(), and thus undoing the work of
+commit 3922825 "exec: Don't abort when we can't allocate guest
+memory".
+
+The previous commit fixed up uses of memory_region_init_ram().  One of
+them was replaced by memory_region_init_resizeable_ram() [sic!] in
+commit a166614, so Coccinelle missed it.  Fix it up.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Message-Id: <1441983105-26376-4-git-send-email-armbru@redhat.com>
+Reviewed-by: Peter Crosthwaite <crosthwaite.peter@gmail.com>
+(cherry picked from commit df8abec8cb48f6c439516fd78b3ab6535e6fd493)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/core/loader.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/core/loader.c b/hw/core/loader.c
+index 7ee675c..8f3a115 100644
+--- a/hw/core/loader.c
++++ b/hw/core/loader.c
+@@ -741,7 +741,7 @@ static void *rom_set_mr(Rom *rom, Object *owner, const char *name)
+     memory_region_init_resizeable_ram(rom->mr, owner, name,
+                                       rom->datasize, rom->romsize,
+                                       fw_cfg_resized,
+-                                      &error_abort);
++                                      &error_fatal);
+     memory_region_set_readonly(rom->mr, true);
+     vmstate_register_ram_global(rom->mr);
+ 
+-- 
+1.8.3.1
+

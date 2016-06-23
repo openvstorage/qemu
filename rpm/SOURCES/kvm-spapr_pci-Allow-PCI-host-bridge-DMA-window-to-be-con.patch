@@ -1,0 +1,101 @@
+From 68b7af2496af8718dd1d89de975b344133df6e76 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 30 Sep 2015 06:43:15 +0200
+Subject: [PATCH 07/10] spapr_pci: Allow PCI host bridge DMA window to be
+ configured
+
+Message-id: <1443595398-20898-8-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67991
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv4 07/10] spapr_pci: Allow PCI host bridge DMA window to be configured
+Bugzilla: 1259556
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+At present the PCI host bridge (PHB) for the pseries machine type has a
+fixed DMA window from 0..1GB (in PCI address space) which is mapped to real
+memory via the PAPR paravirtualized IOMMU.
+
+For better support of VFIO devices, we're going to want to allow for
+different configurations of the DMA window.
+
+Eventually we'll want to allow the guest itself to reconfigure the window
+via the PAPR dynamic DMA window interface, but as a preliminary this patch
+allows the user to reconfigure the window with new properties on the PHB
+device.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/ppc/spapr_pci.c
+
+Small code conflict because we don't have 3e1a01cb5 downstream.
+
+Bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1259556
+Upstream: Posted, revised, not merged
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+---
+ hw/ppc/spapr_pci.c          | 11 +++++++----
+ include/hw/pci-host/spapr.h |  1 +
+ 2 files changed, 8 insertions(+), 4 deletions(-)
+---
+ hw/ppc/spapr_pci.c          | 11 +++++++----
+ include/hw/pci-host/spapr.h |  1 +
+ 2 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/hw/ppc/spapr_pci.c b/hw/ppc/spapr_pci.c
+index 183192f..9577cd2 100644
+--- a/hw/ppc/spapr_pci.c
++++ b/hw/ppc/spapr_pci.c
+@@ -1374,11 +1374,11 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
+ static void spapr_phb_finish_realize(sPAPRPHBState *sphb, Error **errp)
+ {
+     sPAPRTCETable *tcet;
++    uint32_t nb_table;
+ 
++    nb_table = sphb->dma_win_size >> SPAPR_TCE_PAGE_SHIFT;
+     tcet = spapr_tce_new_table(DEVICE(sphb), sphb->dma_liobn,
+-                               0,
+-                               SPAPR_TCE_PAGE_SHIFT,
+-                               0x40000000 >> SPAPR_TCE_PAGE_SHIFT, false);
++                               0, SPAPR_TCE_PAGE_SHIFT, nb_table, false);
+     if (!tcet) {
+         error_setg(errp, "Unable to create TCE table for %s",
+                    sphb->dtbusname);
+@@ -1386,7 +1386,7 @@ static void spapr_phb_finish_realize(sPAPRPHBState *sphb, Error **errp)
+     }
+ 
+     /* Register default 32bit DMA window */
+-    memory_region_add_subregion(&sphb->iommu_root, 0,
++    memory_region_add_subregion(&sphb->iommu_root, sphb->dma_win_addr,
+                                 spapr_tce_get_iommu(tcet));
+ }
+ 
+@@ -1419,6 +1419,9 @@ static Property spapr_phb_properties[] = {
+                        SPAPR_PCI_IO_WIN_SIZE),
+     DEFINE_PROP_BOOL("dynamic-reconfiguration", sPAPRPHBState, dr_enabled,
+                      true),
++    /* Default DMA window is 0..1GB */
++    DEFINE_PROP_UINT64("dma_win_addr", sPAPRPHBState, dma_win_addr, 0),
++    DEFINE_PROP_UINT64("dma_win_size", sPAPRPHBState, dma_win_size, 0x40000000),
+     DEFINE_PROP_END_OF_LIST(),
+ };
+ 
+diff --git a/include/hw/pci-host/spapr.h b/include/hw/pci-host/spapr.h
+index 03e3ca1..7de5e02 100644
+--- a/include/hw/pci-host/spapr.h
++++ b/include/hw/pci-host/spapr.h
+@@ -78,6 +78,7 @@ struct sPAPRPHBState {
+     MemoryRegion memwindow, iowindow, msiwindow;
+ 
+     uint32_t dma_liobn;
++    hwaddr dma_win_addr, dma_win_size;
+     AddressSpace iommu_as;
+     MemoryRegion iommu_root;
+ 
+-- 
+1.8.3.1
+

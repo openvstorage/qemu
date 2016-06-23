@@ -1,0 +1,47 @@
+From d27b4ead999f9074512965a7f6ee2e82ad8dc7b8 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:47 +0200
+Subject: [PATCH 073/100] virtio_balloon: header update
+
+Message-id: <1436260751-25015-45-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66819
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 44/68] virtio_balloon: header update
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+add modern header
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit fbdc6892dd8a842a3d86b8315ff56399e0387b74)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/hw/virtio/virtio-balloon.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/include/hw/virtio/virtio-balloon.h b/include/hw/virtio/virtio-balloon.h
+index 4ab8f54..346a9fd 100644
+--- a/include/hw/virtio/virtio-balloon.h
++++ b/include/hw/virtio/virtio-balloon.h
+@@ -25,6 +25,12 @@
+ 
+ typedef struct virtio_balloon_stat VirtIOBalloonStat;
+ 
++typedef struct virtio_balloon_stat_modern {
++       uint16_t tag;
++       uint8_t reserved[6];
++       uint64_t val;
++} VirtIOBalloonStatModern;
++
+ typedef struct VirtIOBalloon {
+     VirtIODevice parent_obj;
+     VirtQueue *ivq, *dvq, *svq;
+-- 
+1.8.3.1
+

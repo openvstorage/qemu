@@ -1,0 +1,104 @@
+From ae4ca363f508644742156f4d650f67877e5ef2a5 Mon Sep 17 00:00:00 2001
+From: Luiz Capitulino <lcapitulino@redhat.com>
+Date: Fri, 1 May 2015 13:30:23 +0200
+Subject: [PATCH 1/6] balloon: improve error msg when adding second device
+
+Message-id: <20150501093023.6d3884b5@redhat.com>
+Patchwork-id: 64967
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH] balloon: improve error msg when adding second device
+Bugzilla: 1165534
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+
+A VM supports only one balloon device, but due to several changes
+in infrastructure the error message got messed up when trying
+to add a second device. Fix it.
+
+Before this fix
+
+Command-line:
+
+qemu-qmp: -device virtio-balloon-pci,id=balloon0: Another balloon device already registered
+qemu-qmp: -device virtio-balloon-pci,id=balloon0: Adding balloon handler failed
+qemu-qmp: -device virtio-balloon-pci,id=balloon0: Device 'virtio-balloon-pci' could not be initialized
+
+HMP:
+
+Another balloon device already registered
+Adding balloon handler failed
+Device 'virtio-balloon-pci' could not be initialized
+
+QMP:
+
+{ "execute": "device_add", "arguments": { "driver": "virtio-balloon-pci", "id": "balloon0" } }
+{
+	"error": {
+		"class": "GenericError",
+		"desc": "Adding balloon handler failed"
+	}
+}
+
+After this fix
+
+Command-line:
+
+qemu-qmp: -device virtio-balloon-pci,id=balloon0: Only one balloon device is supported
+qemu-qmp: -device virtio-balloon-pci,id=balloon0: Device 'virtio-balloon-pci' could not be initialized
+
+HMP:
+
+(qemu) device_add virtio-balloon-pci,id=balloon0
+Only one balloon device is supported
+Device 'virtio-balloon-pci' could not be initialized
+(qemu)
+
+QMP:
+
+{ "execute": "device_add",
+          "arguments": { "driver": "virtio-balloon-pci", "id": "balloon0" } }
+{
+    "error": {
+        "class": "GenericError",
+        "desc": "Only one balloon device is supported"
+    }
+}
+
+Signed-off-by: Luiz Capitulino <lcapitulino@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+(cherry picked from commit 46abb8124006887d071921c5e657eeec3c50a9e2)
+Signed-off-by: Luiz Capitulino <lcapitulino@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ balloon.c                  | 1 -
+ hw/virtio/virtio-balloon.c | 2 +-
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/balloon.c b/balloon.c
+index 70c00f5..c7033e3 100644
+--- a/balloon.c
++++ b/balloon.c
+@@ -58,7 +58,6 @@ int qemu_add_balloon_handler(QEMUBalloonEvent *event_func,
+         /* We're already registered one balloon handler.  How many can
+          * a guest really have?
+          */
+-        error_report("Another balloon device already registered");
+         return -1;
+     }
+     balloon_event_fn = event_func;
+diff --git a/hw/virtio/virtio-balloon.c b/hw/virtio/virtio-balloon.c
+index 95b0643..484c3c3 100644
+--- a/hw/virtio/virtio-balloon.c
++++ b/hw/virtio/virtio-balloon.c
+@@ -383,7 +383,7 @@ static void virtio_balloon_device_realize(DeviceState *dev, Error **errp)
+                                    virtio_balloon_stat, s);
+ 
+     if (ret < 0) {
+-        error_setg(errp, "Adding balloon handler failed");
++        error_setg(errp, "Only one balloon device is supported");
+         virtio_cleanup(vdev);
+         return;
+     }
+-- 
+1.8.3.1
+

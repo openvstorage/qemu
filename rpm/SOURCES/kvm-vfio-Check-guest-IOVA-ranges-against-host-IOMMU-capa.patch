@@ -1,0 +1,155 @@
+From 61a58db64e79fc7f408e96cefdf0474b26dcc7f4 Mon Sep 17 00:00:00 2001
+From: David Gibson <dgibson@redhat.com>
+Date: Wed, 30 Sep 2015 06:43:11 +0200
+Subject: [PATCH 03/10] vfio: Check guest IOVA ranges against host IOMMU
+ capabilities
+
+Message-id: <1443595398-20898-4-git-send-email-dgibson@redhat.com>
+Patchwork-id: 67987
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCHv4 03/10] vfio: Check guest IOVA ranges against host IOMMU capabilities
+Bugzilla: 1259556
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+The current vfio core code assumes that the host IOMMU is capable of
+mapping any IOVA the guest wants to use to where we need.  However, real
+IOMMUs generally only support translating a certain range of IOVAs (the
+"DMA window") not a full 64-bit address space.
+
+The common x86 IOMMUs support a wide enough range that guests are very
+unlikely to go beyond it in practice, however the IOMMU used on IBM Power
+machines - in the default configuration - supports only a much more limited
+IOVA range, usually 0..2GiB.
+
+If the guest attempts to set up an IOVA range that the host IOMMU can't
+map, qemu won't report an error until it actually attempts to map a bad
+IOVA.  If guest RAM is being mapped directly into the IOMMU (i.e. no guest
+visible IOMMU) then this will show up very quickly.  If there is a guest
+visible IOMMU, however, the problem might not show up until much later when
+the guest actually attempt to DMA with an IOVA the host can't handle.
+
+This patch adds a test so that we will detect earlier if the guest is
+attempting to use IOVA ranges that the host IOMMU won't be able to deal
+with.
+
+For now, we assume that "Type1" (x86) IOMMUs can support any IOVA, this is
+incorrect, but no worse than what we have already.  We can't do better for
+now because the Type1 kernel interface doesn't tell us what IOVA range the
+IOMMU actually supports.
+
+For the Power "sPAPR TCE" IOMMU, however, we can retrieve the supported
+IOVA range and validate guest IOVA ranges against it, and this patch does
+so.
+
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Reviewed-by: Laurent Vivier <lvivier@redhat.com>
+
+Upstream: 3898aad323475cf19127d9fc0846954d591d8e11
+
+Signed-off-by: David Gibson <dgibson@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/vfio/common.c              | 40 +++++++++++++++++++++++++++++++++++++---
+ include/hw/vfio/vfio-common.h |  6 ++++++
+ 2 files changed, 43 insertions(+), 3 deletions(-)
+
+diff --git a/hw/vfio/common.c b/hw/vfio/common.c
+index 8e1069a..bf517dc 100644
+--- a/hw/vfio/common.c
++++ b/hw/vfio/common.c
+@@ -340,14 +340,22 @@ static void vfio_listener_region_add(MemoryListener *listener,
+     if (int128_ge(int128_make64(iova), llend)) {
+         return;
+     }
++    end = int128_get64(llend);
++
++    if ((iova < container->min_iova) || ((end - 1) > container->max_iova)) {
++        error_report("vfio: IOMMU container %p can't map guest IOVA region"
++                     " 0x%"HWADDR_PRIx"..0x%"HWADDR_PRIx,
++                     container, iova, end - 1);
++        ret = -EFAULT;
++        goto fail;
++    }
+ 
+     memory_region_ref(section->mr);
+ 
+     if (memory_region_is_iommu(section->mr)) {
+         VFIOGuestIOMMU *giommu;
+ 
+-        trace_vfio_listener_region_add_iommu(iova,
+-                    int128_get64(int128_sub(llend, int128_one())));
++        trace_vfio_listener_region_add_iommu(iova, end - 1);
+         /*
+          * FIXME: We should do some checking to see if the
+          * capabilities of the host VFIO IOMMU are adequate to model
+@@ -384,7 +392,6 @@ static void vfio_listener_region_add(MemoryListener *listener,
+ 
+     /* Here we assume that memory_region_is_ram(section->mr)==true */
+ 
+-    end = int128_get64(llend);
+     vaddr = memory_region_get_ram_ptr(section->mr) +
+             section->offset_within_region +
+             (iova - section->offset_within_address_space);
+@@ -690,7 +697,19 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
+             ret = -errno;
+             goto free_container_exit;
+         }
++
++        /*
++         * FIXME: This assumes that a Type1 IOMMU can map any 64-bit
++         * IOVA whatsoever.  That's not actually true, but the current
++         * kernel interface doesn't tell us what it can map, and the
++         * existing Type1 IOMMUs generally support any IOVA we're
++         * going to actually try in practice.
++         */
++        container->min_iova = 0;
++        container->max_iova = (hwaddr)-1;
+     } else if (ioctl(fd, VFIO_CHECK_EXTENSION, VFIO_SPAPR_TCE_IOMMU)) {
++        struct vfio_iommu_spapr_tce_info info;
++
+         ret = ioctl(group->fd, VFIO_GROUP_SET_CONTAINER, &fd);
+         if (ret) {
+             error_report("vfio: failed to set group container: %m");
+@@ -715,6 +734,21 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as)
+             ret = -errno;
+             goto free_container_exit;
+         }
++
++        /*
++         * This only considers the host IOMMU's 32-bit window.  At
++         * some point we need to add support for the optional 64-bit
++         * window and dynamic windows
++         */
++        info.argsz = sizeof(info);
++        ret = ioctl(fd, VFIO_IOMMU_SPAPR_TCE_GET_INFO, &info);
++        if (ret) {
++            error_report("vfio: VFIO_IOMMU_SPAPR_TCE_GET_INFO failed: %m");
++            ret = -errno;
++            goto free_container_exit;
++        }
++        container->min_iova = info.dma32_window_start;
++        container->max_iova = container->min_iova + info.dma32_window_size - 1;
+     } else {
+         error_report("vfio: No available IOMMU models");
+         ret = -EINVAL;
+diff --git a/include/hw/vfio/vfio-common.h b/include/hw/vfio/vfio-common.h
+index ec49c61..c9ad02c 100644
+--- a/include/hw/vfio/vfio-common.h
++++ b/include/hw/vfio/vfio-common.h
+@@ -69,6 +69,12 @@ typedef struct VFIOContainer {
+     MemoryListener listener;
+     int error;
+     bool initialized;
++    /*
++     * This assumes the host IOMMU can support only a single
++     * contiguous IOVA window.  We may need to generalize that in
++     * future
++     */
++    hwaddr min_iova, max_iova;
+     QLIST_HEAD(, VFIOGuestIOMMU) giommu_list;
+     QLIST_HEAD(, VFIOGroup) group_list;
+     QLIST_ENTRY(VFIOContainer) next;
+-- 
+1.8.3.1
+

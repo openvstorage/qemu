@@ -1,0 +1,75 @@
+From 44be513862c93ba744e6b9d0e61f7d755122b400 Mon Sep 17 00:00:00 2001
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+Date: Mon, 13 Jul 2015 13:41:56 +0200
+Subject: [PATCH 16/58] rdma typos
+
+Message-id: <1436794926-1598-8-git-send-email-dgilbert@redhat.com>
+Patchwork-id: 66977
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 07/17] rdma typos
+Bugzilla: 1210715
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+From: "Dr. David Alan Gilbert" <dgilbert@redhat.com>
+
+A couple of typo fixes.
+
+Signed-off-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 24ec68ef84fdacd5dddb83f3b341165c4815e6d6)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/rdma.c | 6 +++---
+ trace-events     | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/migration/rdma.c b/migration/rdma.c
+index 63c4afd..ff9cc8a 100644
+--- a/migration/rdma.c
++++ b/migration/rdma.c
+@@ -1222,7 +1222,7 @@ const char *print_wrid(int wrid)
+ 
+ /*
+  * Perform a non-optimized memory unregistration after every transfer
+- * for demonsration purposes, only if pin-all is not requested.
++ * for demonstration purposes, only if pin-all is not requested.
+  *
+  * Potential optimizations:
+  * 1. Start a new thread to run this function continuously
+@@ -3287,7 +3287,7 @@ static void rdma_accept_incoming_migration(void *opaque)
+     QEMUFile *f;
+     Error *local_err = NULL, **errp = &local_err;
+ 
+-    trace_qemu_dma_accept_incoming_migration();
++    trace_qemu_rdma_accept_incoming_migration();
+     ret = qemu_rdma_accept(rdma);
+ 
+     if (ret) {
+@@ -3295,7 +3295,7 @@ static void rdma_accept_incoming_migration(void *opaque)
+         return;
+     }
+ 
+-    trace_qemu_dma_accept_incoming_migration_accepted();
++    trace_qemu_rdma_accept_incoming_migration_accepted();
+ 
+     f = qemu_fopen_rdma(rdma, "rb");
+     if (f == NULL) {
+diff --git a/trace-events b/trace-events
+index 3bb1f04..3ac990b 100644
+--- a/trace-events
++++ b/trace-events
+@@ -1382,8 +1382,8 @@ migrate_pending(uint64_t size, uint64_t max) "pending size %" PRIu64 " max %" PR
+ migrate_transferred(uint64_t tranferred, uint64_t time_spent, double bandwidth, uint64_t size) "transferred %" PRIu64 " time_spent %" PRIu64 " bandwidth %g max_size %" PRId64
+ 
+ # migration/rdma.c
+-qemu_dma_accept_incoming_migration(void) ""
+-qemu_dma_accept_incoming_migration_accepted(void) ""
++qemu_rdma_accept_incoming_migration(void) ""
++qemu_rdma_accept_incoming_migration_accepted(void) ""
+ qemu_rdma_accept_pin_state(bool pin) "%d"
+ qemu_rdma_accept_pin_verbsc(void *verbs) "Verbs context after listen: %p"
+ qemu_rdma_block_for_wrid_miss(const char *wcompstr, int wcomp, const char *gcompstr, uint64_t req) "A Wanted wrid %s (%d) but got %s (%" PRIu64 ")"
+-- 
+1.8.3.1
+

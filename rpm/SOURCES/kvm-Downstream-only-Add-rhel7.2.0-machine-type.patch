@@ -1,0 +1,72 @@
+From 6f74d0ca487d05325777fb31044856cf12aee0f0 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Tue, 9 Jun 2015 08:35:41 +0200
+Subject: [PATCH 2/9] Downstream-only: Add rhel7.2.0 machine type
+
+Message-id: <1433838941-28412-1-git-send-email-lvivier@redhat.com>
+Patchwork-id: 65562
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v3] Downstream-only: Add rhel7.2.0 machine type
+Bugzilla: 1228574
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+Replace RHEL 7.1 machine type by RHEL 7.2 machine type.
+pseries-rhel7.2.0 is now the default machine type for PPC64.
+
+/usr/libexec/qemu-kvm -M ?
+Supported machines are:
+none                 empty machine
+pseries              RHEL 7.2.0 pSeries Logical Partition (PAPR compliant) (alias of pseries-rhel7.2.0)
+pseries-rhel7.2.0    RHEL 7.2.0 pSeries Logical Partition (PAPR compliant) (default)
+
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/ppc/spapr.c | 15 +++++++--------
+ 1 file changed, 7 insertions(+), 8 deletions(-)
+
+diff --git a/hw/ppc/spapr.c b/hw/ppc/spapr.c
+index d1f7725..3fe98ff 100644
+--- a/hw/ppc/spapr.c
++++ b/hw/ppc/spapr.c
+@@ -1881,21 +1881,20 @@ static const TypeInfo spapr_machine_2_3_info = {
+     .class_init    = spapr_machine_2_3_class_init,
+ };
+ #endif
+-static void spapr_machine_rhel710_class_init(ObjectClass *oc, void *data)
++static void spapr_machine_rhel720_class_init(ObjectClass *oc, void *data)
+ {
+     MachineClass *mc = MACHINE_CLASS(oc);
+ 
+-    mc->name = "pseries-rhel7.1.0";
+-    mc->desc = "RHEL 7.1.0 pSeries Logical Partition (PAPR compliant)";
++    mc->name = "pseries-rhel7.2.0";
++    mc->desc = "RHEL 7.2.0 pSeries Logical Partition (PAPR compliant)";
+     mc->alias = "pseries";
+     mc->is_default = 1;
+ }
+ 
+-
+-static const TypeInfo spapr_machine_rhel710_info = {
+-    .name          = TYPE_SPAPR_MACHINE "RHEL7.1.0",
++static const TypeInfo spapr_machine_rhel720_info = {
++    .name          = TYPE_SPAPR_MACHINE "RHEL7.2.0",
+     .parent        = TYPE_SPAPR_MACHINE,
+-    .class_init    = spapr_machine_rhel710_class_init,
++    .class_init    = spapr_machine_rhel720_class_init,
+ };
+ 
+ static void spapr_machine_register_types(void)
+@@ -1906,7 +1905,7 @@ static void spapr_machine_register_types(void)
+     type_register_static(&spapr_machine_2_2_info);
+     type_register_static(&spapr_machine_2_3_info);
+ */
+-    type_register_static(&spapr_machine_rhel710_info);
++    type_register_static(&spapr_machine_rhel720_info);
+ }
+ 
+ type_init(spapr_machine_register_types)
+-- 
+1.8.3.1
+

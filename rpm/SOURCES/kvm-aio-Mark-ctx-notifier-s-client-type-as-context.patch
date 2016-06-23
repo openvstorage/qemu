@@ -1,0 +1,97 @@
+From 18dc754ebcf4b3c2e038f174c74fdf291d70ae5a Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:07 +0200
+Subject: [PATCH 18/22] aio: Mark ctx->notifier's client type as "context"
+
+Message-id: <1442456951-3827-9-git-send-email-famz@redhat.com>
+Patchwork-id: 67799
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 08/12] aio: Mark ctx->notifier's client type as "context"
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+It is important to include this for any blocking poll, on the other hand it is
+also OK to exclude it otherwise.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+---
+ aio-posix.c         | 3 +++
+ aio-win32.c         | 3 +++
+ async.c             | 4 ++--
+ include/block/aio.h | 1 +
+ 4 files changed, 9 insertions(+), 2 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ aio-posix.c         | 3 +++
+ aio-win32.c         | 3 +++
+ async.c             | 4 ++--
+ include/block/aio.h | 1 +
+ 4 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/aio-posix.c b/aio-posix.c
+index 718f385..20c2ade 100644
+--- a/aio-posix.c
++++ b/aio-posix.c
+@@ -249,6 +249,9 @@ bool aio_poll_clients(AioContext *ctx, bool blocking, int client_mask)
+     int64_t timeout;
+ 
+     was_dispatching = ctx->dispatching;
++    /* Blocking poll must handle waking up. */
++    assert(!blocking || (client_mask & AIO_CLIENT_CONTEXT));
++
+     progress = false;
+ 
+     /* aio_notify can avoid the expensive event_notifier_set if
+diff --git a/aio-win32.c b/aio-win32.c
+index 1243623..7353a04 100644
+--- a/aio-win32.c
++++ b/aio-win32.c
+@@ -294,6 +294,9 @@ bool aio_poll(AioContext *ctx, bool blocking)
+     }
+ 
+     was_dispatching = ctx->dispatching;
++    /* Blocking poll must handle waking up. */
++    assert(!blocking || (client_mask & AIO_CLIENT_CONTEXT));
++
+     progress = false;
+ 
+     /* aio_notify can avoid the expensive event_notifier_set if
+diff --git a/async.c b/async.c
+index 51631d2..e76b6bd 100644
+--- a/async.c
++++ b/async.c
+@@ -226,7 +226,7 @@ aio_ctx_finalize(GSource     *source)
+     AioContext *ctx = (AioContext *) source;
+ 
+     thread_pool_free(ctx->thread_pool);
+-    aio_set_event_notifier(ctx, &ctx->notifier, AIO_CLIENT_UNSPECIFIED, NULL);
++    aio_set_event_notifier(ctx, &ctx->notifier, AIO_CLIENT_CONTEXT, NULL);
+     event_notifier_cleanup(&ctx->notifier);
+     rfifolock_destroy(&ctx->lock);
+     qemu_mutex_destroy(&ctx->bh_lock);
+@@ -302,7 +302,7 @@ AioContext *aio_context_new(Error **errp)
+     }
+     g_source_set_can_recurse(&ctx->source, true);
+     aio_set_event_notifier(ctx, &ctx->notifier,
+-                           AIO_CLIENT_UNSPECIFIED,
++                           AIO_CLIENT_CONTEXT,
+                            (EventNotifierHandler *)
+                            event_notifier_test_and_clear);
+     ctx->thread_pool = NULL;
+diff --git a/include/block/aio.h b/include/block/aio.h
+index 63d65d7..3118e36 100644
+--- a/include/block/aio.h
++++ b/include/block/aio.h
+@@ -227,6 +227,7 @@ bool aio_dispatch(AioContext *ctx);
+ #define AIO_CLIENT_UNSPECIFIED    (1 << 0)
+ #define AIO_CLIENT_PROTOCOL       (1 << 1)
+ #define AIO_CLIENT_NBD_SERVER     (1 << 2)
++#define AIO_CLIENT_CONTEXT        (1 << 3)
+ #define AIO_CLIENT_MASK_ALL       -1
+ 
+ /* Progress in completing AIO work to occur.  This can issue new pending
+-- 
+1.8.3.1
+

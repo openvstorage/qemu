@@ -1,0 +1,71 @@
+From 0b63ee665a141c752d1e17f994cbacda2ecacd9c Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:13 +0200
+Subject: [PATCH 10/44] memory: add memory_region_ram_resize
+
+Message-id: <1434455325-23399-2-git-send-email-drjones@redhat.com>
+Patchwork-id: 66234
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 01/33] memory: add memory_region_ram_resize
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Paolo Bonzini <pbonzini@redhat.com>
+
+This is a simple MemoryRegion wrapper for qemu_ram_resize.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+(cherry picked from commit 37d7c08413cd4307f53c83d43b1b06cf2701d7a7)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ include/exec/memory.h | 12 ++++++++++++
+ memory.c              |  7 +++++++
+ 2 files changed, 19 insertions(+)
+
+diff --git a/include/exec/memory.h b/include/exec/memory.h
+index 06ffa1d..a2ea587 100644
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
+@@ -605,6 +605,18 @@ int memory_region_get_fd(MemoryRegion *mr);
+  */
+ void *memory_region_get_ram_ptr(MemoryRegion *mr);
+ 
++/* memory_region_ram_resize: Resize a RAM region.
++ *
++ * Only legal before guest might have detected the memory size: e.g. on
++ * incoming migration, or right after reset.
++ *
++ * @mr: a memory region created with @memory_region_init_resizeable_ram.
++ * @newsize: the new size the region
++ * @errp: pointer to Error*, to store an error if it happens.
++ */
++void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize,
++                              Error **errp);
++
+ /**
+  * memory_region_set_log: Turn dirty logging on or off for a region.
+  *
+diff --git a/memory.c b/memory.c
+index ee3f2a8..a11e9bf 100644
+--- a/memory.c
++++ b/memory.c
+@@ -1452,6 +1452,13 @@ void *memory_region_get_ram_ptr(MemoryRegion *mr)
+     return qemu_get_ram_ptr(mr->ram_addr & TARGET_PAGE_MASK);
+ }
+ 
++void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize, Error **errp)
++{
++    assert(mr->terminates);
++
++    qemu_ram_resize(mr->ram_addr, newsize, errp);
++}
++
+ static void memory_region_update_coalesced_range_as(MemoryRegion *mr, AddressSpace *as)
+ {
+     FlatView *view;
+-- 
+1.8.3.1
+

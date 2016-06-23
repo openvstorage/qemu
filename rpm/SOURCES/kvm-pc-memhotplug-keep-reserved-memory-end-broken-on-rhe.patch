@@ -1,0 +1,117 @@
+From f33f0b622c53a25a0af014ea2efbc6a2821ec75d Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Fri, 11 Sep 2015 12:57:01 +0200
+Subject: [PATCH 8/8] pc: memhotplug: keep reserved-memory-end broken on rhel71
+ and earlier machines
+
+Message-id: <1441976221-97646-3-git-send-email-imammedo@redhat.com>
+Patchwork-id: 67740
+O-Subject: [RHEL-7.2 qemu-kvm-rhev 2/2] pc: memhotplug: keep reserved-memory-end broken on rhel71 and earlier machines
+Bugzilla: 1261846
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+Upstream: 2f8b50083b321e470ef8e2502910ade40cbfa020
+  "pc: memhotplug: keep reserved-memory-end broken on 2.4 and earlier machines"
+
+it will prevent guests on old machines from seeing
+inconsistent memory mapping in firmware/ACPI views.
+
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Eduardo Habkost <ehabkost@redhat.com>
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+  hw/i386/pc_piix.c
+  hw/i386/pc_q35.c
+coflicts are due to replacing upstream 2.4 machine type
+with rhel71 machine type.
+---
+ hw/i386/pc.c         | 8 ++++++--
+ hw/i386/pc_piix.c    | 4 ++++
+ hw/i386/pc_q35.c     | 4 ++++
+ include/hw/i386/pc.h | 1 +
+ 4 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/hw/i386/pc.c b/hw/i386/pc.c
+index 8f69424..65ea8c5 100644
+--- a/hw/i386/pc.c
++++ b/hw/i386/pc.c
+@@ -1411,8 +1411,12 @@ FWCfgState *pc_memory_init(MachineState *machine,
+ 
+     if (guest_info->has_reserved_memory && pcms->hotplug_memory.base) {
+         uint64_t *val = g_malloc(sizeof(*val));
+-        uint64_t res_mem_end = pcms->hotplug_memory.base +
+-                               memory_region_size(&pcms->hotplug_memory.mr);
++        PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
++        uint64_t res_mem_end = pcms->hotplug_memory.base;
++
++        if (!pcmc->broken_reserved_end) {
++            res_mem_end += memory_region_size(&pcms->hotplug_memory.mr);
++        }
+         *val = cpu_to_le64(ROUND_UP(res_mem_end, 0x1ULL << 30));
+         fw_cfg_add_file(fw_cfg, "etc/reserved-memory-end", val, sizeof(*val));
+     }
+diff --git a/hw/i386/pc_piix.c b/hw/i386/pc_piix.c
+index 4a4060d..61669bf 100644
+--- a/hw/i386/pc_piix.c
++++ b/hw/i386/pc_piix.c
+@@ -1041,6 +1041,7 @@ static QEMUMachine pc_machine_rhel720 = {
+ static void pc_compat_rhel710(MachineState *machine)
+ {
+     PCMachineState *pcms = PC_MACHINE(machine);
++    PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
+ 
+     /* 7.1.0 is based on 2.1.2, 7.2.0 is based on 2.3 */
+     pc_compat_rhel720(machine);
+@@ -1078,6 +1079,9 @@ static void pc_compat_rhel710(MachineState *machine)
+     migrate_pre_2_2 = true;
+     global_state_set_optional();
+     savevm_skip_configuration();
++
++    /* From pc_i440fx_2_4_machine_options */
++    pcmc->broken_reserved_end = true;
+ }
+ 
+ static void pc_init_rhel710(MachineState *machine)
+diff --git a/hw/i386/pc_q35.c b/hw/i386/pc_q35.c
+index 5b70ef5..1ad706d 100644
+--- a/hw/i386/pc_q35.c
++++ b/hw/i386/pc_q35.c
+@@ -564,6 +564,7 @@ static QEMUMachine pc_q35_machine_rhel720 = {
+ static void pc_q35_compat_rhel710(MachineState *machine)
+ {
+     PCMachineState *pcms = PC_MACHINE(machine);
++    PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
+ 
+     /* 7.1.0 is based on 2.1.2, 7.2.0 is based on 2.3 */
+     pc_q35_compat_rhel720(machine);
+@@ -596,6 +597,9 @@ static void pc_q35_compat_rhel710(MachineState *machine)
+     x86_cpu_compat_set_features("coreduo", FEAT_1_ECX, CPUID_EXT_VMX, 0);
+     x86_cpu_compat_set_features("core2duo", FEAT_1_ECX, CPUID_EXT_VMX, 0);
+     x86_cpu_compat_kvm_no_autodisable(FEAT_8000_0001_ECX, CPUID_EXT3_SVM);
++
++    /* From pc_q35_2_4_machine_options */
++    pcmc->broken_reserved_end = true;
+ }
+ 
+ static void pc_q35_init_rhel710(MachineState *machine)
+diff --git a/include/hw/i386/pc.h b/include/hw/i386/pc.h
+index 4318baf..e7361ba 100644
+--- a/include/hw/i386/pc.h
++++ b/include/hw/i386/pc.h
+@@ -55,6 +55,7 @@ struct PCMachineClass {
+     MachineClass parent_class;
+ 
+     /*< public >*/
++    bool broken_reserved_end;
+     HotplugHandler *(*get_hotplug_handler)(MachineState *machine,
+                                            DeviceState *dev);
+ };
+-- 
+1.8.3.1
+

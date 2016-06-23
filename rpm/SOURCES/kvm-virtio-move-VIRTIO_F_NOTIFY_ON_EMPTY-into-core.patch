@@ -1,0 +1,125 @@
+From 935cf98b83b152f2a733587100692a50df170aa0 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:22 +0200
+Subject: [PATCH 048/100] virtio: move VIRTIO_F_NOTIFY_ON_EMPTY into core
+
+Message-id: <1436260751-25015-20-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66794
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 19/68] virtio: move VIRTIO_F_NOTIFY_ON_EMPTY into core
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Cornelia Huck <cornelia.huck@de.ibm.com>
+
+Notes: conflicts since commits
+       10ceaa1e8f9f74c917df1fe5db856817a8b26fe7 ("virtio-ccw: validate
+       the number of queues against bus limitation")
+       e83980455c8c7eb066405de512be7c4bace3ac4d ("virtio:
+       device_plugged() can fail")
+       were backported before this commit
+
+Nearly all transports have been offering VIRTIO_F_NOTIFY_ON_EMPTY,
+s390-virtio being the exception. There's no reason why it shouldn't
+offer it as well, though (handling is done in core anyway), so let's
+move it to the common virtio features.
+
+While we're changing it anyway, fix the indentation for the
+DEFINE_VIRTIO_COMMON_FEATURES macro.
+
+Signed-off-by: Cornelia Huck <cornelia.huck@de.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit cf34f533a161f8ced7322321d70ca00414d47473)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/s390x/virtio-ccw.c
+	hw/virtio/virtio-mmio.c
+---
+ hw/s390x/virtio-ccw.c      |  2 --
+ hw/virtio/virtio-mmio.c    | 10 ----------
+ hw/virtio/virtio-pci.c     |  1 -
+ include/hw/virtio/virtio.h | 10 ++++++----
+ 4 files changed, 6 insertions(+), 17 deletions(-)
+
+diff --git a/hw/s390x/virtio-ccw.c b/hw/s390x/virtio-ccw.c
+index c1d24d4..fdac013 100644
+--- a/hw/s390x/virtio-ccw.c
++++ b/hw/s390x/virtio-ccw.c
+@@ -1421,8 +1421,6 @@ static void virtio_ccw_device_plugged(DeviceState *d, Error **errp)
+ 
+     sch->id.cu_model = virtio_bus_get_vdev_id(&dev->bus);
+ 
+-    virtio_add_feature(&vdev->host_features, VIRTIO_F_NOTIFY_ON_EMPTY);
+-
+     css_generate_sch_crws(sch->cssid, sch->ssid, sch->schid,
+                           d->hotplugged, 1);
+ }
+diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
+index 9ebfa0c..a3cfd30 100644
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -336,15 +336,6 @@ static void virtio_mmio_reset(DeviceState *d)
+ 
+ /* virtio-mmio device */
+ 
+-/* This is called by virtio-bus just after the device is plugged. */
+-static void virtio_mmio_device_plugged(DeviceState *opaque, Error **errp)
+-{
+-    VirtIOMMIOProxy *proxy = VIRTIO_MMIO(opaque);
+-    VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
+-
+-    virtio_add_feature(&vdev->host_features, VIRTIO_F_NOTIFY_ON_EMPTY);
+-}
+-
+ static void virtio_mmio_realizefn(DeviceState *d, Error **errp)
+ {
+     VirtIOMMIOProxy *proxy = VIRTIO_MMIO(d);
+@@ -384,7 +375,6 @@ static void virtio_mmio_bus_class_init(ObjectClass *klass, void *data)
+     k->notify = virtio_mmio_update_irq;
+     k->save_config = virtio_mmio_save_config;
+     k->load_config = virtio_mmio_load_config;
+-    k->device_plugged = virtio_mmio_device_plugged;
+     k->has_variable_vring_alignment = true;
+     bus_class->max_dev = 1;
+ }
+diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
+index e40191e..1aa0e01 100644
+--- a/hw/virtio/virtio-pci.c
++++ b/hw/virtio/virtio-pci.c
+@@ -960,7 +960,6 @@ static void virtio_pci_device_plugged(DeviceState *d, Error **errp)
+         proxy->flags &= ~VIRTIO_PCI_FLAG_USE_IOEVENTFD;
+     }
+ 
+-    virtio_add_feature(&vdev->host_features, VIRTIO_F_NOTIFY_ON_EMPTY);
+     virtio_add_feature(&vdev->host_features, VIRTIO_F_BAD_FEATURE);
+ }
+ 
+diff --git a/include/hw/virtio/virtio.h b/include/hw/virtio/virtio.h
+index 3058711..fb052c1 100644
+--- a/include/hw/virtio/virtio.h
++++ b/include/hw/virtio/virtio.h
+@@ -195,10 +195,12 @@ typedef struct VirtIOSCSIConf VirtIOSCSIConf;
+ typedef struct VirtIORNGConf VirtIORNGConf;
+ 
+ #define DEFINE_VIRTIO_COMMON_FEATURES(_state, _field) \
+-	DEFINE_PROP_BIT("indirect_desc", _state, _field, \
+-			VIRTIO_RING_F_INDIRECT_DESC, true), \
+-	DEFINE_PROP_BIT("event_idx", _state, _field, \
+-			VIRTIO_RING_F_EVENT_IDX, true)
++    DEFINE_PROP_BIT("indirect_desc", _state, _field,    \
++                    VIRTIO_RING_F_INDIRECT_DESC, true), \
++    DEFINE_PROP_BIT("event_idx", _state, _field,        \
++                    VIRTIO_RING_F_EVENT_IDX, true),     \
++    DEFINE_PROP_BIT("notify_on_empty", _state, _field,  \
++                    VIRTIO_F_NOTIFY_ON_EMPTY, true)
+ 
+ hwaddr virtio_queue_get_desc_addr(VirtIODevice *vdev, int n);
+ hwaddr virtio_queue_get_avail_addr(VirtIODevice *vdev, int n);
+-- 
+1.8.3.1
+

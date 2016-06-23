@@ -1,0 +1,1634 @@
+From ecfb5aa119942e2784dba57cae380af2462521e4 Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:53 +0200
+Subject: [PATCH 08/28] migration: Use normal VMStateDescriptions for
+ Subsections
+
+Message-id: <1438098431-30847-9-git-send-email-quintela@redhat.com>
+Patchwork-id: 67171
+O-Subject: [RHEL-7 qemu-kvm PATCH 08/26] migration: Use normal VMStateDescriptions for Subsections
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+We create optional sections with this patch.  But we already have
+optional subsections.  Instead of having two mechanism that do the
+same, we can just generalize it.
+
+For subsections we just change:
+
+- Add a needed function to VMStateDescription
+- Remove VMStateSubsection (after removal of the needed function
+  it is just a VMStateDescription)
+- Adjust the whole tree, moving the needed function to the corresponding
+  VMStateDescription
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+(cherry picked from commit 5cd8cadae8db905afcbf877cae568c27d1d55a8a)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/block/fdc.c
+
+fdc/phase section missing in Red Hat
+
+        hw/input/pckbd.c
+hack for 2_2 version
+	hw/timer/mc146818rtc.c
+hack for 2_2 version
+	target-i386/machine.c
+xsave is only for redhat
+        target-s390x/machine.c
+
+upstream has subsections, Red Hat no
+
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+---
+ cpus.c                      | 11 +++---
+ docs/migration.txt          | 11 +++---
+ exec.c                      | 11 +++---
+ hw/acpi/ich9.c              | 10 +++---
+ hw/acpi/piix4.c             | 10 +++---
+ hw/block/fdc.c              | 37 ++++++++-----------
+ hw/char/serial.c            | 41 +++++++++------------
+ hw/display/qxl.c            | 11 +++---
+ hw/display/vga.c            | 11 +++---
+ hw/ide/core.c               | 32 +++++++----------
+ hw/ide/pci.c                | 16 ++++-----
+ hw/input/pckbd.c            | 32 ++++++++---------
+ hw/input/ps2.c              | 11 +++---
+ hw/intc/apic_common.c       | 10 +++---
+ hw/isa/lpc_ich9.c           | 10 +++---
+ hw/net/e1000.c              | 11 +++---
+ hw/net/rtl8139.c            | 11 +++---
+ hw/net/vmxnet3.c            | 12 +++----
+ hw/pci-host/piix.c          | 10 +++---
+ hw/scsi/scsi-bus.c          | 11 +++---
+ hw/timer/hpet.c             | 11 +++---
+ hw/timer/mc146818rtc.c      | 31 ++++++++--------
+ hw/usb/hcd-ohci.c           | 11 +++---
+ hw/usb/redirect.c           | 34 ++++++++----------
+ hw/virtio/virtio.c          | 16 ++++-----
+ include/migration/vmstate.h |  8 ++---
+ migration/savevm.c          | 10 +++---
+ migration/vmstate.c         | 16 ++++-----
+ target-arm/machine.c        | 26 ++++++--------
+ target-i386/machine.c       | 86 ++++++++++++++++++---------------------------
+ target-ppc/machine.c        | 62 +++++++++++++-------------------
+ 31 files changed, 249 insertions(+), 381 deletions(-)
+
+diff --git a/cpus.c b/cpus.c
+index e6dcae3..1f28705 100644
+--- a/cpus.c
++++ b/cpus.c
+@@ -459,6 +459,7 @@ static const VMStateDescription icount_vmstate_timers = {
+     .name = "timer/icount",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = icount_state_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT64(qemu_icount_bias, TimersState),
+         VMSTATE_INT64(qemu_icount, TimersState),
+@@ -476,13 +477,9 @@ static const VMStateDescription vmstate_timers = {
+         VMSTATE_INT64_V(cpu_clock_offset, TimersState, 2),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &icount_vmstate_timers,
+-            .needed = icount_state_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &icount_vmstate_timers,
++        NULL
+     }
+ };
+ 
+diff --git a/docs/migration.txt b/docs/migration.txt
+index 0492a45..f6df4be 100644
+--- a/docs/migration.txt
++++ b/docs/migration.txt
+@@ -257,6 +257,7 @@ const VMStateDescription vmstate_ide_drive_pio_state = {
+     .minimum_version_id = 1,
+     .pre_save = ide_drive_pio_pre_save,
+     .post_load = ide_drive_pio_post_load,
++    .needed = ide_drive_pio_state_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(req_nb_sectors, IDEState),
+         VMSTATE_VARRAY_INT32(io_buffer, IDEState, io_buffer_total_len, 1,
+@@ -279,13 +280,9 @@ const VMStateDescription vmstate_ide_drive = {
+         .... several fields ....
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_ide_drive_pio_state,
+-            .needed = ide_drive_pio_state_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_ide_drive_pio_state,
++        NULL
+     }
+ };
+ 
+diff --git a/exec.c b/exec.c
+index 157b24f..6a6e11f 100644
+--- a/exec.c
++++ b/exec.c
+@@ -472,6 +472,7 @@ static const VMStateDescription vmstate_cpu_common_exception_index = {
+     .name = "cpu_common/exception_index",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = cpu_common_exception_index_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(exception_index, CPUState),
+         VMSTATE_END_OF_LIST()
+@@ -489,13 +490,9 @@ const VMStateDescription vmstate_cpu_common = {
+         VMSTATE_UINT32(interrupt_request, CPUState),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_cpu_common_exception_index,
+-            .needed = cpu_common_exception_index_needed,
+-        } , {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_cpu_common_exception_index,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/acpi/ich9.c b/hw/acpi/ich9.c
+index 799351e..762aab6 100644
+--- a/hw/acpi/ich9.c
++++ b/hw/acpi/ich9.c
+@@ -151,6 +151,7 @@ static const VMStateDescription vmstate_memhp_state = {
+     .version_id = 1,
+     .minimum_version_id = 1,
+     .minimum_version_id_old = 1,
++    .needed = vmstate_test_use_memhp,
+     .fields      = (VMStateField[]) {
+         VMSTATE_MEMORY_HOTPLUG(acpi_memory_hotplug, ICH9LPCPMRegs),
+         VMSTATE_END_OF_LIST()
+@@ -174,12 +175,9 @@ const VMStateDescription vmstate_ich9_pm = {
+         VMSTATE_UINT32(smi_sts, ICH9LPCPMRegs),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_memhp_state,
+-            .needed = vmstate_test_use_memhp,
+-        },
+-        VMSTATE_END_OF_LIST()
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_memhp_state,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/acpi/piix4.c b/hw/acpi/piix4.c
+index 93f250f..2332869 100644
+--- a/hw/acpi/piix4.c
++++ b/hw/acpi/piix4.c
+@@ -260,6 +260,7 @@ static const VMStateDescription vmstate_memhp_state = {
+     .version_id = 1,
+     .minimum_version_id = 1,
+     .minimum_version_id_old = 1,
++    .needed = vmstate_test_use_memhp,
+     .fields      = (VMStateField[]) {
+         VMSTATE_MEMORY_HOTPLUG(acpi_memory_hotplug, PIIX4PMState),
+         VMSTATE_END_OF_LIST()
+@@ -298,12 +299,9 @@ static const VMStateDescription vmstate_acpi = {
+                             vmstate_test_use_acpi_pci_hotplug),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_memhp_state,
+-            .needed = vmstate_test_use_memhp,
+-        },
+-        VMSTATE_END_OF_LIST()
++    .subsections = (const VMStateDescription*[]) {
++         &vmstate_memhp_state,
++         NULL
+     }
+ };
+ 
+diff --git a/hw/block/fdc.c b/hw/block/fdc.c
+index 7e08e41..699523c 100644
+--- a/hw/block/fdc.c
++++ b/hw/block/fdc.c
+@@ -674,6 +674,7 @@ static const VMStateDescription vmstate_fdrive_media_changed = {
+     .name = "fdrive/media_changed",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = fdrive_media_changed_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(media_changed, FDrive),
+         VMSTATE_END_OF_LIST()
+@@ -691,6 +692,7 @@ static const VMStateDescription vmstate_fdrive_media_rate = {
+     .name = "fdrive/media_rate",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = fdrive_media_rate_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(media_rate, FDrive),
+         VMSTATE_END_OF_LIST()
+@@ -712,6 +714,7 @@ static const VMStateDescription vmstate_fdrive_perpendicular = {
+     .name = "fdrive/perpendicular",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = fdrive_perpendicular_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(perpendicular, FDrive),
+         VMSTATE_END_OF_LIST()
+@@ -735,19 +738,11 @@ static const VMStateDescription vmstate_fdrive = {
+         VMSTATE_UINT8(sect, FDrive),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_fdrive_media_changed,
+-            .needed = &fdrive_media_changed_needed,
+-        } , {
+-            .vmsd = &vmstate_fdrive_media_rate,
+-            .needed = &fdrive_media_rate_needed,
+-        } , {
+-            .vmsd = &vmstate_fdrive_perpendicular,
+-            .needed = &fdrive_perpendicular_needed,
+-        } , {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_fdrive_media_changed,
++        &vmstate_fdrive_media_rate,
++        &vmstate_fdrive_perpendicular,
++        NULL
+     }
+ };
+ 
+@@ -790,6 +785,7 @@ static const VMStateDescription vmstate_fdc_reset_sensei = {
+     .name = "fdc/reset_sensei",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = fdc_reset_sensei_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(reset_sensei, FDCtrl),
+         VMSTATE_END_OF_LIST()
+@@ -825,6 +821,7 @@ static const VMStateDescription vmstate_fdc_result_timer = {
+     .name = "fdc/result_timer",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = fdc_result_timer_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_TIMER_PTR(result_timer, FDCtrl),
+         VMSTATE_END_OF_LIST()
+@@ -868,16 +865,10 @@ static const VMStateDescription vmstate_fdc = {
+                              vmstate_fdrive, FDrive),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_fdc_reset_sensei,
+-            .needed = fdc_reset_sensei_needed,
+-        } , {
+-            .vmsd = &vmstate_fdc_result_timer,
+-            .needed = fdc_result_timer_needed,
+-        } , {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_fdc_reset_sensei,
++        &vmstate_fdc_result_timer,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/char/serial.c b/hw/char/serial.c
+index 248bf8b..d11e8b2 100644
+--- a/hw/char/serial.c
++++ b/hw/char/serial.c
+@@ -667,6 +667,7 @@ static const VMStateDescription vmstate_serial_thr_ipending = {
+     .name = "serial/thr_ipending",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = serial_thr_ipending_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(thr_ipending, SerialState),
+         VMSTATE_END_OF_LIST()
+@@ -687,6 +688,7 @@ static const VMStateDescription vmstate_serial_tsr = {
+     .name = "serial/tsr",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = serial_tsr_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(tsr_retry, SerialState),
+         VMSTATE_UINT8(thr, SerialState),
+@@ -710,6 +712,7 @@ static const VMStateDescription vmstate_serial_recv_fifo = {
+     .name = "serial/recv_fifo",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = serial_recv_fifo_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_STRUCT(recv_fifo, SerialState, 1, vmstate_fifo8, Fifo8),
+         VMSTATE_END_OF_LIST()
+@@ -730,6 +733,7 @@ static const VMStateDescription vmstate_serial_xmit_fifo = {
+     .name = "serial/xmit_fifo",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = serial_xmit_fifo_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_STRUCT(xmit_fifo, SerialState, 1, vmstate_fifo8, Fifo8),
+         VMSTATE_END_OF_LIST()
+@@ -750,6 +754,7 @@ static const VMStateDescription vmstate_serial_fifo_timeout_timer = {
+     .name = "serial/fifo_timeout_timer",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = serial_fifo_timeout_timer_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_TIMER_PTR(fifo_timeout_timer, SerialState),
+         VMSTATE_END_OF_LIST()
+@@ -770,6 +775,7 @@ static const VMStateDescription vmstate_serial_timeout_ipending = {
+     .name = "serial/timeout_ipending",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = serial_timeout_ipending_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(timeout_ipending, SerialState),
+         VMSTATE_END_OF_LIST()
+@@ -789,6 +795,7 @@ static bool serial_poll_needed(void *opaque)
+ static const VMStateDescription vmstate_serial_poll = {
+     .name = "serial/poll",
+     .version_id = 1,
++    .needed = serial_poll_needed,
+     .minimum_version_id = 1,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(poll_msl, SerialState),
+@@ -817,31 +824,15 @@ const VMStateDescription vmstate_serial = {
+         VMSTATE_UINT8_V(fcr_vmstate, SerialState, 3),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_serial_thr_ipending,
+-            .needed = &serial_thr_ipending_needed,
+-        } , {
+-            .vmsd = &vmstate_serial_tsr,
+-            .needed = &serial_tsr_needed,
+-        } , {
+-            .vmsd = &vmstate_serial_recv_fifo,
+-            .needed = &serial_recv_fifo_needed,
+-        } , {
+-            .vmsd = &vmstate_serial_xmit_fifo,
+-            .needed = &serial_xmit_fifo_needed,
+-        } , {
+-            .vmsd = &vmstate_serial_fifo_timeout_timer,
+-            .needed = &serial_fifo_timeout_timer_needed,
+-        } , {
+-            .vmsd = &vmstate_serial_timeout_ipending,
+-            .needed = &serial_timeout_ipending_needed,
+-        } , {
+-            .vmsd = &vmstate_serial_poll,
+-            .needed = &serial_poll_needed,
+-        } , {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_serial_thr_ipending,
++        &vmstate_serial_tsr,
++        &vmstate_serial_recv_fifo,
++        &vmstate_serial_xmit_fifo,
++        &vmstate_serial_fifo_timeout_timer,
++        &vmstate_serial_timeout_ipending,
++        &vmstate_serial_poll,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/display/qxl.c b/hw/display/qxl.c
+index b6d65b9..dd37997 100644
+--- a/hw/display/qxl.c
++++ b/hw/display/qxl.c
+@@ -2216,6 +2216,7 @@ static VMStateDescription qxl_vmstate_monitors_config = {
+     .name               = "qxl/monitors-config",
+     .version_id         = 1,
+     .minimum_version_id = 1,
++    .needed = qxl_monitors_config_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(guest_monitors_config, PCIQXLDevice),
+         VMSTATE_END_OF_LIST()
+@@ -2249,13 +2250,9 @@ static VMStateDescription qxl_vmstate = {
+         VMSTATE_UINT64(guest_cursor, PCIQXLDevice),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &qxl_vmstate_monitors_config,
+-            .needed = qxl_monitors_config_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &qxl_vmstate_monitors_config,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/display/vga.c b/hw/display/vga.c
+index d1d296c..b35d523 100644
+--- a/hw/display/vga.c
++++ b/hw/display/vga.c
+@@ -2035,6 +2035,7 @@ static const VMStateDescription vmstate_vga_endian = {
+     .name = "vga.endian",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = vga_endian_state_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_BOOL(big_endian_fb, VGACommonState),
+         VMSTATE_END_OF_LIST()
+@@ -2078,13 +2079,9 @@ const VMStateDescription vmstate_vga_common = {
+         VMSTATE_UINT32(vbe_bank_mask, VGACommonState),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_vga_endian,
+-            .needed = vga_endian_state_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_vga_endian,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/ide/core.c b/hw/ide/core.c
+index 822519b..e93581b 100644
+--- a/hw/ide/core.c
++++ b/hw/ide/core.c
+@@ -2585,6 +2585,7 @@ static const VMStateDescription vmstate_ide_atapi_gesn_state = {
+     .name ="ide_drive/atapi/gesn_state",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = ide_atapi_gesn_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_BOOL(events.new_media, IDEState),
+         VMSTATE_BOOL(events.eject_request, IDEState),
+@@ -2596,6 +2597,7 @@ static const VMStateDescription vmstate_ide_tray_state = {
+     .name = "ide_drive/tray_state",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = ide_tray_state_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_BOOL(tray_open, IDEState),
+         VMSTATE_BOOL(tray_locked, IDEState),
+@@ -2609,6 +2611,7 @@ static const VMStateDescription vmstate_ide_drive_pio_state = {
+     .minimum_version_id = 1,
+     .pre_save = ide_drive_pio_pre_save,
+     .post_load = ide_drive_pio_post_load,
++    .needed = ide_drive_pio_state_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(req_nb_sectors, IDEState),
+         VMSTATE_VARRAY_INT32(io_buffer, IDEState, io_buffer_total_len, 1,
+@@ -2650,19 +2653,11 @@ const VMStateDescription vmstate_ide_drive = {
+         VMSTATE_UINT8_V(cdrom_changed, IDEState, 3),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_ide_drive_pio_state,
+-            .needed = ide_drive_pio_state_needed,
+-        }, {
+-            .vmsd = &vmstate_ide_tray_state,
+-            .needed = ide_tray_state_needed,
+-        }, {
+-            .vmsd = &vmstate_ide_atapi_gesn_state,
+-            .needed = ide_atapi_gesn_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_ide_drive_pio_state,
++        &vmstate_ide_tray_state,
++        &vmstate_ide_atapi_gesn_state,
++        NULL
+     }
+ };
+ 
+@@ -2670,6 +2665,7 @@ static const VMStateDescription vmstate_ide_error_status = {
+     .name ="ide_bus/error",
+     .version_id = 2,
+     .minimum_version_id = 1,
++    .needed = ide_error_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(error_status, IDEBus),
+         VMSTATE_INT64_V(retry_sector_num, IDEBus, 2),
+@@ -2688,13 +2684,9 @@ const VMStateDescription vmstate_ide_bus = {
+         VMSTATE_UINT8(unit, IDEBus),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_ide_error_status,
+-            .needed = ide_error_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_ide_error_status,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/ide/pci.c b/hw/ide/pci.c
+index 1b3d1c1..1feefef 100644
+--- a/hw/ide/pci.c
++++ b/hw/ide/pci.c
+@@ -350,6 +350,7 @@ static const VMStateDescription vmstate_bmdma_current = {
+     .name = "ide bmdma_current",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = ide_bmdma_current_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT32(cur_addr, BMDMAState),
+         VMSTATE_UINT32(cur_prd_last, BMDMAState),
+@@ -363,6 +364,7 @@ static const VMStateDescription vmstate_bmdma_status = {
+     .name ="ide bmdma/status",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = ide_bmdma_status_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(status, BMDMAState),
+         VMSTATE_END_OF_LIST()
+@@ -383,16 +385,10 @@ static const VMStateDescription vmstate_bmdma = {
+         VMSTATE_UINT8(migration_retry_unit, BMDMAState),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_bmdma_current,
+-            .needed = ide_bmdma_current_needed,
+-        }, {
+-            .vmsd = &vmstate_bmdma_status,
+-            .needed = ide_bmdma_status_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_bmdma_current,
++        &vmstate_bmdma_status,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/input/pckbd.c b/hw/input/pckbd.c
+index d688836..4e1a6a4 100644
+--- a/hw/input/pckbd.c
++++ b/hw/input/pckbd.c
+@@ -392,17 +392,6 @@ static int kbd_outport_post_load(void *opaque, int version_id)
+     return 0;
+ }
+ 
+-static const VMStateDescription vmstate_kbd_outport = {
+-    .name = "pckbd_outport",
+-    .version_id = 1,
+-    .minimum_version_id = 1,
+-    .post_load = kbd_outport_post_load,
+-    .fields = (VMStateField[]) {
+-        VMSTATE_UINT8(outport, KBDState),
+-        VMSTATE_END_OF_LIST()
+-    }
+-};
+-
+ static bool kbd_outport_needed(void *opaque)
+ {
+     KBDState *s = opaque;
+@@ -414,6 +403,18 @@ static bool kbd_outport_needed(void *opaque)
+     return s->outport != kbd_outport_default(s);
+ }
+ 
++static const VMStateDescription vmstate_kbd_outport = {
++    .name = "pckbd_outport",
++    .version_id = 1,
++    .minimum_version_id = 1,
++    .post_load = kbd_outport_post_load,
++    .needed = kbd_outport_needed,
++    .fields = (VMStateField[]) {
++        VMSTATE_UINT8(outport, KBDState),
++        VMSTATE_END_OF_LIST()
++    }
++};
++
+ static int kbd_post_load(void *opaque, int version_id)
+ {
+     KBDState *s = opaque;
+@@ -436,12 +437,9 @@ static const VMStateDescription vmstate_kbd = {
+         VMSTATE_UINT8(pending, KBDState),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_kbd_outport,
+-            .needed = kbd_outport_needed,
+-        },
+-        VMSTATE_END_OF_LIST()
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_kbd_outport,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/input/ps2.c b/hw/input/ps2.c
+index 4baeea2..fdbe565 100644
+--- a/hw/input/ps2.c
++++ b/hw/input/ps2.c
+@@ -677,6 +677,7 @@ static const VMStateDescription vmstate_ps2_keyboard_ledstate = {
+     .version_id = 3,
+     .minimum_version_id = 2,
+     .post_load = ps2_kbd_ledstate_post_load,
++    .needed = ps2_keyboard_ledstate_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(ledstate, PS2KbdState),
+         VMSTATE_END_OF_LIST()
+@@ -717,13 +718,9 @@ static const VMStateDescription vmstate_ps2_keyboard = {
+         VMSTATE_INT32_V(scancode_set, PS2KbdState,3),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_ps2_keyboard_ledstate,
+-            .needed = ps2_keyboard_ledstate_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_ps2_keyboard_ledstate,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/intc/apic_common.c b/hw/intc/apic_common.c
+index 042e960..19b4161 100644
+--- a/hw/intc/apic_common.c
++++ b/hw/intc/apic_common.c
+@@ -379,6 +379,7 @@ static const VMStateDescription vmstate_apic_common_sipi = {
+     .name = "apic_sipi",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = apic_common_sipi_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32(sipi_vector, APICCommonState),
+         VMSTATE_INT32(wait_for_sipi, APICCommonState),
+@@ -418,12 +419,9 @@ static const VMStateDescription vmstate_apic_common = {
+                       APICCommonState), /* open-coded timer state */
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_apic_common_sipi,
+-            .needed = apic_common_sipi_needed,
+-        },
+-        VMSTATE_END_OF_LIST()
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_apic_common_sipi,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/isa/lpc_ich9.c b/hw/isa/lpc_ich9.c
+index bc9afc6..bbc8cf2 100644
+--- a/hw/isa/lpc_ich9.c
++++ b/hw/isa/lpc_ich9.c
+@@ -634,6 +634,7 @@ static const VMStateDescription vmstate_ich9_rst_cnt = {
+     .name = "ICH9LPC/rst_cnt",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = ich9_rst_cnt_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(rst_cnt, ICH9LPCState),
+         VMSTATE_END_OF_LIST()
+@@ -653,12 +654,9 @@ static const VMStateDescription vmstate_ich9_lpc = {
+         VMSTATE_UINT32(sci_level, ICH9LPCState),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_ich9_rst_cnt,
+-            .needed = ich9_rst_cnt_needed
+-        },
+-        { 0 }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_ich9_rst_cnt,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/net/e1000.c b/hw/net/e1000.c
+index df1b7e7..577f879 100644
+--- a/hw/net/e1000.c
++++ b/hw/net/e1000.c
+@@ -1370,6 +1370,7 @@ static const VMStateDescription vmstate_e1000_mit_state = {
+     .name = "e1000/mit_state",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = e1000_mit_state_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT32(mac_reg[RDTR], E1000State),
+         VMSTATE_UINT32(mac_reg[RADV], E1000State),
+@@ -1457,13 +1458,9 @@ static const VMStateDescription vmstate_e1000 = {
+         VMSTATE_UINT32_SUB_ARRAY(mac_reg, E1000State, VFTA, 128),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_e1000_mit_state,
+-            .needed = e1000_mit_state_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_e1000_mit_state,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/net/rtl8139.c b/hw/net/rtl8139.c
+index e738812..6fd6e05 100644
+--- a/hw/net/rtl8139.c
++++ b/hw/net/rtl8139.c
+@@ -3257,6 +3257,7 @@ static const VMStateDescription vmstate_rtl8139_hotplug_ready ={
+     .name = "rtl8139/hotplug_ready",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = rtl8139_hotplug_ready_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_END_OF_LIST()
+     }
+@@ -3352,13 +3353,9 @@ static const VMStateDescription vmstate_rtl8139 = {
+         VMSTATE_UINT32_V(cplus_enabled, RTL8139State, 4),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_rtl8139_hotplug_ready,
+-            .needed = rtl8139_hotplug_ready_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_rtl8139_hotplug_ready,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/net/vmxnet3.c b/hw/net/vmxnet3.c
+index dfb328d..8bcdf3e 100644
+--- a/hw/net/vmxnet3.c
++++ b/hw/net/vmxnet3.c
+@@ -2226,6 +2226,7 @@ static const VMStateDescription vmxstate_vmxnet3_mcast_list = {
+     .version_id = 1,
+     .minimum_version_id = 1,
+     .pre_load = vmxnet3_mcast_list_pre_load,
++    .needed = vmxnet3_mc_list_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_VBUFFER_UINT32(mcast_list, VMXNET3State, 0, NULL, 0,
+             mcast_list_buff_size),
+@@ -2470,14 +2471,9 @@ static const VMStateDescription vmstate_vmxnet3 = {
+ 
+             VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmxstate_vmxnet3_mcast_list,
+-            .needed = vmxnet3_mc_list_needed
+-        },
+-        {
+-            /* empty element. */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmxstate_vmxnet3_mcast_list,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/pci-host/piix.c b/hw/pci-host/piix.c
+index 45fdeca..21da196 100644
+--- a/hw/pci-host/piix.c
++++ b/hw/pci-host/piix.c
+@@ -578,6 +578,7 @@ static const VMStateDescription vmstate_piix3_rcr = {
+     .name = "PIIX3/rcr",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = piix3_rcr_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(rcr, PIIX3State),
+         VMSTATE_END_OF_LIST()
+@@ -596,12 +597,9 @@ static const VMStateDescription vmstate_piix3 = {
+                               PIIX_NUM_PIRQS, 3),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_piix3_rcr,
+-            .needed = piix3_rcr_needed,
+-        },
+-        { 0 }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_piix3_rcr,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/scsi/scsi-bus.c b/hw/scsi/scsi-bus.c
+index bd2c0e4..f50b2f0 100644
+--- a/hw/scsi/scsi-bus.c
++++ b/hw/scsi/scsi-bus.c
+@@ -1968,6 +1968,7 @@ static const VMStateDescription vmstate_scsi_sense_state = {
+     .name = "SCSIDevice/sense",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = scsi_sense_state_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8_SUB_ARRAY(sense, SCSIDevice,
+                                 SCSI_SENSE_BUF_SIZE_OLD,
+@@ -1998,13 +1999,9 @@ const VMStateDescription vmstate_scsi_device = {
+         },
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_scsi_sense_state,
+-            .needed = scsi_sense_state_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_scsi_sense_state,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/timer/hpet.c b/hw/timer/hpet.c
+index b6b8a20..b50071e 100644
+--- a/hw/timer/hpet.c
++++ b/hw/timer/hpet.c
+@@ -283,6 +283,7 @@ static const VMStateDescription vmstate_hpet_rtc_irq_level = {
+     .name = "hpet/rtc_irq_level",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = hpet_rtc_irq_level_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(rtc_irq_level, HPETState),
+         VMSTATE_END_OF_LIST()
+@@ -322,13 +323,9 @@ static const VMStateDescription vmstate_hpet = {
+                                     vmstate_hpet_timer, HPETTimer),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_hpet_rtc_irq_level,
+-            .needed = hpet_rtc_irq_level_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_hpet_rtc_irq_level,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/timer/mc146818rtc.c b/hw/timer/mc146818rtc.c
+index 00986a2..a5e0b3e 100644
+--- a/hw/timer/mc146818rtc.c
++++ b/hw/timer/mc146818rtc.c
+@@ -734,16 +734,6 @@ static int rtc_post_load(void *opaque, int version_id)
+     return 0;
+ }
+ 
+-static const VMStateDescription vmstate_rtc_irq_reinject_on_ack_count = {
+-    .name = "mc146818rtc/irq_reinject_on_ack_count",
+-    .version_id = 1,
+-    .minimum_version_id = 1,
+-    .fields = (VMStateField[]) {
+-        VMSTATE_UINT16(irq_reinject_on_ack_count, RTCState),
+-        VMSTATE_END_OF_LIST()
+-    }
+-};
+-
+ static bool rtc_irq_reinject_on_ack_count_needed(void *opaque)
+ {
+     RTCState *s = (RTCState *)opaque;
+@@ -755,6 +745,17 @@ static bool rtc_irq_reinject_on_ack_count_needed(void *opaque)
+     return s->irq_reinject_on_ack_count != 0;
+ }
+ 
++static const VMStateDescription vmstate_rtc_irq_reinject_on_ack_count = {
++    .name = "mc146818rtc/irq_reinject_on_ack_count",
++    .version_id = 1,
++    .minimum_version_id = 1,
++    .needed = rtc_irq_reinject_on_ack_count_needed,
++    .fields = (VMStateField[]) {
++        VMSTATE_UINT16(irq_reinject_on_ack_count, RTCState),
++        VMSTATE_END_OF_LIST()
++    }
++};
++
+ static const VMStateDescription vmstate_rtc = {
+     .name = "mc146818rtc",
+     .version_id = 3,
+@@ -776,13 +777,9 @@ static const VMStateDescription vmstate_rtc = {
+         VMSTATE_UINT64_V(next_alarm_time, RTCState, 3),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_rtc_irq_reinject_on_ack_count,
+-            .needed = rtc_irq_reinject_on_ack_count_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_rtc_irq_reinject_on_ack_count,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/usb/hcd-ohci.c b/hw/usb/hcd-ohci.c
+index 1a22c9c..7d65818 100644
+--- a/hw/usb/hcd-ohci.c
++++ b/hw/usb/hcd-ohci.c
+@@ -2034,6 +2034,7 @@ static const VMStateDescription vmstate_ohci_eof_timer = {
+     .version_id = 1,
+     .minimum_version_id = 1,
+     .pre_load = ohci_eof_timer_pre_load,
++    .needed = ohci_eof_timer_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_TIMER_PTR(eof_timer, OHCIState),
+         VMSTATE_END_OF_LIST()
+@@ -2081,13 +2082,9 @@ static const VMStateDescription vmstate_ohci_state = {
+         VMSTATE_BOOL(async_complete, OHCIState),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_ohci_eof_timer,
+-            .needed = ohci_eof_timer_needed,
+-        } , {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_ohci_eof_timer,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/usb/redirect.c b/hw/usb/redirect.c
+index 2416de8..2418640 100644
+--- a/hw/usb/redirect.c
++++ b/hw/usb/redirect.c
+@@ -2254,40 +2254,42 @@ static const VMStateInfo usbredir_ep_bufpq_vmstate_info = {
+ 
+ 
+ /* For endp_data migration */
++static bool usbredir_bulk_receiving_needed(void *priv)
++{
++    struct endp_data *endp = priv;
++
++    return endp->bulk_receiving_started;
++}
++
+ static const VMStateDescription usbredir_bulk_receiving_vmstate = {
+     .name = "usb-redir-ep/bulk-receiving",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = usbredir_bulk_receiving_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(bulk_receiving_started, struct endp_data),
+         VMSTATE_END_OF_LIST()
+     }
+ };
+ 
+-static bool usbredir_bulk_receiving_needed(void *priv)
++static bool usbredir_stream_needed(void *priv)
+ {
+     struct endp_data *endp = priv;
+ 
+-    return endp->bulk_receiving_started;
++    return endp->max_streams;
+ }
+ 
+ static const VMStateDescription usbredir_stream_vmstate = {
+     .name = "usb-redir-ep/stream-state",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = usbredir_stream_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT32(max_streams, struct endp_data),
+         VMSTATE_END_OF_LIST()
+     }
+ };
+ 
+-static bool usbredir_stream_needed(void *priv)
+-{
+-    struct endp_data *endp = priv;
+-
+-    return endp->max_streams;
+-}
+-
+ static const VMStateDescription usbredir_ep_vmstate = {
+     .name = "usb-redir-ep",
+     .version_id = 1,
+@@ -2315,16 +2317,10 @@ static const VMStateDescription usbredir_ep_vmstate = {
+         VMSTATE_INT32(bufpq_target_size, struct endp_data),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &usbredir_bulk_receiving_vmstate,
+-            .needed = usbredir_bulk_receiving_needed,
+-        }, {
+-            .vmsd = &usbredir_stream_vmstate,
+-            .needed = usbredir_stream_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &usbredir_bulk_receiving_vmstate,
++        &usbredir_stream_vmstate,
++        NULL
+     }
+ };
+ 
+diff --git a/hw/virtio/virtio.c b/hw/virtio/virtio.c
+index fb49ffc..ee4e07c 100644
+--- a/hw/virtio/virtio.c
++++ b/hw/virtio/virtio.c
+@@ -1053,6 +1053,7 @@ static const VMStateDescription vmstate_virtio_device_endian = {
+     .name = "virtio/device_endian",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = &virtio_device_endian_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT8(device_endian, VirtIODevice),
+         VMSTATE_END_OF_LIST()
+@@ -1063,6 +1064,7 @@ static const VMStateDescription vmstate_virtio_64bit_features = {
+     .name = "virtio/64bit_features",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = &virtio_64bit_features_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(guest_features, VirtIODevice),
+         VMSTATE_END_OF_LIST()
+@@ -1077,16 +1079,10 @@ static const VMStateDescription vmstate_virtio = {
+     .fields = (VMStateField[]) {
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_virtio_device_endian,
+-            .needed = &virtio_device_endian_needed
+-        },
+-        {
+-            .vmsd = &vmstate_virtio_64bit_features,
+-            .needed = &virtio_64bit_features_needed
+-        },
+-        { 0 }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_virtio_device_endian,
++        &vmstate_virtio_64bit_features,
++        NULL
+     }
+ };
+ 
+diff --git a/include/migration/vmstate.h b/include/migration/vmstate.h
+index 2aa2ec7..546f313 100644
+--- a/include/migration/vmstate.h
++++ b/include/migration/vmstate.h
+@@ -120,11 +120,6 @@ typedef struct {
+     bool (*field_exists)(void *opaque, int version_id);
+ } VMStateField;
+ 
+-typedef struct VMStateSubsection {
+-    const VMStateDescription *vmsd;
+-    bool (*needed)(void *opaque);
+-} VMStateSubsection;
+-
+ struct VMStateDescription {
+     const char *name;
+     int unmigratable;
+@@ -135,8 +130,9 @@ struct VMStateDescription {
+     int (*pre_load)(void *opaque);
+     int (*post_load)(void *opaque, int version_id);
+     void (*pre_save)(void *opaque);
++    bool (*needed)(void *opaque);
+     VMStateField *fields;
+-    const VMStateSubsection *subsections;
++    const VMStateDescription **subsections;
+ };
+ 
+ extern const VMStateDescription vmstate_dummy;
+diff --git a/migration/savevm.c b/migration/savevm.c
+index dff4e75..9279875 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -275,11 +275,11 @@ static void dump_vmstate_vmsf(FILE *out_file, const VMStateField *field,
+ }
+ 
+ static void dump_vmstate_vmss(FILE *out_file,
+-                              const VMStateSubsection *subsection,
++                              const VMStateDescription **subsection,
+                               int indent)
+ {
+-    if (subsection->vmsd != NULL) {
+-        dump_vmstate_vmsd(out_file, subsection->vmsd, indent, true);
++    if (*subsection != NULL) {
++        dump_vmstate_vmsd(out_file, *subsection, indent, true);
+     }
+ }
+ 
+@@ -320,12 +320,12 @@ static void dump_vmstate_vmsd(FILE *out_file,
+         fprintf(out_file, "\n%*s]", indent, "");
+     }
+     if (vmsd->subsections != NULL) {
+-        const VMStateSubsection *subsection = vmsd->subsections;
++        const VMStateDescription **subsection = vmsd->subsections;
+         bool first;
+ 
+         fprintf(out_file, ",\n%*s\"Subsections\": [\n", indent, "");
+         first = true;
+-        while (subsection->vmsd != NULL) {
++        while (*subsection != NULL) {
+             if (!first) {
+                 fprintf(out_file, ",\n");
+             }
+diff --git a/migration/vmstate.c b/migration/vmstate.c
+index e5388f0..108995e 100644
+--- a/migration/vmstate.c
++++ b/migration/vmstate.c
+@@ -341,11 +341,11 @@ void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
+ }
+ 
+ static const VMStateDescription *
+-    vmstate_get_subsection(const VMStateSubsection *sub, char *idstr)
++vmstate_get_subsection(const VMStateDescription **sub, char *idstr)
+ {
+-    while (sub && sub->needed) {
+-        if (strcmp(idstr, sub->vmsd->name) == 0) {
+-            return sub->vmsd;
++    while (sub && *sub && (*sub)->needed) {
++        if (strcmp(idstr, (*sub)->name) == 0) {
++            return *sub;
+         }
+         sub++;
+     }
+@@ -405,12 +405,12 @@ static int vmstate_subsection_load(QEMUFile *f, const VMStateDescription *vmsd,
+ static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
+                                     void *opaque, QJSON *vmdesc)
+ {
+-    const VMStateSubsection *sub = vmsd->subsections;
++    const VMStateDescription **sub = vmsd->subsections;
+     bool subsection_found = false;
+ 
+-    while (sub && sub->needed) {
+-        if (sub->needed(opaque)) {
+-            const VMStateDescription *vmsd = sub->vmsd;
++    while (sub && *sub && (*sub)->needed) {
++        if ((*sub)->needed(opaque)) {
++            const VMStateDescription *vmsd = *sub;
+             uint8_t len;
+ 
+             if (vmdesc) {
+diff --git a/target-arm/machine.c b/target-arm/machine.c
+index 9446e5a..36365a5 100644
+--- a/target-arm/machine.c
++++ b/target-arm/machine.c
+@@ -40,6 +40,7 @@ static const VMStateDescription vmstate_vfp = {
+     .name = "cpu/vfp",
+     .version_id = 3,
+     .minimum_version_id = 3,
++    .needed = vfp_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_FLOAT64_ARRAY(env.vfp.regs, ARMCPU, 64),
+         /* The xregs array is a little awkward because element 1 (FPSCR)
+@@ -72,6 +73,7 @@ static const VMStateDescription vmstate_iwmmxt = {
+     .name = "cpu/iwmmxt",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = iwmmxt_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64_ARRAY(env.iwmmxt.regs, ARMCPU, 16),
+         VMSTATE_UINT32_ARRAY(env.iwmmxt.cregs, ARMCPU, 16),
+@@ -91,6 +93,7 @@ static const VMStateDescription vmstate_m = {
+     .name = "cpu/m",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = m_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT32(env.v7m.other_sp, ARMCPU),
+         VMSTATE_UINT32(env.v7m.vecbase, ARMCPU),
+@@ -114,6 +117,7 @@ static const VMStateDescription vmstate_thumb2ee = {
+     .name = "cpu/thumb2ee",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = thumb2ee_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT32(env.teecr, ARMCPU),
+         VMSTATE_UINT32(env.teehbr, ARMCPU),
+@@ -282,21 +286,11 @@ const VMStateDescription vmstate_arm_cpu = {
+         VMSTATE_BOOL(powered_off, ARMCPU),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection[]) {
+-        {
+-            .vmsd = &vmstate_vfp,
+-            .needed = vfp_needed,
+-        } , {
+-            .vmsd = &vmstate_iwmmxt,
+-            .needed = iwmmxt_needed,
+-        } , {
+-            .vmsd = &vmstate_m,
+-            .needed = m_needed,
+-        } , {
+-            .vmsd = &vmstate_thumb2ee,
+-            .needed = thumb2ee_needed,
+-        } , {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_vfp,
++        &vmstate_iwmmxt,
++        &vmstate_m,
++        &vmstate_thumb2ee,
++        NULL
+     }
+ };
+diff --git a/target-i386/machine.c b/target-i386/machine.c
+index 957b731..f24e361 100644
+--- a/target-i386/machine.c
++++ b/target-i386/machine.c
+@@ -400,6 +400,7 @@ static const VMStateDescription vmstate_steal_time_msr = {
+     .name = "cpu/steal_time_msr",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = steal_time_msr_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.steal_time_msr, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -410,6 +411,7 @@ static const VMStateDescription vmstate_async_pf_msr = {
+     .name = "cpu/async_pf_msr",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = async_pf_msr_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.async_pf_en_msr, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -420,6 +422,7 @@ static const VMStateDescription vmstate_pv_eoi_msr = {
+     .name = "cpu/async_pv_eoi_msr",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = pv_eoi_msr_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.pv_eoi_en_msr, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -438,6 +441,7 @@ static const VMStateDescription vmstate_fpop_ip_dp = {
+     .name = "cpu/fpop_ip_dp",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = fpop_ip_dp_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT16(env.fpop, X86CPU),
+         VMSTATE_UINT64(env.fpip, X86CPU),
+@@ -458,6 +462,7 @@ static const VMStateDescription vmstate_msr_tsc_adjust = {
+     .name = "cpu/msr_tsc_adjust",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = tsc_adjust_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.tsc_adjust, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -476,6 +481,7 @@ static const VMStateDescription vmstate_msr_tscdeadline = {
+     .name = "cpu/msr_tscdeadline",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = tscdeadline_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.tsc_deadline, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -502,6 +508,7 @@ static const VMStateDescription vmstate_msr_ia32_misc_enable = {
+     .name = "cpu/msr_ia32_misc_enable",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = misc_enable_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.msr_ia32_misc_enable, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -512,6 +519,7 @@ static const VMStateDescription vmstate_msr_ia32_feature_control = {
+     .name = "cpu/msr_ia32_feature_control",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = feature_control_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.msr_ia32_feature_control, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -546,6 +554,7 @@ static const VMStateDescription vmstate_msr_architectural_pmu = {
+     .name = "cpu/msr_architectural_pmu",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = pmu_enable_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.msr_fixed_ctr_ctrl, X86CPU),
+         VMSTATE_UINT64(env.msr_global_ctrl, X86CPU),
+@@ -581,6 +590,7 @@ static const VMStateDescription vmstate_mpx = {
+     .name = "cpu/mpx",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = mpx_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_BND_REGS(env.bnd_regs, X86CPU, 4),
+         VMSTATE_UINT64(env.bndcs_regs.cfgu, X86CPU),
+@@ -602,6 +612,7 @@ static const VMStateDescription vmstate_msr_hypercall_hypercall = {
+     .name = "cpu/msr_hyperv_hypercall",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = hyperv_hypercall_enable_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.msr_hv_guest_os_id, X86CPU),
+         VMSTATE_UINT64(env.msr_hv_hypercall, X86CPU),
+@@ -621,6 +632,7 @@ static const VMStateDescription vmstate_msr_hyperv_vapic = {
+     .name = "cpu/msr_hyperv_vapic",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = hyperv_vapic_enable_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.msr_hv_vapic, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -639,6 +651,7 @@ static const VMStateDescription vmstate_msr_hyperv_time = {
+     .name = "cpu/msr_hyperv_time",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = hyperv_time_enable_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.msr_hv_tsc, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -680,6 +693,7 @@ static const VMStateDescription vmstate_avx512 = {
+     .name = "cpu/avx512",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = avx512_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64_ARRAY(env.opmask_regs, X86CPU, NB_OPMASK_REGS),
+         VMSTATE_ZMMH_REGS_VARS(env.xmm_regs, X86CPU, 0),
+@@ -702,6 +716,7 @@ static const VMStateDescription vmstate_xss = {
+     .name = "cpu/xss",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = xss_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64(env.xss, X86CPU),
+         VMSTATE_END_OF_LIST()
+@@ -719,6 +734,7 @@ static const VMStateDescription vmstate_xsave ={
+     .version_id = 1,
+     .minimum_version_id = 1,
+     .minimum_version_id_old = 1,
++    .needed = vmstate_xsave_needed,
+     .fields      = (VMStateField []) {
+     VMSTATE_UINT64_V(env.xcr0, X86CPU, 1),
+     VMSTATE_UINT64_V(env.xstate_bv, X86CPU, 1),
+@@ -829,57 +845,23 @@ VMStateDescription vmstate_x86_cpu = {
+         VMSTATE_END_OF_LIST()
+         /* The above list is not sorted /wrt version numbers, watch out! */
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_async_pf_msr,
+-            .needed = async_pf_msr_needed,
+-        } , {
+-            .vmsd = &vmstate_pv_eoi_msr,
+-            .needed = pv_eoi_msr_needed,
+-        } , {
+-            .vmsd = &vmstate_steal_time_msr,
+-            .needed = steal_time_msr_needed,
+-        } , {
+-            .vmsd = &vmstate_fpop_ip_dp,
+-            .needed = fpop_ip_dp_needed,
+-        }, {
+-            .vmsd = &vmstate_msr_tsc_adjust,
+-            .needed = tsc_adjust_needed,
+-        }, {
+-            .vmsd = &vmstate_msr_tscdeadline,
+-            .needed = tscdeadline_needed,
+-        }, {
+-            .vmsd = &vmstate_msr_ia32_misc_enable,
+-            .needed = misc_enable_needed,
+-        }, {
+-            .vmsd = &vmstate_msr_ia32_feature_control,
+-            .needed = feature_control_needed,
+-        }, {
+-            .vmsd = &vmstate_msr_architectural_pmu,
+-            .needed = pmu_enable_needed,
+-        } , {
+-            .vmsd = &vmstate_mpx,
+-            .needed = mpx_needed,
+-        }, {
+-            .vmsd = &vmstate_msr_hypercall_hypercall,
+-            .needed = hyperv_hypercall_enable_needed,
+-        }, {
+-            .vmsd = &vmstate_msr_hyperv_vapic,
+-            .needed = hyperv_vapic_enable_needed,
+-        }, {
+-            .vmsd = &vmstate_msr_hyperv_time,
+-            .needed = hyperv_time_enable_needed,
+-        }, {
+-            .vmsd = &vmstate_avx512,
+-            .needed = avx512_needed,
+-         }, {
+-            .vmsd = &vmstate_xss,
+-            .needed = xss_needed,
+-        } , {
+-            .vmsd = &vmstate_xsave,
+-            .needed = vmstate_xsave_needed,
+-        }, {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_async_pf_msr,
++        &vmstate_pv_eoi_msr,
++        &vmstate_steal_time_msr,
++        &vmstate_fpop_ip_dp,
++        &vmstate_msr_tsc_adjust,
++        &vmstate_msr_tscdeadline,
++        &vmstate_msr_ia32_misc_enable,
++        &vmstate_msr_ia32_feature_control,
++        &vmstate_msr_architectural_pmu,
++        &vmstate_mpx,
++        &vmstate_msr_hypercall_hypercall,
++        &vmstate_msr_hyperv_vapic,
++        &vmstate_msr_hyperv_time,
++        &vmstate_avx512,
++        &vmstate_xss,
++        &vmstate_xsave,
++        NULL
+     }
+ };
+diff --git a/target-ppc/machine.c b/target-ppc/machine.c
+index d875211..f4ac761 100644
+--- a/target-ppc/machine.c
++++ b/target-ppc/machine.c
+@@ -213,6 +213,7 @@ static const VMStateDescription vmstate_fpu = {
+     .name = "cpu/fpu",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = fpu_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_FLOAT64_ARRAY(env.fpr, PowerPCCPU, 32),
+         VMSTATE_UINTTL(env.fpscr, PowerPCCPU),
+@@ -231,6 +232,7 @@ static const VMStateDescription vmstate_altivec = {
+     .name = "cpu/altivec",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = altivec_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_AVR_ARRAY(env.avr, PowerPCCPU, 32),
+         VMSTATE_UINT32(env.vscr, PowerPCCPU),
+@@ -249,6 +251,7 @@ static const VMStateDescription vmstate_vsx = {
+     .name = "cpu/vsx",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = vsx_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINT64_ARRAY(env.vsr, PowerPCCPU, 32),
+         VMSTATE_END_OF_LIST()
+@@ -269,6 +272,7 @@ static const VMStateDescription vmstate_tm = {
+     .version_id = 1,
+     .minimum_version_id = 1,
+     .minimum_version_id_old = 1,
++    .needed = tm_needed,
+     .fields      = (VMStateField []) {
+         VMSTATE_UINTTL_ARRAY(env.tm_gpr, PowerPCCPU, 32),
+         VMSTATE_AVR_ARRAY(env.tm_vsr, PowerPCCPU, 64),
+@@ -302,6 +306,7 @@ static const VMStateDescription vmstate_sr = {
+     .name = "cpu/sr",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = sr_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINTTL_ARRAY(env.sr, PowerPCCPU, 32),
+         VMSTATE_END_OF_LIST()
+@@ -351,6 +356,7 @@ static const VMStateDescription vmstate_slb = {
+     .name = "cpu/slb",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = slb_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32_EQUAL(env.slb_nr, PowerPCCPU),
+         VMSTATE_SLB_ARRAY(env.slb, PowerPCCPU, MAX_SLB_ENTRIES),
+@@ -383,6 +389,7 @@ static const VMStateDescription vmstate_tlb6xx = {
+     .name = "cpu/tlb6xx",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = tlb6xx_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32_EQUAL(env.nb_tlb, PowerPCCPU),
+         VMSTATE_STRUCT_VARRAY_POINTER_INT32(env.tlb.tlb6, PowerPCCPU,
+@@ -429,6 +436,7 @@ static const VMStateDescription vmstate_pbr403 = {
+     .name = "cpu/pbr403",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = pbr403_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_UINTTL_ARRAY(env.pb, PowerPCCPU, 4),
+         VMSTATE_END_OF_LIST()
+@@ -439,6 +447,7 @@ static const VMStateDescription vmstate_tlbemb = {
+     .name = "cpu/tlb6xx",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = tlbemb_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32_EQUAL(env.nb_tlb, PowerPCCPU),
+         VMSTATE_STRUCT_VARRAY_POINTER_INT32(env.tlb.tlbe, PowerPCCPU,
+@@ -448,13 +457,9 @@ static const VMStateDescription vmstate_tlbemb = {
+         /* 403 protection registers */
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_pbr403,
+-            .needed = pbr403_needed,
+-        } , {
+-            /* empty */
+-        }
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_pbr403,
++        NULL
+     }
+ };
+ 
+@@ -483,6 +488,7 @@ static const VMStateDescription vmstate_tlbmas = {
+     .name = "cpu/tlbmas",
+     .version_id = 1,
+     .minimum_version_id = 1,
++    .needed = tlbmas_needed,
+     .fields = (VMStateField[]) {
+         VMSTATE_INT32_EQUAL(env.nb_tlb, PowerPCCPU),
+         VMSTATE_STRUCT_VARRAY_POINTER_INT32(env.tlb.tlbm, PowerPCCPU,
+@@ -533,38 +539,18 @@ const VMStateDescription vmstate_ppc_cpu = {
+         VMSTATE_UINT32_EQUAL(env.nb_BATs, PowerPCCPU),
+         VMSTATE_END_OF_LIST()
+     },
+-    .subsections = (VMStateSubsection []) {
+-        {
+-            .vmsd = &vmstate_fpu,
+-            .needed = fpu_needed,
+-        } , {
+-            .vmsd = &vmstate_altivec,
+-            .needed = altivec_needed,
+-        } , {
+-            .vmsd = &vmstate_vsx,
+-            .needed = vsx_needed,
+-        } , {
+-            .vmsd = &vmstate_sr,
+-            .needed = sr_needed,
+-        } , {
++    .subsections = (const VMStateDescription*[]) {
++        &vmstate_fpu,
++        &vmstate_altivec,
++        &vmstate_vsx,
++        &vmstate_sr,
+ #ifdef TARGET_PPC64
+-            .vmsd = &vmstate_tm,
+-            .needed = tm_needed,
+-        } , {
+-            .vmsd = &vmstate_slb,
+-            .needed = slb_needed,
+-        } , {
++        &vmstate_tm,
++        &vmstate_slb,
+ #endif /* TARGET_PPC64 */
+-            .vmsd = &vmstate_tlb6xx,
+-            .needed = tlb6xx_needed,
+-        } , {
+-            .vmsd = &vmstate_tlbemb,
+-            .needed = tlbemb_needed,
+-        } , {
+-            .vmsd = &vmstate_tlbmas,
+-            .needed = tlbmas_needed,
+-        } , {
+-            /* empty */
+-        }
++        &vmstate_tlb6xx,
++        &vmstate_tlbemb,
++        &vmstate_tlbmas,
++        NULL
+     }
+ };
+-- 
+1.8.3.1
+

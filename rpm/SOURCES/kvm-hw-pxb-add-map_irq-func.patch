@@ -1,0 +1,73 @@
+From 0bca4780c52e262f0269f5561729c699022746ea Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:32 +0200
+Subject: [PATCH 23/31] hw/pxb: add map_irq func
+
+Message-id: <1435154016-26233-40-git-send-email-marcel@redhat.com>
+Patchwork-id: 66467
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 39/43] hw/pxb: add map_irq func
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+The bios does not index the pxb slot number when
+it computes the IRQ because it resides on bus 0
+and not on the current bus.
+However Qemu routes the irq through bus 0 and adds
+the pxb slot to the IRQ computation of the PXB device.
+
+Synchronize between bios and Qemu by canceling
+pxb's effect.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 0639b00d055b313930c23c4d6c9ebfb4af61c00c)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci-bridge/pci_expander_bridge.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/hw/pci-bridge/pci_expander_bridge.c b/hw/pci-bridge/pci_expander_bridge.c
+index 88e85c1..8660a00 100644
+--- a/hw/pci-bridge/pci_expander_bridge.c
++++ b/hw/pci-bridge/pci_expander_bridge.c
+@@ -120,6 +120,24 @@ static int pxb_register_bus(PCIDevice *dev, PCIBus *pxb_bus)
+     return 0;
+ }
+ 
++static int pxb_map_irq_fn(PCIDevice *pci_dev, int pin)
++{
++    PCIDevice *pxb = pci_dev->bus->parent_dev;
++
++    /*
++     * The bios does not index the pxb slot number when
++     * it computes the IRQ because it resides on bus 0
++     * and not on the current bus.
++     * However QEMU routes the irq through bus 0 and adds
++     * the pxb slot to the IRQ computation of the PXB
++     * device.
++     *
++     * Synchronize between bios and QEMU by canceling
++     * pxb's effect.
++     */
++    return pin - PCI_SLOT(pxb->devfn);
++}
++
+ static int pxb_dev_initfn(PCIDevice *dev)
+ {
+     PXBDev *pxb = PXB_DEV(dev);
+@@ -137,7 +155,7 @@ static int pxb_dev_initfn(PCIDevice *dev)
+     bus->parent_dev = dev;
+     bus->address_space_mem = dev->bus->address_space_mem;
+     bus->address_space_io = dev->bus->address_space_io;
+-    bus->map_irq = pci_swizzle_map_irq_fn;
++    bus->map_irq = pxb_map_irq_fn;
+ 
+     bds = qdev_create(BUS(bus), "pci-bridge");
+     bds->id = dev_name;
+-- 
+1.8.3.1
+

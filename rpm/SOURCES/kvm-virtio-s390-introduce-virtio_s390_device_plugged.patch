@@ -1,0 +1,70 @@
+From 9577220ed1d8381ada7efc3c910eb45da27a1d9b Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:53 +0200
+Subject: [PATCH 17/20] virtio-s390: introduce virtio_s390_device_plugged()
+
+Message-id: <1434607916-15166-18-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66316
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 17/20] virtio-s390: introduce virtio_s390_device_plugged()
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Notes: conflicts since commit 6b8f1020540c27246277377aa2c3331ad2bfb160
+       ("virtio: move host_features") was not backpoted, so
+       get_features still exists in virito-s390.
+
+This patch introduce a virtio-s390 specific device_plugged() function
+and doing the number of virtqueue validation inside.
+
+Cc: Alexander Graf <agraf@suse.de>
+Cc: Richard Henderson <rth@twiddle.net>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit d820331a0b47cbbdc409b435545aea25e19b57ad)
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	hw/s390x/s390-virtio-bus.c
+---
+ hw/s390x/s390-virtio-bus.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/hw/s390x/s390-virtio-bus.c b/hw/s390x/s390-virtio-bus.c
+index 34d0708..8017ecc 100644
+--- a/hw/s390x/s390-virtio-bus.c
++++ b/hw/s390x/s390-virtio-bus.c
+@@ -506,6 +506,19 @@ static unsigned virtio_s390_get_features(DeviceState *d)
+     return dev->host_features;
+ }
+ 
++static void virtio_s390_device_plugged(DeviceState *d, Error **errp)
++{
++    VirtIOS390Device *dev = to_virtio_s390_device(d);
++    VirtIODevice *vdev = virtio_bus_get_device(&dev->bus);
++    int n = virtio_get_num_queues(vdev);
++
++    if (n > VIRTIO_S390_QUEUE_MAX) {
++        error_setg(errp, "The nubmer of virtqueues %d "
++                   "exceeds s390 limit %d", n,
++                   VIRTIO_S390_QUEUE_MAX);
++    }
++}
++
+ /**************** S390 Virtio Bus Device Descriptions *******************/
+ 
+ static Property s390_virtio_net_properties[] = {
+@@ -717,6 +730,7 @@ static void virtio_s390_bus_class_init(ObjectClass *klass, void *data)
+     bus_class->max_dev = 1;
+     k->notify = virtio_s390_notify;
+     k->get_features = virtio_s390_get_features;
++    k->device_plugged = virtio_s390_device_plugged;
+ }
+ 
+ static const TypeInfo virtio_s390_bus_info = {
+-- 
+1.8.3.1
+

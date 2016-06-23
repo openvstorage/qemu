@@ -1422,6 +1422,12 @@ S: Maintained
 F: block/archipelago.c
 T: git git://github.com/codyprime/qemu-kvm-jtc.git block
 
+OPENVSTORAGE
+M: Chrysostomos Nanakos <cnanakos@openvstorage.com>
+L: qemu-block@nongnu.org
+S: Supported
+F: block/openvstorage.c
+
 CURL
 M: Jeff Cody <jcody@redhat.com>
 L: qemu-block@nongnu.org

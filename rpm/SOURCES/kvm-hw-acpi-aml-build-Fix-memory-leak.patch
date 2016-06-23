@@ -1,0 +1,41 @@
+From 858ae4d171e44e30efa6d2c28c8303ae0aedef18 Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 8 Jun 2015 00:52:07 +0200
+Subject: [PATCH 09/44] hw/acpi/aml-build: Fix memory leak
+
+Message-id: <1433724727-46928-10-git-send-email-imammedo@redhat.com>
+Patchwork-id: 65394
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 9/9] hw/acpi/aml-build: Fix memory leak
+Bugzilla: 1120706
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Shannon Zhao <shannon.zhao@linaro.org>
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+(cherry picked from commit afcf905cff7971324c2706600ead35a1f41f417a)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index f926c9a..b8591b1 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -304,6 +304,7 @@ static void aml_free(gpointer data, gpointer user_data)
+ {
+     Aml *var = data;
+     build_free_array(var->buf);
++    g_free(var);
+ }
+ 
+ Aml *init_aml_allocator(void)
+-- 
+1.8.3.1
+

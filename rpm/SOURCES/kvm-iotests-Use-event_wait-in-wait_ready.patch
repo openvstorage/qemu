@@ -1,0 +1,50 @@
+From fc8b66eee35e64c4c0a2c9fc562a266b7533b42b Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Mon, 13 Jul 2015 03:27:27 +0200
+Subject: [PATCH 09/58] iotests: Use event_wait in wait_ready
+
+Message-id: <1436758047-4639-10-git-send-email-famz@redhat.com>
+Patchwork-id: 66967
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 9/9] iotests: Use event_wait in wait_ready
+Bugzilla: 1242316
+RH-Acked-by: Jeffrey Cody <jcody@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+
+Only poll the specific type of event we are interested in, to avoid
+stealing events that should be consumed by someone else.
+
+Suggested-by: John Snow <jsnow@redhat.com>
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Reviewed-by: John Snow <jsnow@redhat.com>
+Signed-off-by: Stefan Hajnoczi <stefanha@redhat.com>
+(cherry picked from commit d7b25297920d18fa2a2cde1ed21fde38a88c935f)
+Signed-off-by: Fam Zheng <famz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ tests/qemu-iotests/iotests.py | 9 ++-------
+ 1 file changed, 2 insertions(+), 7 deletions(-)
+
+diff --git a/tests/qemu-iotests/iotests.py b/tests/qemu-iotests/iotests.py
+index 2e07cc4..0ddc513 100644
+--- a/tests/qemu-iotests/iotests.py
++++ b/tests/qemu-iotests/iotests.py
+@@ -328,13 +328,8 @@ class QMPTestCase(unittest.TestCase):
+ 
+     def wait_ready(self, drive='drive0'):
+         '''Wait until a block job BLOCK_JOB_READY event'''
+-        ready = False
+-        while not ready:
+-            for event in self.vm.get_qmp_events(wait=True):
+-                if event['event'] == 'BLOCK_JOB_READY':
+-                    self.assert_qmp(event, 'data/type', 'mirror')
+-                    self.assert_qmp(event, 'data/device', drive)
+-                    ready = True
++        f = {'data': {'type': 'mirror', 'device': drive } }
++        event = self.vm.event_wait(name='BLOCK_JOB_READY', match=f)
+ 
+     def wait_ready_and_cancel(self, drive='drive0'):
+         self.wait_ready(drive=drive)
+-- 
+1.8.3.1
+

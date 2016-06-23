@@ -1,0 +1,65 @@
+From 8070be21413d5d49c74e8d16e977473c594f127b Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:47:02 +0200
+Subject: [PATCH 17/28] migration: Use always helper to set state
+
+Message-id: <1438098431-30847-18-git-send-email-quintela@redhat.com>
+Patchwork-id: 67170
+O-Subject: [RHEL-7 qemu-kvm PATCH 17/26] migration: Use always helper to set state
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+There were three places that were not using the migrate_set_state()
+helper, just fix that.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 7844337d1efb2c47dc3f306d7621e1cafca8ba67)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+
+Conflicts:
+	migration/migration.c
+
+Red Hat still uses error_set.
+
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+---
+ migration/migration.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/migration/migration.c b/migration/migration.c
+index ebfb7c1..07b9fe0 100644
+--- a/migration/migration.c
++++ b/migration/migration.c
+@@ -444,7 +444,7 @@ void migrate_fd_error(MigrationState *s)
+ {
+     trace_migrate_fd_error();
+     assert(s->file == NULL);
+-    s->state = MIGRATION_STATUS_FAILED;
++    migrate_set_state(s, MIGRATION_STATUS_SETUP, MIGRATION_STATUS_FAILED);
+     trace_migrate_set_state(MIGRATION_STATUS_FAILED);
+     notifier_list_notify(&migration_state_notifiers, s);
+ }
+@@ -519,7 +519,7 @@ static MigrationState *migrate_init(const MigrationParams *params)
+     s->xbzrle_cache_size = xbzrle_cache_size;
+ 
+     s->bandwidth_limit = bandwidth_limit;
+-    s->state = MIGRATION_STATUS_SETUP;
++    migrate_set_state(s, MIGRATION_STATUS_NONE, MIGRATION_STATUS_SETUP);
+     trace_migrate_set_state(MIGRATION_STATUS_SETUP);
+ 
+     s->total_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+@@ -624,7 +624,7 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
+ #endif
+     } else {
+         error_set(errp, QERR_INVALID_PARAMETER_VALUE, "uri", "a valid migration protocol");
+-        s->state = MIGRATION_STATUS_FAILED;
++        migrate_set_state(s, MIGRATION_STATUS_SETUP, MIGRATION_STATUS_FAILED);
+         return;
+     }
+ 
+-- 
+1.8.3.1
+

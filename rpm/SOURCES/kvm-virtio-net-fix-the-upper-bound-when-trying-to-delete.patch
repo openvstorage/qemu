@@ -1,0 +1,45 @@
+From 888b141f7e937ad2fa0bbc50c527252f8d699be8 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Thu, 18 Jun 2015 06:11:41 +0200
+Subject: [PATCH 05/20] virtio-net: fix the upper bound when trying to delete
+ queues
+
+Message-id: <1434607916-15166-6-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66303
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 05/20] virtio-net: fix the upper bound when trying to delete queues
+Bugzilla: 1231610
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+RH-Acked-by: Vlad Yasevich <vyasevic@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+Virtqueue were indexed from zero, so don't delete virtqueue whose
+index is n->max_queues * 2 + 1.
+
+Cc: Michael S. Tsirkin <mst@redhat.com>
+Cc: qemu-stable <qemu-stable@nongnu.org>
+Signed-off-by: Jason Wang <jasowang@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+(cherry picked from commit 27a46dcf5038e20451101ed2d5414aebf3846e27)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/virtio-net.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/net/virtio-net.c b/hw/net/virtio-net.c
+index 59f76bc..b6fac9c 100644
+--- a/hw/net/virtio-net.c
++++ b/hw/net/virtio-net.c
+@@ -1309,7 +1309,7 @@ static void virtio_net_set_multiqueue(VirtIONet *n, int multiqueue)
+ 
+     n->multiqueue = multiqueue;
+ 
+-    for (i = 2; i <= n->max_queues * 2 + 1; i++) {
++    for (i = 2; i < n->max_queues * 2 + 1; i++) {
+         virtio_del_queue(vdev, i);
+     }
+ 
+-- 
+1.8.3.1
+

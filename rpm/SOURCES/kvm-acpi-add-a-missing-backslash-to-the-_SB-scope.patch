@@ -1,0 +1,58 @@
+From 4e790354fc1863d2007cdacff5db24c389b7933d Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:52:58 +0200
+Subject: [PATCH 01/31] acpi: add a missing backslash to the \_SB scope.
+
+Message-id: <1435154016-26233-6-git-send-email-marcel@redhat.com>
+Patchwork-id: 66433
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 05/43] acpi: add a missing backslash to the \_SB scope.
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+From: Gal Hammer <ghammer@redhat.com>
+
+A predefined scope in the ACPI specs is precede with a backslash.
+
+Signed-off-by: Gal Hammer <ghammer@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+(cherry picked from commit 7824df3889499acc7466317175a3fb24a0824002)
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/i386/acpi-build.c        | 2 +-
+ include/hw/acpi/aml-build.h | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index 061a9ba..c9d4545 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -765,7 +765,7 @@ build_ssdt(GArray *table_data, GArray *linker,
+         aml_append(ssdt, scope);
+     }
+ 
+-    sb_scope = aml_scope("_SB");
++    sb_scope = aml_scope("\\_SB");
+     {
+         /* create PCI0.PRES device and its _CRS to reserve CPU hotplug MMIO */
+         dev = aml_device("PCI0." stringify(CPU_HOTPLUG_RESOURCE_DEVICE));
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 82242ec..9773bfd 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -184,7 +184,7 @@ void free_aml_allocator(void);
+  * Joins Aml elements together and helps to construct AML tables
+  * Examle of usage:
+  *   Aml *table = aml_def_block("SSDT", ...);
+- *   Aml *sb = aml_scope("\_SB");
++ *   Aml *sb = aml_scope("\\_SB");
+  *   Aml *dev = aml_device("PCI0");
+  *
+  *   aml_append(dev, aml_name_decl("HID", aml_eisaid("PNP0A03")));
+-- 
+1.8.3.1
+

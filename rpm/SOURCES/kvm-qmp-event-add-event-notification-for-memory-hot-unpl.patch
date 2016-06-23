@@ -1,0 +1,125 @@
+From e0284534e1be12ebe10597a6241f6ca24e69e9df Mon Sep 17 00:00:00 2001
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Mon, 8 Jun 2015 00:52:06 +0200
+Subject: [PATCH 08/44] qmp-event: add event notification for memory hot unplug
+ error
+
+Message-id: <1433724727-46928-9-git-send-email-imammedo@redhat.com>
+Patchwork-id: 65396
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 8/9] qmp-event: add event notification for memory hot unplug error
+Bugzilla: 1120706
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+From: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+
+When memory hot unplug fails, this patch adds support to send
+QMP event to notify mgmt about this failure.
+
+Reviewed-by: Igor Mammedov <imammedo@redhat.com>
+Signed-off-by: Zhu Guihua <zhugh.fnst@cn.fujitsu.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit bc09e06113e79e5d70cf2b37015a26f2102cc03e)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/qmp/qmp-events.txt  | 17 +++++++++++++++++
+ hw/acpi/memory_hotplug.c | 10 +++++++++-
+ qapi/event.json          | 14 ++++++++++++++
+ trace-events             |  1 +
+ 4 files changed, 41 insertions(+), 1 deletion(-)
+
+diff --git a/docs/qmp/qmp-events.txt b/docs/qmp/qmp-events.txt
+index 40c2917..a579253 100644
+--- a/docs/qmp/qmp-events.txt
++++ b/docs/qmp/qmp-events.txt
+@@ -233,6 +233,23 @@ Example:
+ { "event": "GUEST_PANICKED",
+      "data": { "action": "pause" } }
+ 
++MEM_HOT_UNPLUG_ERROR
++--------------------
++Emitted when memory hot unplug error occurs.
++
++Data:
++
++- "device": device name (json-string)
++- "msg": Informative message (e.g., reason for the error) (json-string)
++
++Example:
++
++{ "event": "MEM_HOT_UNPLUG_ERROR"
++  "data": { "device": "dimm1",
++            "msg": "acpi: device unplug for unsupported device"
++  },
++  "timestamp": { "seconds": 1265044230, "microseconds": 450486 } }
++
+ NIC_RX_FILTER_CHANGED
+ ---------------------
+ 
+diff --git a/hw/acpi/memory_hotplug.c b/hw/acpi/memory_hotplug.c
+index 35bbfeb..34cef1e 100644
+--- a/hw/acpi/memory_hotplug.c
++++ b/hw/acpi/memory_hotplug.c
+@@ -94,6 +94,7 @@ static void acpi_memory_hotplug_write(void *opaque, hwaddr addr, uint64_t data,
+     ACPIOSTInfo *info;
+     DeviceState *dev = NULL;
+     HotplugHandler *hotplug_ctrl = NULL;
++    Error *local_err = NULL;
+ 
+     if (!mem_st->dev_count) {
+         return;
+@@ -148,7 +149,14 @@ static void acpi_memory_hotplug_write(void *opaque, hwaddr addr, uint64_t data,
+             dev = DEVICE(mdev->dimm);
+             hotplug_ctrl = qdev_get_hotplug_handler(dev);
+             /* call pc-dimm unplug cb */
+-            hotplug_handler_unplug(hotplug_ctrl, dev, NULL);
++            hotplug_handler_unplug(hotplug_ctrl, dev, &local_err);
++            if (local_err) {
++                trace_mhp_acpi_pc_dimm_delete_failed(mem_st->selector);
++                qapi_event_send_mem_unplug_error(dev->id,
++                                                 error_get_pretty(local_err),
++                                                 &error_abort);
++                break;
++            }
+             trace_mhp_acpi_pc_dimm_deleted(mem_st->selector);
+         }
+         break;
+diff --git a/qapi/event.json b/qapi/event.json
+index c51dc49..378dda5 100644
+--- a/qapi/event.json
++++ b/qapi/event.json
+@@ -330,3 +330,17 @@
+ ##
+ { 'event': 'VSERPORT_CHANGE',
+   'data': { 'id': 'str', 'open': 'bool' } }
++
++##
++# @MEM_UNPLUG_ERROR
++#
++# Emitted when memory hot unplug error occurs.
++#
++# @device: device name
++#
++# @msg: Informative message
++#
++# Since: 2.4
++##
++{ 'event': 'MEM_UNPLUG_ERROR',
++  'data': { 'device': 'str', 'msg': 'str' } }
+diff --git a/trace-events b/trace-events
+index 46f6ef0..11387c3 100644
+--- a/trace-events
++++ b/trace-events
+@@ -1575,6 +1575,7 @@ mhp_acpi_write_ost_status(uint32_t slot, uint32_t st) "slot[0x%"PRIx32"] OST STA
+ mhp_acpi_clear_insert_evt(uint32_t slot) "slot[0x%"PRIx32"] clear insert event"
+ mhp_acpi_clear_remove_evt(uint32_t slot) "slot[0x%"PRIx32"] clear remove event"
+ mhp_acpi_pc_dimm_deleted(uint32_t slot) "slot[0x%"PRIx32"] pc-dimm deleted"
++mhp_acpi_pc_dimm_delete_failed(uint32_t slot) "slot[0x%"PRIx32"] pc-dimm delete failed"
+ 
+ # hw/i386/pc.c
+ mhp_pc_dimm_assigned_slot(int slot) "0x%d"
+-- 
+1.8.3.1
+

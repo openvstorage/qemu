@@ -1,0 +1,60 @@
+From c9636f1c028438e6f0a8df30789ad68087b39833 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:32:04 +0100
+Subject: [PATCH 11/44] build-sys: split util-obj- on multi-lines
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-5-git-send-email-mst@redhat.com>
+Patchwork-id: 68366
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 04/36] build-sys: split util-obj- on multi-lines
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Marc-André Lureau <marcandre.lureau@redhat.com>
+
+Make it easier to add new unrelated units with shorter lines.
+
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Thibaut Collet <thibaut.collet@6wind.com>
+(cherry picked from commit e2792004580e42b86345d141493b1f12ba358fd8)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ util/Makefile.objs | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/util/Makefile.objs b/util/Makefile.objs
+index ceaba30..cedfdf9 100644
+--- a/util/Makefile.objs
++++ b/util/Makefile.objs
+@@ -1,13 +1,18 @@
+ util-obj-y = osdep.o cutils.o unicode.o qemu-timer-common.o
+-util-obj-$(CONFIG_WIN32) += oslib-win32.o qemu-thread-win32.o event_notifier-win32.o
+-util-obj-$(CONFIG_POSIX) += oslib-posix.o qemu-thread-posix.o event_notifier-posix.o qemu-openpty.o
++util-obj-$(CONFIG_POSIX) += compatfd.o
++util-obj-$(CONFIG_POSIX) += event_notifier-posix.o
++util-obj-$(CONFIG_POSIX) += oslib-posix.o
++util-obj-$(CONFIG_POSIX) += qemu-openpty.o
++util-obj-$(CONFIG_POSIX) += qemu-thread-posix.o
++util-obj-$(CONFIG_WIN32) += event_notifier-win32.o
++util-obj-$(CONFIG_WIN32) += oslib-win32.o
++util-obj-$(CONFIG_WIN32) += qemu-thread-win32.o
+ util-obj-y += envlist.o path.o module.o
+ util-obj-$(call lnot,$(CONFIG_INT128)) += host-utils.o
+ util-obj-y += bitmap.o bitops.o hbitmap.o
+ util-obj-y += fifo8.o
+ util-obj-y += acl.o
+ util-obj-y += error.o qemu-error.o
+-util-obj-$(CONFIG_POSIX) += compatfd.o
+ util-obj-y += id.o
+ util-obj-y += iov.o aes.o qemu-config.o qemu-sockets.o uri.o notify.o
+ util-obj-y += qemu-option.o qemu-progress.o
+-- 
+1.8.3.1
+

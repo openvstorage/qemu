@@ -1,0 +1,138 @@
+From 0012268d88ccbb6aa313d1f701e12ea691f8a5d4 Mon Sep 17 00:00:00 2001
+From: Xiao Wang <jasowang@redhat.com>
+Date: Tue, 7 Jul 2015 09:18:13 +0200
+Subject: [PATCH 039/100] Add MemTxAttrs to the IOTLB
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1436260751-25015-11-git-send-email-jasowang@redhat.com>
+Patchwork-id: 66785
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH V2 10/68] Add MemTxAttrs to the IOTLB
+Bugzilla: 1227343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+
+From: Peter Maydell <peter.maydell@linaro.org>
+
+Add a MemTxAttrs field to the IOTLB, and allow target-specific
+code to set it via a new tlb_set_page_with_attrs() function;
+pass the attributes through to the device when making IO accesses.
+
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+Reviewed-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Edgar E. Iglesias <edgar.iglesias@xilinx.com>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+(cherry picked from commit fadc1cbe85c6b032d5842ec0d19d209f50fcb375)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ cputlb.c                | 18 +++++++++++++++---
+ include/exec/cpu-defs.h |  2 ++
+ include/exec/exec-all.h |  3 +++
+ softmmu_template.h      |  4 ++--
+ 4 files changed, 22 insertions(+), 5 deletions(-)
+
+diff --git a/cputlb.c b/cputlb.c
+index 5e1cb8f..7606548 100644
+--- a/cputlb.c
++++ b/cputlb.c
+@@ -249,9 +249,9 @@ static void tlb_add_large_page(CPUArchState *env, target_ulong vaddr,
+  * Called from TCG-generated code, which is under an RCU read-side
+  * critical section.
+  */
+-void tlb_set_page(CPUState *cpu, target_ulong vaddr,
+-                  hwaddr paddr, int prot,
+-                  int mmu_idx, target_ulong size)
++void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
++                             hwaddr paddr, MemTxAttrs attrs, int prot,
++                             int mmu_idx, target_ulong size)
+ {
+     CPUArchState *env = cpu->env_ptr;
+     MemoryRegionSection *section;
+@@ -302,6 +302,7 @@ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
+ 
+     /* refill the tlb */
+     env->iotlb[mmu_idx][index].addr = iotlb - vaddr;
++    env->iotlb[mmu_idx][index].attrs = attrs;
+     te->addend = addend - vaddr;
+     if (prot & PAGE_READ) {
+         te->addr_read = address;
+@@ -331,6 +332,17 @@ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
+     }
+ }
+ 
++/* Add a new TLB entry, but without specifying the memory
++ * transaction attributes to be used.
++ */
++void tlb_set_page(CPUState *cpu, target_ulong vaddr,
++                  hwaddr paddr, int prot,
++                  int mmu_idx, target_ulong size)
++{
++    tlb_set_page_with_attrs(cpu, vaddr, paddr, MEMTXATTRS_UNSPECIFIED,
++                            prot, mmu_idx, size);
++}
++
+ /* NOTE: this function can trigger an exception */
+ /* NOTE2: the returned address is not exactly the physical address: it
+  * is actually a ram_addr_t (in system mode; the user mode emulation
+diff --git a/include/exec/cpu-defs.h b/include/exec/cpu-defs.h
+index 7f88185..3f56546 100644
+--- a/include/exec/cpu-defs.h
++++ b/include/exec/cpu-defs.h
+@@ -30,6 +30,7 @@
+ #ifndef CONFIG_USER_ONLY
+ #include "exec/hwaddr.h"
+ #endif
++#include "exec/memattrs.h"
+ 
+ #ifndef TARGET_LONG_BITS
+ #error TARGET_LONG_BITS must be defined before including this header
+@@ -109,6 +110,7 @@ QEMU_BUILD_BUG_ON(sizeof(CPUTLBEntry) != (1 << CPU_TLB_ENTRY_BITS));
+  */
+ typedef struct CPUIOTLBEntry {
+     hwaddr addr;
++    MemTxAttrs attrs;
+ } CPUIOTLBEntry;
+ 
+ #define CPU_COMMON_TLB \
+diff --git a/include/exec/exec-all.h b/include/exec/exec-all.h
+index ff1bc3e..b58cd47 100644
+--- a/include/exec/exec-all.h
++++ b/include/exec/exec-all.h
+@@ -105,6 +105,9 @@ void tlb_flush(CPUState *cpu, int flush_global);
+ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
+                   hwaddr paddr, int prot,
+                   int mmu_idx, target_ulong size);
++void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
++                             hwaddr paddr, MemTxAttrs attrs,
++                             int prot, int mmu_idx, target_ulong size);
+ void tb_invalidate_phys_addr(AddressSpace *as, hwaddr addr);
+ #else
+ static inline void tlb_flush_page(CPUState *cpu, target_ulong addr)
+diff --git a/softmmu_template.h b/softmmu_template.h
+index 0e30986..16b0852 100644
+--- a/softmmu_template.h
++++ b/softmmu_template.h
+@@ -160,7 +160,7 @@ static inline DATA_TYPE glue(io_read, SUFFIX)(CPUArchState *env,
+ 
+     cpu->mem_io_vaddr = addr;
+     memory_region_dispatch_read(mr, physaddr, &val, 1 << SHIFT,
+-                                MEMTXATTRS_UNSPECIFIED);
++                                iotlbentry->attrs);
+     return val;
+ }
+ #endif
+@@ -382,7 +382,7 @@ static inline void glue(io_write, SUFFIX)(CPUArchState *env,
+     cpu->mem_io_vaddr = addr;
+     cpu->mem_io_pc = retaddr;
+     memory_region_dispatch_write(mr, physaddr, val, 1 << SHIFT,
+-                                 MEMTXATTRS_UNSPECIFIED);
++                                 iotlbentry->attrs);
+ }
+ 
+ void helper_le_st_name(CPUArchState *env, target_ulong addr, DATA_TYPE val,
+-- 
+1.8.3.1
+

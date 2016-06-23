@@ -1,0 +1,75 @@
+From faac3b4308633352fe87aee6181bdc5900cd4c3d Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 3 Jul 2015 19:13:39 +0200
+Subject: [PATCH 029/100] vhost_net: re-enable when cross endian
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1435950819-10991-8-git-send-email-thuth@redhat.com>
+Patchwork-id: 66700
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 7/7] vhost_net: re-enable when cross endian
+Bugzilla: 1225715
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Cédric Le Goater <clg@fr.ibm.com>
+
+Cross-endianness is now checked by the core vhost code.
+
+revert 371df9f5e0f1 "vhost-net: disable when cross-endian"
+
+Signed-off-by: Cédric Le Goater <clg@fr.ibm.com>
+[ added commit message, Greg Kurz <gkurz@linux.vnet.ibm.com> ]
+Signed-off-by: Greg Kurz <gkurz@linux.vnet.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 1717388645670336c48aa05d19b0acd07687a821)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/vhost_net.c | 19 -------------------
+ 1 file changed, 19 deletions(-)
+
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index 1884e59..3e4b0f2 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -293,19 +293,6 @@ static void vhost_net_stop_one(struct vhost_net *net,
+     vhost_dev_disable_notifiers(&net->dev, dev);
+ }
+ 
+-static bool vhost_net_device_endian_ok(VirtIODevice *vdev)
+-{
+-#ifdef TARGET_IS_BIENDIAN
+-#ifdef HOST_WORDS_BIGENDIAN
+-    return virtio_is_big_endian(vdev);
+-#else
+-    return !virtio_is_big_endian(vdev);
+-#endif
+-#else
+-    return true;
+-#endif
+-}
+-
+ int vhost_net_start(VirtIODevice *dev, NetClientState *ncs,
+                     int total_queues)
+ {
+@@ -314,12 +301,6 @@ int vhost_net_start(VirtIODevice *dev, NetClientState *ncs,
+     VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(vbus);
+     int r, e, i;
+ 
+-    if (!vhost_net_device_endian_ok(dev)) {
+-        error_report("vhost-net does not support cross-endian");
+-        r = -ENOSYS;
+-        goto err;
+-    }
+-
+     if (!k->set_guest_notifiers) {
+         error_report("binding does not support guest notifiers");
+         r = -ENOSYS;
+-- 
+1.8.3.1
+

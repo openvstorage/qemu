@@ -1,0 +1,61 @@
+From 046c5c789204384a1e93c1a01028f7a207667c4f Mon Sep 17 00:00:00 2001
+From: Victor Kaplansky <victork@redhat.com>
+Date: Wed, 18 Nov 2015 17:08:36 +0100
+Subject: [PATCH 1/2] vhost-user: ignore qemu-only features
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447866376-5885-2-git-send-email-victork@redhat.com>
+Patchwork-id: 68401
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 1/2] vhost-user: ignore qemu-only features
+Bugzilla: 1279388
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+
+Some features (such as ctrl vq) are supported
+by qemu without need to communicate with the
+backend.
+
+Drop them from the feature mask so we set them
+unconditionally.
+
+Reported-by: Victor Kaplansky <vkaplans@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 72018d1e1917a56d05e24aedc9f582b7c8385e19)
+(from maintainer's tree)
+---
+ hw/net/vhost_net.c | 8 +-------
+ 1 file changed, 1 insertion(+), 7 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/net/vhost_net.c | 8 +-------
+ 1 file changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index 04960f2..acf11e7 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -77,14 +77,8 @@ static const int user_feature_bits[] = {
+     VIRTIO_NET_F_HOST_ECN,
+     VIRTIO_NET_F_HOST_UFO,
+     VIRTIO_NET_F_MRG_RXBUF,
+-    VIRTIO_NET_F_STATUS,
+-    VIRTIO_NET_F_CTRL_VQ,
+-    VIRTIO_NET_F_CTRL_RX,
+-    VIRTIO_NET_F_CTRL_VLAN,
+-    VIRTIO_NET_F_CTRL_RX_EXTRA,
+-    VIRTIO_NET_F_CTRL_MAC_ADDR,
+-    VIRTIO_NET_F_CTRL_GUEST_OFFLOADS,
+ 
++    /* This bit implies RARP isn't sent by QEMU out of band */
+     VIRTIO_NET_F_GUEST_ANNOUNCE,
+ 
+     VIRTIO_NET_F_MQ,
+-- 
+1.8.3.1
+

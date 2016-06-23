@@ -1,0 +1,223 @@
+From ba5e9a8584af5cd51b22b9af7b4e8cef5ab57b0c Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Wed, 30 Sep 2015 10:25:30 +0200
+Subject: [PATCH 05/11] vhost-user: add protocol feature negotiation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1443608650-22364-6-git-send-email-mst@redhat.com>
+Patchwork-id: 68001
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 5/9] vhost-user: add protocol feature negotiation
+Bugzilla: 1276100
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+
+Support a separate bitmask for vhost-user protocol features,
+and messages to get/set protocol features.
+
+Invoke them at init.
+
+No features are defined yet.
+
+[ leverage vhost_user_call for request handling -- Yuanhan Liu ]
+
+Signed-off-by: Michael S. Tsirkin <address@hidden>
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Marcel Apfelbaum <marcel@redhat.com>
+Tested-by: Marcel Apfelbaum <marcel@redhat.com>
+(cherry picked from commit dcb10c000cdd4d14f5ac4f07b04fb666494ef4a8)
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ docs/specs/vhost-user.txt | 37 +++++++++++++++++++++++++++++++++++++
+ hw/net/vhost_net.c        |  2 ++
+ hw/virtio/vhost-user.c    | 31 +++++++++++++++++++++++++++++++
+ include/hw/virtio/vhost.h |  1 +
+ 4 files changed, 71 insertions(+)
+
+diff --git a/docs/specs/vhost-user.txt b/docs/specs/vhost-user.txt
+index 650bb18..70da3b1 100644
+--- a/docs/specs/vhost-user.txt
++++ b/docs/specs/vhost-user.txt
+@@ -113,6 +113,7 @@ message replies. Most of the requests don't require replies. Here is a list of
+ the ones that do:
+ 
+  * VHOST_GET_FEATURES
++ * VHOST_GET_PROTOCOL_FEATURES
+  * VHOST_GET_VRING_BASE
+ 
+ There are several messages that the master sends with file descriptors passed
+@@ -127,6 +128,13 @@ in the ancillary data:
+ If Master is unable to send the full message or receives a wrong reply it will
+ close the connection. An optional reconnection mechanism can be implemented.
+ 
++Any protocol extensions are gated by protocol feature bits,
++which allows full backwards compatibility on both master
++and slave.
++As older slaves don't support negotiating protocol features,
++a feature bit was dedicated for this purpose:
++#define VHOST_USER_F_PROTOCOL_FEATURES 30
++
+ Message types
+ -------------
+ 
+@@ -138,6 +146,8 @@ Message types
+       Slave payload: u64
+ 
+       Get from the underlying vhost implementation the features bitmask.
++      Feature bit VHOST_USER_F_PROTOCOL_FEATURES signals slave support for
++      VHOST_USER_GET_PROTOCOL_FEATURES and VHOST_USER_SET_PROTOCOL_FEATURES.
+ 
+  * VHOST_USER_SET_FEATURES
+ 
+@@ -146,6 +156,33 @@ Message types
+       Master payload: u64
+ 
+       Enable features in the underlying vhost implementation using a bitmask.
++      Feature bit VHOST_USER_F_PROTOCOL_FEATURES signals slave support for
++      VHOST_USER_GET_PROTOCOL_FEATURES and VHOST_USER_SET_PROTOCOL_FEATURES.
++
++ * VHOST_USER_GET_PROTOCOL_FEATURES
++
++      Id: 15
++      Equivalent ioctl: VHOST_GET_FEATURES
++      Master payload: N/A
++      Slave payload: u64
++
++      Get the protocol feature bitmask from the underlying vhost implementation.
++      Only legal if feature bit VHOST_USER_F_PROTOCOL_FEATURES is present in
++      VHOST_USER_GET_FEATURES.
++      Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must support
++      this message even before VHOST_USER_SET_FEATURES was called.
++
++ * VHOST_USER_SET_PROTOCOL_FEATURES
++
++      Id: 16
++      Ioctl: VHOST_SET_FEATURES
++      Master payload: u64
++
++      Enable protocol features in the underlying vhost implementation.
++      Only legal if feature bit VHOST_USER_F_PROTOCOL_FEATURES is present in
++      VHOST_USER_GET_FEATURES.
++      Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must support
++      this message even before VHOST_USER_SET_FEATURES was called.
+ 
+  * VHOST_USER_SET_OWNER
+ 
+diff --git a/hw/net/vhost_net.c b/hw/net/vhost_net.c
+index f385225..54e62fd 100644
+--- a/hw/net/vhost_net.c
++++ b/hw/net/vhost_net.c
+@@ -152,8 +152,10 @@ struct vhost_net *vhost_net_init(VhostNetOptions *options)
+         net->dev.backend_features = qemu_has_vnet_hdr(options->net_backend)
+             ? 0 : (1ULL << VHOST_NET_F_VIRTIO_NET_HDR);
+         net->backend = r;
++        net->dev.protocol_features = 0;
+     } else {
+         net->dev.backend_features = 0;
++        net->dev.protocol_features = 0;
+         net->backend = -1;
+     }
+     net->nc = options->net_backend;
+diff --git a/hw/virtio/vhost-user.c b/hw/virtio/vhost-user.c
+index 78c5c0d..87198a4 100644
+--- a/hw/virtio/vhost-user.c
++++ b/hw/virtio/vhost-user.c
+@@ -24,6 +24,8 @@
+ #include <linux/vhost.h>
+ 
+ #define VHOST_MEMORY_MAX_NREGIONS    8
++#define VHOST_USER_F_PROTOCOL_FEATURES 30
++#define VHOST_USER_PROTOCOL_FEATURE_MASK 0x0ULL
+ 
+ typedef enum VhostUserRequest {
+     VHOST_USER_NONE = 0,
+@@ -41,6 +43,8 @@ typedef enum VhostUserRequest {
+     VHOST_USER_SET_VRING_KICK = 12,
+     VHOST_USER_SET_VRING_CALL = 13,
+     VHOST_USER_SET_VRING_ERR = 14,
++    VHOST_USER_GET_PROTOCOL_FEATURES = 15,
++    VHOST_USER_SET_PROTOCOL_FEATURES = 16,
+     VHOST_USER_MAX
+ } VhostUserRequest;
+ 
+@@ -206,11 +210,13 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+ 
+     switch (msg_request) {
+     case VHOST_USER_GET_FEATURES:
++    case VHOST_USER_GET_PROTOCOL_FEATURES:
+         need_reply = 1;
+         break;
+ 
+     case VHOST_USER_SET_FEATURES:
+     case VHOST_USER_SET_LOG_BASE:
++    case VHOST_USER_SET_PROTOCOL_FEATURES:
+         msg.u64 = *((__u64 *) arg);
+         msg.size = sizeof(m.u64);
+         break;
+@@ -308,6 +314,7 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+ 
+         switch (msg_request) {
+         case VHOST_USER_GET_FEATURES:
++        case VHOST_USER_GET_PROTOCOL_FEATURES:
+             if (msg.size != sizeof(m.u64)) {
+                 error_report("Received bad msg size.\n");
+                 return -1;
+@@ -333,10 +340,34 @@ static int vhost_user_call(struct vhost_dev *dev, unsigned long int request,
+ 
+ static int vhost_user_init(struct vhost_dev *dev, void *opaque)
+ {
++    unsigned long long features;
++    int err;
++
+     assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_USER);
+ 
+     dev->opaque = opaque;
+ 
++    err = vhost_user_call(dev, VHOST_USER_GET_FEATURES, &features);
++    if (err < 0) {
++        return err;
++    }
++
++    if (virtio_has_feature(features, VHOST_USER_F_PROTOCOL_FEATURES)) {
++        dev->backend_features |= 1ULL << VHOST_USER_F_PROTOCOL_FEATURES;
++
++        err = vhost_user_call(dev, VHOST_USER_GET_PROTOCOL_FEATURES, &features);
++        if (err < 0) {
++            return err;
++        }
++
++        dev->protocol_features = features & VHOST_USER_PROTOCOL_FEATURE_MASK;
++        err = vhost_user_call(dev, VHOST_USER_SET_PROTOCOL_FEATURES,
++                              &dev->protocol_features);
++        if (err < 0) {
++            return err;
++        }
++    }
++
+     return 0;
+ }
+ 
+diff --git a/include/hw/virtio/vhost.h b/include/hw/virtio/vhost.h
+index b8edb0f..798c8cc 100644
+--- a/include/hw/virtio/vhost.h
++++ b/include/hw/virtio/vhost.h
+@@ -41,6 +41,7 @@ struct vhost_dev {
+     unsigned long long features;
+     unsigned long long acked_features;
+     unsigned long long backend_features;
++    unsigned long long protocol_features;
+     bool started;
+     bool log_enabled;
+     vhost_log_chunk_t *log;
+-- 
+1.8.3.1
+

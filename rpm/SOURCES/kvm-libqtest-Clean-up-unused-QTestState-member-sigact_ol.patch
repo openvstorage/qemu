@@ -1,0 +1,50 @@
+From 57f4a62f50e2d6c08b427e1ebc17a0fe48e2eb61 Mon Sep 17 00:00:00 2001
+Message-Id: <57f4a62f50e2d6c08b427e1ebc17a0fe48e2eb61.1444668695.git.jen@redhat.com>
+In-Reply-To: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+References: <860bcb286a4f0cfcc02e2d5c16c2c94f85fddf12.1444668695.git.jen@redhat.com>
+From: Markus Armbruster <armbru@redhat.com>
+Date: Fri, 9 Oct 2015 14:37:33 -0500
+Subject: [CHANGE 06/11] libqtest: Clean up unused QTestState member sigact_old
+To: rhvirt-patches@redhat.com,
+    jen@redhat.com
+
+RH-Author: Markus Armbruster <armbru@redhat.com>
+Message-id: <1444401458-7995-5-git-send-email-armbru@redhat.com>
+Patchwork-id: 68108
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH v2 4/9] libqtest: Clean up unused QTestState member sigact_old
+Bugzilla: 1264347
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+
+Unused since commit d766825.
+
+Signed-off-by: Markus Armbruster <armbru@redhat.com>
+Reviewed-by: Eric Blake <eblake@redhat.com>
+Message-Id: <1443689999-12182-6-git-send-email-armbru@redhat.com>
+Reviewed-by: Thomas Huth <thuth@redhat.com>
+(cherry picked from commit 82b15c7bdbda6207d1fee2ec824432e64af3ecb4)
+---
+ tests/libqtest.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+Signed-off-by: Jeff E. Nelson <jen@redhat.com>
+---
+ tests/libqtest.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/tests/libqtest.c b/tests/libqtest.c
+index 12d65bd..6e67ca9 100644
+--- a/tests/libqtest.c
++++ b/tests/libqtest.c
+@@ -46,7 +46,6 @@ struct QTestState
+     bool irq_level[MAX_IRQ];
+     GString *rx;
+     pid_t qemu_pid;  /* our child QEMU process */
+-    struct sigaction sigact_old; /* restored on exit */
+ };
+ 
+ static GList *qtest_instances;
+-- 
+2.4.3
+

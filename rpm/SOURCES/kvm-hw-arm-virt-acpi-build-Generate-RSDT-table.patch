@@ -1,0 +1,135 @@
+From 24693114b6a4be2b1668f0e67f96ba5b345d7d69 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:28 +0200
+Subject: [PATCH 24/44] hw/arm/virt-acpi-build: Generate RSDT table
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-17-git-send-email-drjones@redhat.com>
+Patchwork-id: 66252
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 16/33] hw/arm/virt-acpi-build: Generate RSDT table
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+RSDT points to other tables FADT, MADT, GTDT. This code is shared with x86.
+
+Here we still use RSDT as UEFI puts ACPI tables below 4G address space,
+and UEFI ignore the RSDT or XSDT.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Message-id: 1432522520-8068-12-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit 243bdb79fb0b2eda176cdef37700f29068a71d43)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c         | 24 ++++++++++++++++++++++++
+ hw/arm/virt-acpi-build.c    |  3 +++
+ hw/i386/acpi-build.c        | 24 ------------------------
+ include/hw/acpi/aml-build.h |  2 ++
+ 4 files changed, 29 insertions(+), 24 deletions(-)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 20eeaf9..2c890c8 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -1007,3 +1007,27 @@ void acpi_build_tables_cleanup(AcpiBuildTables *tables, bool mfre)
+     g_array_free(tables->table_data, true);
+     g_array_free(tables->tcpalog, mfre);
+ }
++
++/* Build rsdt table */
++void
++build_rsdt(GArray *table_data, GArray *linker, GArray *table_offsets)
++{
++    AcpiRsdtDescriptorRev1 *rsdt;
++    size_t rsdt_len;
++    int i;
++    const int table_data_len = (sizeof(uint32_t) * table_offsets->len);
++
++    rsdt_len = sizeof(*rsdt) + table_data_len;
++    rsdt = acpi_data_push(table_data, rsdt_len);
++    memcpy(rsdt->table_offset_entry, table_offsets->data, table_data_len);
++    for (i = 0; i < table_offsets->len; ++i) {
++        /* rsdt->table_offset_entry to be filled by Guest linker */
++        bios_linker_loader_add_pointer(linker,
++                                       ACPI_BUILD_TABLE_FILE,
++                                       ACPI_BUILD_TABLE_FILE,
++                                       table_data, &rsdt->table_offset_entry[i],
++                                       sizeof(uint32_t));
++    }
++    build_header(linker, table_data,
++                 (void *)rsdt, "RSDT", rsdt_len, 1);
++}
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index 90587ad..95c84d6 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -321,6 +321,9 @@ void virt_acpi_build(VirtGuestInfo *guest_info, AcpiBuildTables *tables)
+     acpi_add_table(table_offsets, tables_blob);
+     build_gtdt(tables_blob, tables->linker);
+ 
++    /* RSDT is pointed to by RSDP */
++    build_rsdt(tables_blob, tables->linker, table_offsets);
++
+     /* Cleanup memory that's no longer used. */
+     g_array_free(table_offsets, true);
+ }
+diff --git a/hw/i386/acpi-build.c b/hw/i386/acpi-build.c
+index fa3372b..061a9ba 100644
+--- a/hw/i386/acpi-build.c
++++ b/hw/i386/acpi-build.c
+@@ -1212,30 +1212,6 @@ build_dsdt(GArray *table_data, GArray *linker, AcpiMiscInfo *misc)
+                  misc->dsdt_size, 1);
+ }
+ 
+-/* Build final rsdt table */
+-static void
+-build_rsdt(GArray *table_data, GArray *linker, GArray *table_offsets)
+-{
+-    AcpiRsdtDescriptorRev1 *rsdt;
+-    size_t rsdt_len;
+-    int i;
+-
+-    rsdt_len = sizeof(*rsdt) + sizeof(uint32_t) * table_offsets->len;
+-    rsdt = acpi_data_push(table_data, rsdt_len);
+-    memcpy(rsdt->table_offset_entry, table_offsets->data,
+-           sizeof(uint32_t) * table_offsets->len);
+-    for (i = 0; i < table_offsets->len; ++i) {
+-        /* rsdt->table_offset_entry to be filled by Guest linker */
+-        bios_linker_loader_add_pointer(linker,
+-                                       ACPI_BUILD_TABLE_FILE,
+-                                       ACPI_BUILD_TABLE_FILE,
+-                                       table_data, &rsdt->table_offset_entry[i],
+-                                       sizeof(uint32_t));
+-    }
+-    build_header(linker, table_data,
+-                 (void *)rsdt, "RSDT", rsdt_len, 1);
+-}
+-
+ static GArray *
+ build_rsdp(GArray *rsdp_table, GArray *linker, unsigned rsdt)
+ {
+diff --git a/include/hw/acpi/aml-build.h b/include/hw/acpi/aml-build.h
+index 2142d54..2c07a43 100644
+--- a/include/hw/acpi/aml-build.h
++++ b/include/hw/acpi/aml-build.h
+@@ -266,5 +266,7 @@ unsigned acpi_data_len(GArray *table);
+ void acpi_add_table(GArray *table_offsets, GArray *table_data);
+ void acpi_build_tables_init(AcpiBuildTables *tables);
+ void acpi_build_tables_cleanup(AcpiBuildTables *tables, bool mfre);
++void
++build_rsdt(GArray *table_data, GArray *linker, GArray *table_offsets);
+ 
+ #endif
+-- 
+1.8.3.1
+

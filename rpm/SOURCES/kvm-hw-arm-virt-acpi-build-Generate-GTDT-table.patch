@@ -1,0 +1,171 @@
+From cc3900eb42d29bb1022fc8e97bac9f3aafb61475 Mon Sep 17 00:00:00 2001
+From: Andrew Jones <drjones@redhat.com>
+Date: Tue, 16 Jun 2015 11:48:27 +0200
+Subject: [PATCH 23/44] hw/arm/virt-acpi-build: Generate GTDT table
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1434455325-23399-16-git-send-email-drjones@redhat.com>
+Patchwork-id: 66248
+O-Subject: [AArch64 RHEL-7.2 qemu-kvm-rhev PATCH 15/33] hw/arm/virt-acpi-build: Generate GTDT table
+Bugzilla: 1231719
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Wei Huang <wei@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+
+Author: Shannon Zhao <shannon.zhao@linaro.org>
+
+ACPI v5.1 defines GTDT for ARM devices as a place to describe timer
+related information in the system. The Arch Timer interrupts must
+be provided for GTDT.
+
+Signed-off-by: Shannon Zhao <zhaoshenglong@huawei.com>
+Signed-off-by: Shannon Zhao <shannon.zhao@linaro.org>
+Reviewed-by: Alex Bennée <alex.bennee@linaro.org>
+Message-id: 1432522520-8068-11-git-send-email-zhaoshenglong@huawei.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit ee246400c1ceef2014e120b718388d5f4aea8a2a)
+Signed-off-by: Andrew Jones <drjones@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/arm/virt-acpi-build.c    | 29 +++++++++++++++++++++++++++++
+ hw/arm/virt.c               |  8 ++++----
+ include/hw/acpi/acpi-defs.h | 37 +++++++++++++++++++++++++++++++++++++
+ include/hw/arm/virt.h       |  5 +++++
+ 4 files changed, 75 insertions(+), 4 deletions(-)
+
+diff --git a/hw/arm/virt-acpi-build.c b/hw/arm/virt-acpi-build.c
+index 29ad535..90587ad 100644
+--- a/hw/arm/virt-acpi-build.c
++++ b/hw/arm/virt-acpi-build.c
+@@ -151,6 +151,32 @@ static void acpi_dsdt_add_virtio(Aml *scope,
+     }
+ }
+ 
++/* GTDT */
++static void
++build_gtdt(GArray *table_data, GArray *linker)
++{
++    int gtdt_start = table_data->len;
++    AcpiGenericTimerTable *gtdt;
++
++    gtdt = acpi_data_push(table_data, sizeof *gtdt);
++    /* The interrupt values are the same with the device tree when adding 16 */
++    gtdt->secure_el1_interrupt = ARCH_TIMER_S_EL1_IRQ + 16;
++    gtdt->secure_el1_flags = ACPI_EDGE_SENSITIVE;
++
++    gtdt->non_secure_el1_interrupt = ARCH_TIMER_NS_EL1_IRQ + 16;
++    gtdt->non_secure_el1_flags = ACPI_EDGE_SENSITIVE;
++
++    gtdt->virtual_timer_interrupt = ARCH_TIMER_VIRT_IRQ + 16;
++    gtdt->virtual_timer_flags = ACPI_EDGE_SENSITIVE;
++
++    gtdt->non_secure_el2_interrupt = ARCH_TIMER_NS_EL2_IRQ + 16;
++    gtdt->non_secure_el2_flags = ACPI_EDGE_SENSITIVE;
++
++    build_header(linker, table_data,
++                 (void *)(table_data->data + gtdt_start), "GTDT",
++                 table_data->len - gtdt_start, 5);
++}
++
+ /* MADT */
+ static void
+ build_madt(GArray *table_data, GArray *linker, VirtGuestInfo *guest_info,
+@@ -292,6 +318,9 @@ void virt_acpi_build(VirtGuestInfo *guest_info, AcpiBuildTables *tables)
+     acpi_add_table(table_offsets, tables_blob);
+     build_madt(tables_blob, tables->linker, guest_info, &cpuinfo);
+ 
++    acpi_add_table(table_offsets, tables_blob);
++    build_gtdt(tables_blob, tables->linker);
++
+     /* Cleanup memory that's no longer used. */
+     g_array_free(table_offsets, true);
+ }
+diff --git a/hw/arm/virt.c b/hw/arm/virt.c
+index 59635a1..13c169b 100644
+--- a/hw/arm/virt.c
++++ b/hw/arm/virt.c
+@@ -270,10 +270,10 @@ static void fdt_add_timer_nodes(const VirtBoardInfo *vbi)
+                                 "arm,armv7-timer");
+     }
+     qemu_fdt_setprop_cells(vbi->fdt, "/timer", "interrupts",
+-                               GIC_FDT_IRQ_TYPE_PPI, 13, irqflags,
+-                               GIC_FDT_IRQ_TYPE_PPI, 14, irqflags,
+-                               GIC_FDT_IRQ_TYPE_PPI, 11, irqflags,
+-                               GIC_FDT_IRQ_TYPE_PPI, 10, irqflags);
++                       GIC_FDT_IRQ_TYPE_PPI, ARCH_TIMER_S_EL1_IRQ, irqflags,
++                       GIC_FDT_IRQ_TYPE_PPI, ARCH_TIMER_NS_EL1_IRQ, irqflags,
++                       GIC_FDT_IRQ_TYPE_PPI, ARCH_TIMER_VIRT_IRQ, irqflags,
++                       GIC_FDT_IRQ_TYPE_PPI, ARCH_TIMER_NS_EL2_IRQ, irqflags);
+ }
+ 
+ static void fdt_add_cpu_nodes(const VirtBoardInfo *vbi)
+diff --git a/include/hw/acpi/acpi-defs.h b/include/hw/acpi/acpi-defs.h
+index 1e9dbe7..f503ec4 100644
+--- a/include/hw/acpi/acpi-defs.h
++++ b/include/hw/acpi/acpi-defs.h
+@@ -341,6 +341,43 @@ struct AcpiMadtGenericDistributor {
+ typedef struct AcpiMadtGenericDistributor AcpiMadtGenericDistributor;
+ 
+ /*
++ * Generic Timer Description Table (GTDT)
++ */
++
++#define ACPI_GTDT_INTERRUPT_MODE        (1 << 0)
++#define ACPI_GTDT_INTERRUPT_POLARITY    (1 << 1)
++#define ACPI_GTDT_ALWAYS_ON             (1 << 2)
++
++/* Triggering */
++
++#define ACPI_LEVEL_SENSITIVE            ((uint8_t) 0x00)
++#define ACPI_EDGE_SENSITIVE             ((uint8_t) 0x01)
++
++/* Polarity */
++
++#define ACPI_ACTIVE_HIGH                ((uint8_t) 0x00)
++#define ACPI_ACTIVE_LOW                 ((uint8_t) 0x01)
++#define ACPI_ACTIVE_BOTH                ((uint8_t) 0x02)
++
++struct AcpiGenericTimerTable {
++    ACPI_TABLE_HEADER_DEF
++    uint64_t counter_block_addresss;
++    uint32_t reserved;
++    uint32_t secure_el1_interrupt;
++    uint32_t secure_el1_flags;
++    uint32_t non_secure_el1_interrupt;
++    uint32_t non_secure_el1_flags;
++    uint32_t virtual_timer_interrupt;
++    uint32_t virtual_timer_flags;
++    uint32_t non_secure_el2_interrupt;
++    uint32_t non_secure_el2_flags;
++    uint64_t counter_read_block_address;
++    uint32_t platform_timer_count;
++    uint32_t platform_timer_offset;
++} QEMU_PACKED;
++typedef struct AcpiGenericTimerTable AcpiGenericTimerTable;
++
++/*
+  * HPET Description Table
+  */
+ struct Acpi20Hpet {
+diff --git a/include/hw/arm/virt.h b/include/hw/arm/virt.h
+index 49a85cc..ceec8b3 100644
+--- a/include/hw/arm/virt.h
++++ b/include/hw/arm/virt.h
+@@ -34,6 +34,11 @@
+ 
+ #define NUM_VIRTIO_TRANSPORTS 32
+ 
++#define ARCH_TIMER_VIRT_IRQ   11
++#define ARCH_TIMER_S_EL1_IRQ  13
++#define ARCH_TIMER_NS_EL1_IRQ 14
++#define ARCH_TIMER_NS_EL2_IRQ 10
++
+ enum {
+     VIRT_FLASH,
+     VIRT_MEM,
+-- 
+1.8.3.1
+

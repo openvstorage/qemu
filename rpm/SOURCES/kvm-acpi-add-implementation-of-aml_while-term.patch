@@ -1,0 +1,49 @@
+From 45cd7ea90189c0d57c809fcb6acea4fcb8d7654d Mon Sep 17 00:00:00 2001
+From: Marcel Apfelbaum <marcel@redhat.com>
+Date: Wed, 24 Jun 2015 13:53:20 +0200
+Subject: [PATCH 11/31] acpi: add implementation of aml_while() term
+
+Message-id: <1435154016-26233-28-git-send-email-marcel@redhat.com>
+Patchwork-id: 66454
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH 27/43] acpi: add implementation of aml_while() term
+Bugzilla: 1103313
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Igor Mammedov <imammedo@redhat.com>
+
+Commit 68e6b0af7 (acpi: add aml_while() term) added
+the definition of aml_while without the actual implementation.
+Implement the term.
+
+Signed-off-by: Marcel Apfelbaum <marcel@redhat.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Laszlo Ersek <lersek@redhat.com>
+(cherry picked from commit 32d9ca15bac63e8a7bad6dc1a4ab624e6d6d3b0f)
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/acpi/aml-build.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/hw/acpi/aml-build.c b/hw/acpi/aml-build.c
+index 2bebf23..0d4b324 100644
+--- a/hw/acpi/aml-build.c
++++ b/hw/acpi/aml-build.c
+@@ -687,6 +687,14 @@ Aml *aml_else(void)
+     return var;
+ }
+ 
++/* ACPI 1.0b: 16.2.5.3 Type 1 Opcodes Encoding: DefWhile */
++Aml *aml_while(Aml *predicate)
++{
++    Aml *var = aml_bundle(0xA2 /* WhileOp */, AML_PACKAGE);
++    aml_append(var, predicate);
++    return var;
++}
++
+ /* ACPI 1.0b: 16.2.5.2 Named Objects Encoding: DefMethod */
+ Aml *aml_method(const char *name, int arg_count)
+ {
+-- 
+1.8.3.1
+

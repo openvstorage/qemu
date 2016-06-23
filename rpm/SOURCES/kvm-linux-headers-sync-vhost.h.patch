@@ -1,0 +1,55 @@
+From 424085f61d60f286a4b2612c7bce621d78a74f5d Mon Sep 17 00:00:00 2001
+From: Thomas Huth <thuth@redhat.com>
+Date: Fri, 3 Jul 2015 19:13:33 +0200
+Subject: [PATCH 023/100] linux-headers: sync vhost.h
+
+Message-id: <1435950819-10991-2-git-send-email-thuth@redhat.com>
+Patchwork-id: 66694
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 1/7] linux-headers: sync vhost.h
+Bugzilla: 1225715
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Laurent Vivier <lvivier@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Greg Kurz <gkurz@linux.vnet.ibm.com>
+
+This patch brings the cross-endian vhost API to QEMU.
+
+Signed-off-by: Greg Kurz <gkurz@linux.vnet.ibm.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry picked from commit 332f64073bddc9240cd572f64682a44572b67049)
+Signed-off-by: Thomas Huth <thuth@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ linux-headers/linux/vhost.h | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/linux-headers/linux/vhost.h b/linux-headers/linux/vhost.h
+index c656f61..ead86db 100644
+--- a/linux-headers/linux/vhost.h
++++ b/linux-headers/linux/vhost.h
+@@ -103,6 +103,20 @@ struct vhost_memory {
+ /* Get accessor: reads index, writes value in num */
+ #define VHOST_GET_VRING_BASE _IOWR(VHOST_VIRTIO, 0x12, struct vhost_vring_state)
+ 
++/* Set the vring byte order in num. Valid values are VHOST_VRING_LITTLE_ENDIAN
++ * or VHOST_VRING_BIG_ENDIAN (other values return -EINVAL).
++ * The byte order cannot be changed while the device is active: trying to do so
++ * returns -EBUSY.
++ * This is a legacy only API that is simply ignored when VIRTIO_F_VERSION_1 is
++ * set.
++ * Not all kernel configurations support this ioctl, but all configurations that
++ * support SET also support GET.
++ */
++#define VHOST_VRING_LITTLE_ENDIAN 0
++#define VHOST_VRING_BIG_ENDIAN 1
++#define VHOST_SET_VRING_ENDIAN _IOW(VHOST_VIRTIO, 0x13, struct vhost_vring_state)
++#define VHOST_GET_VRING_ENDIAN _IOW(VHOST_VIRTIO, 0x14, struct vhost_vring_state)
++
+ /* The following ioctls use eventfd file descriptors to signal and poll
+  * for events. */
+ 
+-- 
+1.8.3.1
+

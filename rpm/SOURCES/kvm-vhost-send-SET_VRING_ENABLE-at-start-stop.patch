@@ -1,0 +1,62 @@
+From 28df1417d3ff982298b9068327d3a908d3974249 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Mon, 16 Nov 2015 14:33:22 +0100
+Subject: [PATCH 38/44] vhost: send SET_VRING_ENABLE at start/stop
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Message-id: <1447684235-15638-32-git-send-email-mst@redhat.com>
+Patchwork-id: 68375
+O-Subject: [PATCH RHEV 7.3/7.2.z v2 31/36] vhost: send SET_VRING_ENABLE at start/stop
+Bugzilla: 1279388
+RH-Acked-by: Xiao Wang <jasowang@redhat.com>
+RH-Acked-by: Victor Kaplansky <vkaplans@redhat.com>
+RH-Acked-by: Marcel Apfelbaum <marcel@redhat.com>
+RH-Acked-by: Marc-André Lureau <mlureau@redhat.com>
+
+From: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+
+Send SET_VRING_ENABLE at start/stop, to give the backend
+an explicit sign of our state.
+
+Signed-off-by: Yuanhan Liu <yuanhan.liu@linux.intel.com>
+Reviewed-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+(cherry-picked from commit 3a12f32229a046f4d4ab0a3a52fb01d2d5a1ab76)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/virtio/vhost.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/hw/virtio/vhost.c b/hw/virtio/vhost.c
+index 200ec45..7cfb2e0 100644
+--- a/hw/virtio/vhost.c
++++ b/hw/virtio/vhost.c
+@@ -1194,6 +1194,11 @@ int vhost_dev_start(struct vhost_dev *hdev, VirtIODevice *vdev)
+         }
+     }
+ 
++    if (hdev->vhost_ops->vhost_backend_set_vring_enable) {
++        /* only enable first vq pair by default */
++        hdev->vhost_ops->vhost_backend_set_vring_enable(hdev, hdev->vq_index == 0);
++    }
++
+     return 0;
+ fail_log:
+     if (hdev->log_size) {
+@@ -1226,6 +1231,10 @@ void vhost_dev_stop(struct vhost_dev *hdev, VirtIODevice *vdev)
+                              hdev->vq_index + i);
+     }
+ 
++    if (hdev->vhost_ops->vhost_backend_set_vring_enable) {
++        hdev->vhost_ops->vhost_backend_set_vring_enable(hdev, 0);
++    }
++
+     vhost_log_put(hdev, true);
+     hdev->started = false;
+     hdev->log = NULL;
+-- 
+1.8.3.1
+

@@ -1,0 +1,220 @@
+From 64cbdc5609da9ad00bf454d76ec45925633fdfae Mon Sep 17 00:00:00 2001
+From: Miroslav Rezanina <mrezanin@redhat.com>
+Date: Tue, 14 Jul 2015 08:53:23 +0200
+Subject: [PATCH 03/11] Mark onboard devices as
+ cannot_instantiate_with_device_add_yet
+
+Message-id: <adbe80e879d1e52c2e6f578f2a217303f2168bcf.1434439667.git.mrezanin@redhat.com>
+Patchwork-id: 66277
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 3/3] Mark onboard devices as cannot_instantiate_with_device_add_yet
+Bugzilla: 1194151
+RH-Acked-by: Laszlo Ersek <lersek@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: Markus Armbruster <armbru@redhat.com>
+
+From: Miroslav Rezanina <mrezanin@redhat.com>
+
+Changes in no_user handling cause some device to appear visible. Mark
+them as cannot_instantiate_with_device_add_yet so user can't handle them
+through -device parameter.
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/block/fdc.c          | 2 ++
+ hw/block/pflash_cfi01.c | 1 +
+ hw/cpu/icc_bus.c        | 1 +
+ hw/i386/kvm/clock.c     | 1 +
+ hw/i386/kvm/ioapic.c    | 1 +
+ hw/i386/kvmvapic.c      | 1 +
+ hw/ide/ahci.c           | 1 +
+ hw/intc/ioapic.c        | 1 +
+ hw/isa/isa-bus.c        | 1 +
+ hw/nvram/fw_cfg.c       | 3 +++
+ hw/pci-host/piix.c      | 1 +
+ hw/pci-host/q35.c       | 1 +
+ hw/virtio/virtio-mmio.c | 1 +
+ 13 files changed, 16 insertions(+)
+
+diff --git a/hw/block/fdc.c b/hw/block/fdc.c
+index 516a761..7e08e41 100644
+--- a/hw/block/fdc.c
++++ b/hw/block/fdc.c
+@@ -2390,6 +2390,7 @@ static void sysbus_fdc_class_init(ObjectClass *klass, void *data)
+     DeviceClass *dc = DEVICE_CLASS(klass);
+ 
+     dc->props = sysbus_fdc_properties;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+@@ -2410,6 +2411,7 @@ static void sun4m_fdc_class_init(ObjectClass *klass, void *data)
+     DeviceClass *dc = DEVICE_CLASS(klass);
+ 
+     dc->props = sun4m_fdc_properties;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+diff --git a/hw/block/pflash_cfi01.c b/hw/block/pflash_cfi01.c
+index d282695..eb7fba6 100644
+--- a/hw/block/pflash_cfi01.c
++++ b/hw/block/pflash_cfi01.c
+@@ -941,6 +941,7 @@ static void pflash_cfi01_class_init(ObjectClass *klass, void *data)
+     dc->realize = pflash_cfi01_realize;
+     dc->props = pflash_cfi01_properties;
+     dc->vmsd = &vmstate_pflash;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+diff --git a/hw/cpu/icc_bus.c b/hw/cpu/icc_bus.c
+index 6646ea2..e9a5f31 100644
+--- a/hw/cpu/icc_bus.c
++++ b/hw/cpu/icc_bus.c
+@@ -96,6 +96,7 @@ static void icc_bridge_class_init(ObjectClass *oc, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(oc);
+ 
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
+ }
+ 
+diff --git a/hw/i386/kvm/clock.c b/hw/i386/kvm/clock.c
+index efdf165..235f90a 100644
+--- a/hw/i386/kvm/clock.c
++++ b/hw/i386/kvm/clock.c
+@@ -180,6 +180,7 @@ static void kvmclock_class_init(ObjectClass *klass, void *data)
+ 
+     dc->realize = kvmclock_realize;
+     dc->vmsd = &kvmclock_vmsd;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo kvmclock_info = {
+diff --git a/hw/i386/kvm/ioapic.c b/hw/i386/kvm/ioapic.c
+index d2a6c4c..d0a4687 100644
+--- a/hw/i386/kvm/ioapic.c
++++ b/hw/i386/kvm/ioapic.c
+@@ -151,6 +151,7 @@ static void kvm_ioapic_class_init(ObjectClass *klass, void *data)
+     k->post_load = kvm_ioapic_put;
+     dc->reset    = kvm_ioapic_reset;
+     dc->props    = kvm_ioapic_properties;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo kvm_ioapic_info = {
+diff --git a/hw/i386/kvmvapic.c b/hw/i386/kvmvapic.c
+index c6d34b2..4a63430 100644
+--- a/hw/i386/kvmvapic.c
++++ b/hw/i386/kvmvapic.c
+@@ -843,6 +843,7 @@ static void vapic_class_init(ObjectClass *klass, void *data)
+     dc->reset   = vapic_reset;
+     dc->vmsd    = &vmstate_vapic;
+     dc->realize = vapic_realize;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo vapic_type = {
+diff --git a/hw/ide/ahci.c b/hw/ide/ahci.c
+index 833fd45..24fe3ea 100644
+--- a/hw/ide/ahci.c
++++ b/hw/ide/ahci.c
+@@ -1499,6 +1499,7 @@ static void sysbus_ahci_class_init(ObjectClass *klass, void *data)
+     dc->vmsd = &vmstate_sysbus_ahci;
+     dc->props = sysbus_ahci_properties;
+     dc->reset = sysbus_ahci_reset;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+ }
+ 
+diff --git a/hw/intc/ioapic.c b/hw/intc/ioapic.c
+index b527932..b0d4963 100644
+--- a/hw/intc/ioapic.c
++++ b/hw/intc/ioapic.c
+@@ -244,6 +244,7 @@ static void ioapic_class_init(ObjectClass *klass, void *data)
+ 
+     k->realize = ioapic_realize;
+     dc->reset = ioapic_reset_common;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo ioapic_info = {
+diff --git a/hw/isa/isa-bus.c b/hw/isa/isa-bus.c
+index 825aa62..98ef064 100644
+--- a/hw/isa/isa-bus.c
++++ b/hw/isa/isa-bus.c
+@@ -202,6 +202,7 @@ static void isabus_bridge_class_init(ObjectClass *klass, void *data)
+     DeviceClass *dc = DEVICE_CLASS(klass);
+ 
+     dc->fw_name = "isa";
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo isabus_bridge_info = {
+diff --git a/hw/nvram/fw_cfg.c b/hw/nvram/fw_cfg.c
+index 68eff77..e54cce1 100644
+--- a/hw/nvram/fw_cfg.c
++++ b/hw/nvram/fw_cfg.c
+@@ -673,6 +673,7 @@ static void fw_cfg_class_init(ObjectClass *klass, void *data)
+ 
+     dc->reset = fw_cfg_reset;
+     dc->vmsd = &vmstate_fw_cfg;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo fw_cfg_info = {
+@@ -704,6 +705,7 @@ static void fw_cfg_io_class_init(ObjectClass *klass, void *data)
+ 
+     dc->realize = fw_cfg_io_realize;
+     dc->props = fw_cfg_io_properties;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo fw_cfg_io_info = {
+@@ -752,6 +754,7 @@ static void fw_cfg_mem_class_init(ObjectClass *klass, void *data)
+ 
+     dc->realize = fw_cfg_mem_realize;
+     dc->props = fw_cfg_mem_properties;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo fw_cfg_mem_info = {
+diff --git a/hw/pci-host/piix.c b/hw/pci-host/piix.c
+index 723836f..45fdeca 100644
+--- a/hw/pci-host/piix.c
++++ b/hw/pci-host/piix.c
+@@ -757,6 +757,7 @@ static void i440fx_pcihost_class_init(ObjectClass *klass, void *data)
+     dc->realize = i440fx_pcihost_realize;
+     dc->fw_name = "pci";
+     dc->props = i440fx_props;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static const TypeInfo i440fx_pcihost_info = {
+diff --git a/hw/pci-host/q35.c b/hw/pci-host/q35.c
+index c8827cc..ca2c7b8 100644
+--- a/hw/pci-host/q35.c
++++ b/hw/pci-host/q35.c
+@@ -139,6 +139,7 @@ static void q35_host_class_init(ObjectClass *klass, void *data)
+     dc->props = mch_props;
+     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
+     dc->fw_name = "pci";
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+ }
+ 
+ static void q35_host_initfn(Object *obj)
+diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
+index a368a39..4c0eb1f 100644
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -358,6 +358,7 @@ static void virtio_mmio_class_init(ObjectClass *klass, void *data)
+ 
+     dc->realize = virtio_mmio_realizefn;
+     dc->reset = virtio_mmio_reset;
++    dc->cannot_instantiate_with_device_add_yet = true; /* RH state preserve */
+     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+ }
+ 
+-- 
+1.8.3.1
+

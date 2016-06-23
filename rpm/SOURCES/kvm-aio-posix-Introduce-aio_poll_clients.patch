@@ -1,0 +1,137 @@
+From 15eaa30a1a1313d083fcd403d0894d54eb84edd9 Mon Sep 17 00:00:00 2001
+From: Fam Zheng <famz@redhat.com>
+Date: Thu, 17 Sep 2015 02:29:04 +0200
+Subject: [PATCH 15/22] aio-posix: Introduce aio_poll_clients
+
+Message-id: <1442456951-3827-6-git-send-email-famz@redhat.com>
+Patchwork-id: 67796
+O-Subject: [RHEL-7.2 qemu-kvm-rhev PATCH v2 05/12] aio-posix: Introduce aio_poll_clients
+Bugzilla: 1211689
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Stefan Hajnoczi <stefanha@redhat.com>
+
+This new API will allow limiting the scope of polled fds. The parameter
+client_mask is a bit mask of the polled client types.
+
+Signed-off-by: Fam Zheng <famz@redhat.com>
+---
+ aio-posix.c         | 19 ++++++++++++++-----
+ include/block/aio.h | 11 ++++++++++-
+ 2 files changed, 24 insertions(+), 6 deletions(-)
+
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ aio-posix.c         | 19 ++++++++++++++-----
+ include/block/aio.h | 11 ++++++++++-
+ 2 files changed, 24 insertions(+), 6 deletions(-)
+
+diff --git a/aio-posix.c b/aio-posix.c
+index 8d6350b..718f385 100644
+--- a/aio-posix.c
++++ b/aio-posix.c
+@@ -126,7 +126,7 @@ bool aio_pending(AioContext *ctx)
+     return false;
+ }
+ 
+-bool aio_dispatch(AioContext *ctx)
++static bool aio_dispatch_clients(AioContext *ctx, int client_mask)
+ {
+     AioHandler *node;
+     bool progress = false;
+@@ -148,13 +148,14 @@ bool aio_dispatch(AioContext *ctx)
+     while (node) {
+         AioHandler *tmp;
+         int revents;
++        int dispatch = (node->type & client_mask) == node->type;
+ 
+         ctx->walking_handlers++;
+ 
+         revents = node->pfd.revents & node->pfd.events;
+         node->pfd.revents = 0;
+ 
+-        if (!node->deleted &&
++        if (dispatch && !node->deleted &&
+             (revents & (G_IO_IN | G_IO_HUP | G_IO_ERR)) &&
+             node->io_read) {
+             node->io_read(node->opaque);
+@@ -164,7 +165,7 @@ bool aio_dispatch(AioContext *ctx)
+                 progress = true;
+             }
+         }
+-        if (!node->deleted &&
++        if (dispatch && !node->deleted &&
+             (revents & (G_IO_OUT | G_IO_ERR)) &&
+             node->io_write) {
+             node->io_write(node->opaque);
+@@ -188,6 +189,11 @@ bool aio_dispatch(AioContext *ctx)
+     return progress;
+ }
+ 
++bool aio_dispatch(AioContext *ctx)
++{
++    return aio_dispatch_clients(ctx, AIO_CLIENT_MASK_ALL);
++}
++
+ /* These thread-local variables are used only in a small part of aio_poll
+  * around the call to the poll() system call.  In particular they are not
+  * used while aio_poll is performing callbacks, which makes it much easier
+@@ -234,7 +240,7 @@ static void add_pollfd(AioHandler *node)
+     npfd++;
+ }
+ 
+-bool aio_poll(AioContext *ctx, bool blocking)
++bool aio_poll_clients(AioContext *ctx, bool blocking, int client_mask)
+ {
+     AioHandler *node;
+     bool was_dispatching;
+@@ -263,6 +269,9 @@ bool aio_poll(AioContext *ctx, bool blocking)
+ 
+     /* fill pollfds */
+     QLIST_FOREACH(node, &ctx->aio_handlers, node) {
++        if ((node->type & client_mask) != node->type) {
++            continue;
++        }
+         if (!node->deleted && node->pfd.events) {
+             add_pollfd(node);
+         }
+@@ -285,7 +294,7 @@ bool aio_poll(AioContext *ctx, bool blocking)
+ 
+     /* Run dispatch even if there were no readable fds to run timers */
+     aio_set_dispatching(ctx, true);
+-    if (aio_dispatch(ctx)) {
++    if (aio_dispatch_clients(ctx, client_mask)) {
+         progress = true;
+     }
+ 
+diff --git a/include/block/aio.h b/include/block/aio.h
+index ae1740f..9519a93 100644
+--- a/include/block/aio.h
++++ b/include/block/aio.h
+@@ -234,13 +234,22 @@ bool aio_dispatch(AioContext *ctx);
+  * handlers.  If @blocking == true, this should always be true except
+  * if someone called aio_notify.
+  *
++ * client_mask is a bit mask for AIO_CLIENT types, otherwise only the types
++ * corresponding to the set bits will be polled.
++ *
+  * If there are no pending bottom halves, but there are pending AIO
+  * operations, it may not be possible to make any progress without
+  * blocking.  If @blocking is true, this function will wait until one
+  * or more AIO events have completed, to ensure something has moved
+  * before returning.
+  */
+-bool aio_poll(AioContext *ctx, bool blocking);
++bool aio_poll_clients(AioContext *ctx, bool blocking, int client_mask);
++
++/* Poll all types of clients. */
++static inline bool aio_poll(AioContext *ctx, bool blocking)
++{
++    return aio_poll_clients(ctx, blocking, AIO_CLIENT_MASK_ALL);
++}
+ 
+ /* Register a file descriptor and associated callbacks.  Behaves very similarly
+  * to qemu_set_fd_handler2.  Unlike qemu_set_fd_handler2, these callbacks will
+-- 
+1.8.3.1
+

@@ -1,0 +1,77 @@
+From 9198a32ffd89453a661a0742ce92acaadc208a57 Mon Sep 17 00:00:00 2001
+From: Max Reitz <mreitz@redhat.com>
+Date: Fri, 18 Sep 2015 14:19:10 +0200
+Subject: [PATCH 03/10] main-loop: fix qemu_notify_event for aio_notify
+ optimization
+
+Message-id: <1442585950-6502-4-git-send-email-mreitz@redhat.com>
+Patchwork-id: 67833
+O-Subject: [RHEV-7.2 qemu-kvm-rhev PATCH 3/3] main-loop: fix qemu_notify_event for aio_notify optimization
+Bugzilla: 1256541
+RH-Acked-by: Miroslav Rezanina <mrezanin@redhat.com>
+RH-Acked-by: Paolo Bonzini <pbonzini@redhat.com>
+RH-Acked-by: Kevin Wolf <kwolf@redhat.com>
+
+From: Paolo Bonzini <pbonzini@redhat.com>
+
+aio_notify can be optimized away, and in fact almost always will.  However,
+qemu_notify_event is used in places where this is incorrect---most notably,
+when handling SIGTERM.  When aio_notify is optimized away, it is possible that
+QEMU enters a blocking ppoll immediately afterwards and stays there, without
+reaching main_loop_should_exit().
+
+Fix this by using a bottom half.  The bottom half can be optimized too, but
+scheduling it is enough for the ppoll not to block.  The hang is thus avoided.
+
+Reported-by: Peter Maydell <peter.maydell@linaro.org>
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Reviewed-by: Stefan Hajnoczi <stefanha@redhat.com>
+Message-id: 1437738175-23624-1-git-send-email-pbonzini@redhat.com
+Signed-off-by: Peter Maydell <peter.maydell@linaro.org>
+(cherry picked from commit edec47cfef96209987cb7922286cb384916aae02)
+
+Signed-off-by: Max Reitz <mreitz@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ main-loop.c | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/main-loop.c b/main-loop.c
+index 981bcb5..a861f9e 100644
+--- a/main-loop.c
++++ b/main-loop.c
+@@ -115,6 +115,14 @@ static int qemu_signal_init(void)
+ #endif
+ 
+ static AioContext *qemu_aio_context;
++static QEMUBH *qemu_notify_bh;
++
++static void notify_event_cb(void *opaque)
++{
++    /* No need to do anything; this bottom half is only used to
++     * kick the kernel out of ppoll/poll/WaitForMultipleObjects.
++     */
++}
+ 
+ AioContext *qemu_get_aio_context(void)
+ {
+@@ -126,7 +134,7 @@ void qemu_notify_event(void)
+     if (!qemu_aio_context) {
+         return;
+     }
+-    aio_notify(qemu_aio_context);
++    qemu_bh_schedule(qemu_notify_bh);
+ }
+ 
+ static GArray *gpollfds;
+@@ -145,6 +153,7 @@ int qemu_init_main_loop(Error **errp)
+     }
+ 
+     qemu_aio_context = aio_context_new(&local_error);
++    qemu_notify_bh = qemu_bh_new(notify_event_cb, NULL);
+     if (!qemu_aio_context) {
+         error_propagate(errp, local_error);
+         return -EMFILE;
+-- 
+1.8.3.1
+

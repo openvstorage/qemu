@@ -1,0 +1,64 @@
+From 4adf54aa3d6b1926641b979517fe0e0dbc4e9281 Mon Sep 17 00:00:00 2001
+From: Laurent Vivier <lvivier@redhat.com>
+Date: Thu, 25 Jun 2015 13:44:39 +0200
+Subject: [PATCH 014/100] pci: make pci_bar useable outside pci.c
+
+Message-id: <1435239881-28541-13-git-send-email-lvivier@redhat.com>
+Patchwork-id: 66489
+O-Subject: [RHEL7.2 qemu-kvm-rhev PATCH 12/14] pci: make pci_bar useable outside pci.c
+Bugzilla: 1172478
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Thomas Huth <thuth@redhat.com>
+RH-Acked-by: David Gibson <dgibson@redhat.com>
+
+From: Michael Roth <mdroth@linux.vnet.ibm.com>
+
+We need to work with PCI BARs to generate OF properties
+during PCI hotplug for sPAPR guests.
+
+Signed-off-by: Michael Roth <mdroth@linux.vnet.ibm.com>
+Reviewed-by: David Gibson <david@gibson.dropbear.id.au>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: David Gibson <david@gibson.dropbear.id.au>
+Signed-off-by: Alexander Graf <agraf@suse.de>
+(cherry picked from commit cf8c704d5a06e7b8327c65d19d0c342dc23fff84)
+Signed-off-by: Laurent Vivier <lvivier@redhat.com>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ hw/pci/pci.c         | 2 +-
+ include/hw/pci/pci.h | 6 ++++++
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/hw/pci/pci.c b/hw/pci/pci.c
+index b3d5100..e57255e 100644
+--- a/hw/pci/pci.c
++++ b/hw/pci/pci.c
+@@ -123,7 +123,7 @@ static uint16_t pci_default_sub_device_id = PCI_SUBDEVICE_ID_QEMU;
+ 
+ static QLIST_HEAD(, PCIHostState) pci_host_bridges;
+ 
+-static int pci_bar(PCIDevice *d, int reg)
++int pci_bar(PCIDevice *d, int reg)
+ {
+     uint8_t type;
+ 
+diff --git a/include/hw/pci/pci.h b/include/hw/pci/pci.h
+index b97c295..8558d6e 100644
+--- a/include/hw/pci/pci.h
++++ b/include/hw/pci/pci.h
+@@ -333,6 +333,12 @@ int pci_device_load(PCIDevice *s, QEMUFile *f);
+ MemoryRegion *pci_address_space(PCIDevice *dev);
+ MemoryRegion *pci_address_space_io(PCIDevice *dev);
+ 
++/*
++ * Should not normally be used by devices. For use by sPAPR target
++ * where QEMU emulates firmware.
++ */
++int pci_bar(PCIDevice *d, int reg);
++
+ typedef void (*pci_set_irq_fn)(void *opaque, int irq_num, int level);
+ typedef int (*pci_map_irq_fn)(PCIDevice *pci_dev, int irq_num);
+ typedef PCIINTxRoute (*pci_route_irq_fn)(void *opaque, int pin);
+-- 
+1.8.3.1
+

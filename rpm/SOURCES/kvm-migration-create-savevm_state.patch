@@ -1,0 +1,219 @@
+From 81328ecc9b31ee438e8ba21c152447800064398e Mon Sep 17 00:00:00 2001
+From: Juan Quintela <quintela@redhat.com>
+Date: Tue, 28 Jul 2015 15:46:52 +0200
+Subject: [PATCH 07/28] migration: create savevm_state
+
+Message-id: <1438098431-30847-8-git-send-email-quintela@redhat.com>
+Patchwork-id: 67163
+O-Subject: [RHEL-7 qemu-kvm PATCH 07/26] migration: create savevm_state
+Bugzilla: 580006
+RH-Acked-by: Alex Williamson <alex.williamson@redhat.com>
+RH-Acked-by: Amit Shah <amit.shah@redhat.com>
+RH-Acked-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+
+This way, we will put savevm global state here, instead of lots of variables.
+
+Signed-off-by: Juan Quintela <quintela@redhat.com>
+Reviewed-by: Dr. David Alan Gilbert <dgilbert@redhat.com>
+(cherry picked from commit 0163a2e025cda6acb33e100d296965671ace17d9)
+Signed-off-by: Juan Quintela <quintela@trasno.org>
+Signed-off-by: Miroslav Rezanina <mrezanin@redhat.com>
+---
+ migration/savevm.c | 53 +++++++++++++++++++++++++++++------------------------
+ 1 file changed, 29 insertions(+), 24 deletions(-)
+
+diff --git a/migration/savevm.c b/migration/savevm.c
+index 158123b..dff4e75 100644
+--- a/migration/savevm.c
++++ b/migration/savevm.c
+@@ -242,10 +242,15 @@ typedef struct SaveStateEntry {
+     int is_ram;
+ } SaveStateEntry;
+ 
+-
+-static QTAILQ_HEAD(savevm_handlers, SaveStateEntry) savevm_handlers =
+-    QTAILQ_HEAD_INITIALIZER(savevm_handlers);
+-static int global_section_id;
++typedef struct SaveState {
++    QTAILQ_HEAD(, SaveStateEntry) handlers;
++    int global_section_id;
++} SaveState;
++
++static SaveState savevm_state = {
++    .handlers = QTAILQ_HEAD_INITIALIZER(savevm_state.handlers),
++    .global_section_id = 0,
++};
+ 
+ static void dump_vmstate_vmsd(FILE *out_file,
+                               const VMStateDescription *vmsd, int indent,
+@@ -390,7 +395,7 @@ static int calculate_new_instance_id(const char *idstr)
+     SaveStateEntry *se;
+     int instance_id = 0;
+ 
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (strcmp(idstr, se->idstr) == 0
+             && instance_id <= se->instance_id) {
+             instance_id = se->instance_id + 1;
+@@ -404,7 +409,7 @@ static int calculate_compat_instance_id(const char *idstr)
+     SaveStateEntry *se;
+     int instance_id = 0;
+ 
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (!se->compat) {
+             continue;
+         }
+@@ -432,7 +437,7 @@ int register_savevm_live(DeviceState *dev,
+ 
+     se = g_malloc0(sizeof(SaveStateEntry));
+     se->version_id = version_id;
+-    se->section_id = global_section_id++;
++    se->section_id = savevm_state.global_section_id++;
+     se->ops = ops;
+     se->opaque = opaque;
+     se->vmsd = NULL;
+@@ -464,7 +469,7 @@ int register_savevm_live(DeviceState *dev,
+     }
+     assert(!se->compat || se->instance_id == 0);
+     /* add at the end of list */
+-    QTAILQ_INSERT_TAIL(&savevm_handlers, se, entry);
++    QTAILQ_INSERT_TAIL(&savevm_state.handlers, se, entry);
+     return 0;
+ }
+ 
+@@ -498,9 +503,9 @@ void unregister_savevm(DeviceState *dev, const char *idstr, void *opaque)
+     }
+     pstrcat(id, sizeof(id), idstr);
+ 
+-    QTAILQ_FOREACH_SAFE(se, &savevm_handlers, entry, new_se) {
++    QTAILQ_FOREACH_SAFE(se, &savevm_state.handlers, entry, new_se) {
+         if (strcmp(se->idstr, id) == 0 && se->opaque == opaque) {
+-            QTAILQ_REMOVE(&savevm_handlers, se, entry);
++            QTAILQ_REMOVE(&savevm_state.handlers, se, entry);
+             if (se->compat) {
+                 g_free(se->compat);
+             }
+@@ -522,7 +527,7 @@ int vmstate_register_with_alias_id(DeviceState *dev, int instance_id,
+ 
+     se = g_malloc0(sizeof(SaveStateEntry));
+     se->version_id = vmsd->version_id;
+-    se->section_id = global_section_id++;
++    se->section_id = savevm_state.global_section_id++;
+     se->opaque = opaque;
+     se->vmsd = vmsd;
+     se->alias_id = alias_id;
+@@ -550,7 +555,7 @@ int vmstate_register_with_alias_id(DeviceState *dev, int instance_id,
+     }
+     assert(!se->compat || se->instance_id == 0);
+     /* add at the end of list */
+-    QTAILQ_INSERT_TAIL(&savevm_handlers, se, entry);
++    QTAILQ_INSERT_TAIL(&savevm_state.handlers, se, entry);
+     return 0;
+ }
+ 
+@@ -559,9 +564,9 @@ void vmstate_unregister(DeviceState *dev, const VMStateDescription *vmsd,
+ {
+     SaveStateEntry *se, *new_se;
+ 
+-    QTAILQ_FOREACH_SAFE(se, &savevm_handlers, entry, new_se) {
++    QTAILQ_FOREACH_SAFE(se, &savevm_state.handlers, entry, new_se) {
+         if (se->vmsd == vmsd && se->opaque == opaque) {
+-            QTAILQ_REMOVE(&savevm_handlers, se, entry);
++            QTAILQ_REMOVE(&savevm_state.handlers, se, entry);
+             if (se->compat) {
+                 g_free(se->compat);
+             }
+@@ -613,7 +618,7 @@ bool qemu_savevm_state_blocked(Error **errp)
+ {
+     SaveStateEntry *se;
+ 
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (se->vmsd && se->vmsd->unmigratable) {
+             error_setg(errp, "State blocked by non-migratable device '%s'",
+                        se->idstr);
+@@ -630,7 +635,7 @@ void qemu_savevm_state_begin(QEMUFile *f,
+     int ret;
+ 
+     trace_savevm_state_begin();
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (!se->ops || !se->ops->set_params) {
+             continue;
+         }
+@@ -640,7 +645,7 @@ void qemu_savevm_state_begin(QEMUFile *f,
+     qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
+     qemu_put_be32(f, QEMU_VM_FILE_VERSION);
+ 
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         int len;
+ 
+         if (!se->ops || !se->ops->save_live_setup) {
+@@ -683,7 +688,7 @@ int qemu_savevm_state_iterate(QEMUFile *f)
+     int ret = 1;
+ 
+     trace_savevm_state_iterate();
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (!se->ops || !se->ops->save_live_iterate) {
+             continue;
+         }
+@@ -734,7 +739,7 @@ void qemu_savevm_state_complete(QEMUFile *f)
+ 
+     cpu_synchronize_all_states();
+ 
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (!se->ops || !se->ops->save_live_complete) {
+             continue;
+         }
+@@ -759,7 +764,7 @@ void qemu_savevm_state_complete(QEMUFile *f)
+     vmdesc = qjson_new();
+     json_prop_int(vmdesc, "page_size", TARGET_PAGE_SIZE);
+     json_start_array(vmdesc, "devices");
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         int len;
+ 
+         if ((!se->ops || !se->ops->save_state) && !se->vmsd) {
+@@ -810,7 +815,7 @@ uint64_t qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size)
+     SaveStateEntry *se;
+     uint64_t ret = 0;
+ 
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (!se->ops || !se->ops->save_live_pending) {
+             continue;
+         }
+@@ -829,7 +834,7 @@ void qemu_savevm_state_cancel(void)
+     SaveStateEntry *se;
+ 
+     trace_savevm_state_cancel();
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (se->ops && se->ops->cancel) {
+             se->ops->cancel(se->opaque);
+         }
+@@ -879,7 +884,7 @@ static int qemu_save_device_state(QEMUFile *f)
+ 
+     cpu_synchronize_all_states();
+ 
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         int len;
+ 
+         if (se->is_ram) {
+@@ -913,7 +918,7 @@ static SaveStateEntry *find_se(const char *idstr, int instance_id)
+ {
+     SaveStateEntry *se;
+ 
+-    QTAILQ_FOREACH(se, &savevm_handlers, entry) {
++    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+         if (!strcmp(se->idstr, idstr) &&
+             (instance_id == se->instance_id ||
+              instance_id == se->alias_id))
+-- 
+1.8.3.1
+
