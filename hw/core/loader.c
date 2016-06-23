@@ -594,8 +594,7 @@ static int load_uboot_image(const char *filename, hwaddr *ep, hwaddr *loadaddr,
     ret = hdr->ih_size;
 
 out:
-    if (data)
-        g_free(data);
+    g_free(data);
     close(fd);
     return ret;
 }
@@ -741,7 +740,7 @@ static void *rom_set_mr(Rom *rom, Object *owner, const char *name)
     memory_region_init_resizeable_ram(rom->mr, owner, name,
                                       rom->datasize, rom->romsize,
                                       fw_cfg_resized,
-                                      &error_abort);
+                                      &error_fatal);
     memory_region_set_readonly(rom->mr, true);
     vmstate_register_ram_global(rom->mr);
 
@@ -835,12 +834,12 @@ err:
     return -1;
 }
 
-ram_addr_t rom_add_blob(const char *name, const void *blob, size_t len,
+MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
                    size_t max_len, hwaddr addr, const char *fw_file_name,
                    FWCfgReadCallback fw_callback, void *callback_opaque)
 {
     Rom *rom;
-    ram_addr_t ret = RAM_ADDR_MAX;
+    MemoryRegion *mr = NULL;
 
     rom           = g_malloc0(sizeof(*rom));
     rom->name     = g_strdup(name);
@@ -858,7 +857,7 @@ ram_addr_t rom_add_blob(const char *name, const void *blob, size_t len,
 
         if (rom_file_has_mr) {
             data = rom_set_mr(rom, OBJECT(fw_cfg), devpath);
-            ret = memory_region_get_ram_addr(rom->mr);
+            mr = rom->mr;
         } else {
             data = rom->data;
         }
@@ -867,7 +866,7 @@ ram_addr_t rom_add_blob(const char *name, const void *blob, size_t len,
                                  fw_callback, callback_opaque,
                                  data, rom->datasize);
     }
-    return ret;
+    return mr;
 }
 
 /* This function is specific for elf program because we don't need to allocate
@@ -933,7 +932,7 @@ static void rom_reset(void *unused)
     }
 }
 
-int rom_load_all(void)
+int rom_check_and_register_reset(void)
 {
     hwaddr addr = 0;
     MemoryRegionSection section;
@@ -957,12 +956,8 @@ int rom_load_all(void)
         memory_region_unref(section.mr);
     }
     qemu_register_reset(rom_reset, NULL);
-    return 0;
-}
-
-void rom_load_done(void)
-{
     roms_loaded = 1;
+    return 0;
 }
 
 void rom_set_fw(FWCfgState *f)

@@ -528,7 +528,7 @@ static void strongarm_gpio_handler_update(StrongARMGPIOInfo *s)
     level = s->olevel & s->dir;
 
     for (diff = s->prev_level ^ level; diff; diff ^= 1 << bit) {
-        bit = ffs(diff) - 1;
+        bit = ctz32(diff);
         qemu_set_irq(s->handler[bit], (level >> bit) & 1);
     }
 
@@ -745,7 +745,7 @@ static void strongarm_ppc_handler_update(StrongARMPPCInfo *s)
     level = s->olevel & s->dir;
 
     for (diff = s->prev_level ^ level; diff; diff ^= 1 << bit) {
-        bit = ffs(diff) - 1;
+        bit = ctz32(diff);
         qemu_set_irq(s->handler[bit], (level >> bit) & 1);
     }
 
@@ -1588,7 +1588,7 @@ StrongARMState *sa1110_init(MemoryRegion *sysmem,
     StrongARMState *s;
     int i;
 
-    s = g_malloc0(sizeof(StrongARMState));
+    s = g_new0(StrongARMState, 1);
 
     if (!rev) {
         rev = "sa1110-b5";
