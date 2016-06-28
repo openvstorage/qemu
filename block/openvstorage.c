@@ -1013,6 +1013,19 @@ done:
     return snap_count;
 }
 
+static int qemu_openvstorage_truncate(BlockDriverState *bs,
+                                      int64_t offset)
+{
+    BDRVOpenvStorageState *s = bs->opaque;
+    int r;
+
+    r = ovs_truncate(s->ctx, offset);
+    if (r < 0) {
+        return r;
+    }
+    return 0;
+}
+
 static BlockDriver bdrv_openvstorage_shm = {
     .format_name          = "openvstorage",
     .protocol_name        = "openvstorage",
@@ -1022,6 +1035,7 @@ static BlockDriver bdrv_openvstorage_shm = {
     .bdrv_file_open       = qemu_openvstorage_open,
     .bdrv_close           = qemu_openvstorage_close,
     .bdrv_getlength       = qemu_openvstorage_getlength,
+    .bdrv_truncate        = qemu_openvstorage_truncate,
     .bdrv_aio_readv       = qemu_openvstorage_aio_readv,
     .bdrv_aio_writev      = qemu_openvstorage_aio_writev,
     .bdrv_aio_flush       = qemu_openvstorage_aio_flush,
@@ -1045,6 +1059,7 @@ static BlockDriver bdrv_openvstorage_tcp = {
     .bdrv_file_open       = qemu_openvstorage_open,
     .bdrv_close           = qemu_openvstorage_close,
     .bdrv_getlength       = qemu_openvstorage_getlength,
+    .bdrv_truncate        = qemu_openvstorage_truncate,
     .bdrv_aio_readv       = qemu_openvstorage_aio_readv,
     .bdrv_aio_writev      = qemu_openvstorage_aio_writev,
     .bdrv_aio_flush       = qemu_openvstorage_aio_flush,
@@ -1068,6 +1083,7 @@ static BlockDriver bdrv_openvstorage_rdma = {
     .bdrv_file_open       = qemu_openvstorage_open,
     .bdrv_close           = qemu_openvstorage_close,
     .bdrv_getlength       = qemu_openvstorage_getlength,
+    .bdrv_truncate        = qemu_openvstorage_truncate,
     .bdrv_aio_readv       = qemu_openvstorage_aio_readv,
     .bdrv_aio_writev      = qemu_openvstorage_aio_writev,
     .bdrv_aio_flush       = qemu_openvstorage_aio_flush,
