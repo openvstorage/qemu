@@ -1,3 +1,9 @@
+qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.4) unstable; urgency=medium
+
+  * Replace outdated dependency on volumedriver-server with libovsvolumedriver
+
+ -- Arne Redlich <arne.redlich@openvstorage.com>  Sat, 02 Jul 2016 19:56:28 +0200
+
 qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.3) unstable; urgency=medium
 
   * Update to use libovsvolumedriver 6.0.0
