@@ -1,3 +1,9 @@
+qemu (99:2.3+dfsg-0ovs1.0-6ubuntu9.4) unstable; urgency=medium
+
+  * High availability support
+
+ -- Chrysostomos Nanakos <cnanakos@openvstorage.com>  Fri, 07 Oct 2016 15:30:01 -0500
+
 qemu (99:2.3+dfsg-0ovs1.0-5ubuntu9.4) unstable; urgency=medium
 
   * Replace outdated dependency on volumedriver-server with libovsvolumedriver

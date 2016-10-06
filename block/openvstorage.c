@@ -26,17 +26,18 @@
  *
  * file.transport=[shm|tcp|rdma],file.driver=openvstorage,
  * file.volume=<volume_name>,[file.host=server,file.port=port],
- * [file.snapshot-timeout=120]
+ * [file.snapshot-timeout=120],[file.enable-ha=off]
  *
  * or
  *
  * file=openvstorage:<volume_name>
- * file=openvstorage:<volume_name>[:snapshot-timeout=<timeout>]
+ * file=openvstorage:<volume_name>[:snapshot-timeout=<timeout>:
+ * [enable-ha=on|off]]
  *
  * or
  *
  * file=openvstorage[+transport]:[server[:port]/volume_name]:
- * [snapshot-timeout=<timeout>]
+ * [snapshot-timeout=<timeout>:[enable-ha=on|off]]
  *
  * 'openvstorage' is the protocol.
  *
@@ -57,9 +58,15 @@
  * 'snapshot-timeout' is the timeout for the volume snapshot to be synced on
  * the backend. If the timeout expires then the snapshot operation will fail.
  *
+ * 'enale-ha' enable high availability (applied only to tcp/rdma transport
+ * types)
+ *
  * Examples:
  *
  * file.driver=openvstorage,file.volume=my_vm_volume
+ *
+ * or
+ *
  * file.driver=openvstorage,file.volume=my_vm_volume, \
  * file.snapshot-timeout=120
  *
@@ -67,20 +74,23 @@
  *
  * file=openvstorage:my_vm_volume
  * file=openvstorage:my_vm_volume:snapshot-timeout=120
+ * file=openvstorage:my_vm_volume:snapshot-timeout=120
  *
  * or
  *
- * file=openvstorage+tcp:1.2.3.4:21321/my_volume,snapshot-timeout=120
+ * file=openvstorage+tcp:1.2.3.4:21321/my_volume:snapshot-timeout=120
  *
  * or
  *
  * file.driver=openvstorage,file.transport=rdma,file.volume=my_vm_volume,
- * file.snapshot-timeout=120,file.host=1.2.3.4,file.port=21321
+ * file.snapshot-timeout=120,file.host=1.2.3.4,file.port=21321,
+ * file.enable-ha=off
  *
  */
 #include <openvstorage/volumedriver.h>
 #include "block/block_int.h"
 #include "qapi/qmp/qint.h"
+#include "qapi/qmp/qbool.h"
 #include "qapi/qmp/qstring.h"
 #include "qapi/qmp/qjson.h"
 #include "qemu/error-report.h"
@@ -97,6 +107,7 @@
 #define OVS_OPT_PORT            "port"
 #define OVS_OPT_VOLUME          "volume"
 #define OVS_OPT_SNAP_TIMEOUT    "snapshot-timeout"
+#define OVS_OPT_ENABLE_HA       "enable-ha"
 
 typedef enum {
     OVS_OP_READ,
@@ -270,6 +281,11 @@ static QemuOptsList openvstorage_runtime_opts = {
             .type = QEMU_OPT_NUMBER,
             .help = "Timeout for the snapshot to be synced on the backend",
         },
+        {
+            .name = OVS_OPT_ENABLE_HA,
+            .type = QEMU_OPT_BOOL,
+            .help = "Enable/disable high availability (enabled by default)",
+        },
         {/* end of list */}
     },
 };
@@ -281,12 +297,13 @@ openvstorage_parse_filename_opts(char *path,
                                  gpointer *port,
                                  char **volume,
                                  gpointer *snapshot_timeout,
+                                 int *enable_ha,
                                  bool is_network)
 {
     const char *a;
-    char *endptr, *inetaddr;
-    char *tokens[3], *ptoken;
-    int timeout;
+    char *endptr, *inetaddr, *t;
+    char *tokens[4], *ptoken;
+    int timeout, i;
 
     if (!path) {
         error_setg(errp, "invalid argument");
@@ -296,10 +313,12 @@ openvstorage_parse_filename_opts(char *path,
     if (is_network) {
         tokens[0] = strsep(&path, "/");
         tokens[1] = strsep(&path, ":");
-        tokens[2] = strsep(&path, "\0");
+        tokens[2] = strsep(&path, ":");
+        tokens[3] = strsep(&path, "\0");
     } else {
         tokens[0] = strsep(&path, ":");
         tokens[1] = strsep(&path, "\0");
+        tokens[2] = tokens[3] = NULL;
     }
 
     if (is_network && ((tokens[0] && !strlen(tokens[0])) ||
@@ -337,14 +356,31 @@ openvstorage_parse_filename_opts(char *path,
         }
     }
 
-    char *t = is_network ? tokens[2] : tokens[1];
-    if (t != NULL && strstart(t, OVS_OPT_SNAP_TIMEOUT"=", &a)) {
-        if (strlen(a) > 0) {
-            timeout = strtoul(a, &endptr, 10);
-            if (strlen(endptr)) {
-                return;
+    for (i = 2; i < sizeof(tokens)/sizeof(tokens[0]); i++) {
+        if (i == 2) {
+            t = is_network ? tokens[i] : tokens[i - 1];
+        } else {
+            t = is_network ? tokens[i] : NULL;
+        }
+        if (t != NULL && strstart(t, OVS_OPT_SNAP_TIMEOUT"=", &a)) {
+            if (strlen(a) > 0) {
+                timeout = strtoul(a, &endptr, 10);
+                if (strlen(endptr)) {
+                    continue;
+                }
+                *snapshot_timeout = GINT_TO_POINTER(timeout);
             }
-            *snapshot_timeout = GINT_TO_POINTER(timeout);
+        }
+        if (t != NULL && strstart(t, OVS_OPT_ENABLE_HA"=", &a)) {
+            if (strlen(a) > 0) {
+                if (!strcmp(a, "on")) {
+                    *enable_ha = 1;
+                } else if (!strcmp(a, "off")) {
+                    *enable_ha = 0;
+                }
+            } else {
+                *enable_ha = 1;
+            }
         }
     }
 }
@@ -382,6 +418,7 @@ static void qemu_openvstorage_parse_filename(const char *filename,
 {
     URI *uri;
     bool is_network = true;
+    int enable_ha = 1;
     char *transport = NULL;
     char *volume = NULL;
     char *host = NULL;
@@ -415,6 +452,7 @@ static void qemu_openvstorage_parse_filename(const char *filename,
                                      &port,
                                      &volume,
                                      &snapshot_timeout,
+                                     &enable_ha,
                                      is_network);
     uri_free(uri);
 
@@ -451,6 +489,10 @@ static void qemu_openvstorage_parse_filename(const char *filename,
                   OVS_OPT_SNAP_TIMEOUT,
                   qint_from_int(GPOINTER_TO_INT(snapshot_timeout)));
     }
+
+    qdict_put(options,
+              OVS_OPT_ENABLE_HA,
+              qbool_from_int(enable_ha));
 exit:
     g_free(transport);
     g_free(host);
@@ -484,6 +526,7 @@ qemu_openvstorage_open(BlockDriverState *bs,
     const char *host;
     int port;
     const char *volume_name;
+    bool enable_ha = true;
     BDRVOpenvStorageState *s = bs->opaque;
 
     opts = qemu_opts_create(&openvstorage_runtime_opts, NULL, 0, &error_abort);
@@ -521,6 +564,13 @@ qemu_openvstorage_open(BlockDriverState *bs,
         goto err_exit;
     }
 
+    enable_ha = qemu_opt_get_bool(opts,
+                                  OVS_OPT_ENABLE_HA,
+                                  true);
+    if (enable_ha)
+    {
+        ovs_ctx_attr_enable_ha(ctx_attr);
+    }
     s->ctx = ovs_ctx_new(ctx_attr);
     ovs_ctx_attr_destroy(ctx_attr);
     if (s->ctx == NULL) {
@@ -593,6 +643,7 @@ qemu_openvstorage_create(const char* filename,
     int ret;
     URI *uri;
     bool is_network = true;
+    int enable_ha = 1;
     char *transport = NULL;
     char *host = NULL;
     char *volume_name = NULL;
@@ -616,6 +667,7 @@ qemu_openvstorage_create(const char* filename,
                                      &port,
                                      &volume_name,
                                      &stimeout,
+                                     &enable_ha,
                                      is_network);
     uri_free(uri);
 
