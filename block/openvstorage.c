@@ -390,7 +390,8 @@ static int qemu_openvstorage_uri_parse(const URI* uri,
                                        bool *is_network,
                                        Error **errp)
 {
-    if (!uri->scheme || !strcmp(uri->scheme, "openvstorage")) {
+    if (!uri->scheme || !strcmp(uri->scheme, "openvstorage") ||
+            !strcmp(uri->scheme, "openvstorage+shm")) {
         *transport = g_strdup("shm");
         *is_network = false;
     } else if (!strcmp(uri->scheme, "openvstorage+tcp")) {
@@ -1078,9 +1079,33 @@ static int qemu_openvstorage_truncate(BlockDriverState *bs,
     return 0;
 }
 
-static BlockDriver bdrv_openvstorage_shm = {
+static BlockDriver bdrv_openvstorage = {
     .format_name          = "openvstorage",
     .protocol_name        = "openvstorage",
+    .instance_size        = sizeof(BDRVOpenvStorageState),
+    .bdrv_parse_filename  = qemu_openvstorage_parse_filename,
+
+    .bdrv_file_open       = qemu_openvstorage_open,
+    .bdrv_close           = qemu_openvstorage_close,
+    .bdrv_getlength       = qemu_openvstorage_getlength,
+    .bdrv_truncate        = qemu_openvstorage_truncate,
+    .bdrv_aio_readv       = qemu_openvstorage_aio_readv,
+    .bdrv_aio_writev      = qemu_openvstorage_aio_writev,
+    .bdrv_aio_flush       = qemu_openvstorage_aio_flush,
+    .bdrv_has_zero_init   = bdrv_has_zero_init_1,
+
+    .bdrv_snapshot_create = qemu_openvstorage_snap_create,
+    .bdrv_snapshot_delete = qemu_openvstorage_snap_remove,
+    .bdrv_snapshot_list   = qemu_openvstorage_snap_list,
+    .bdrv_snapshot_goto   = qemu_openvstorage_snap_rollback,
+
+    .bdrv_create          = qemu_openvstorage_create,
+    .create_opts          = &openvstorage_create_opts,
+};
+
+static BlockDriver bdrv_openvstorage_shm = {
+    .format_name          = "openvstorage",
+    .protocol_name        = "openvstorage+shm",
     .instance_size        = sizeof(BDRVOpenvStorageState),
     .bdrv_parse_filename  = qemu_openvstorage_parse_filename,
 
@@ -1152,6 +1177,7 @@ static BlockDriver bdrv_openvstorage_rdma = {
 
 static void bdrv_openvstorage_init(void)
 {
+    bdrv_register(&bdrv_openvstorage);
     bdrv_register(&bdrv_openvstorage_shm);
     bdrv_register(&bdrv_openvstorage_tcp);
     bdrv_register(&bdrv_openvstorage_rdma);
