@@ -27,7 +27,8 @@ V ?= 1
 BUILD_PACKAGES = $(call dpkg_late_eval,BUILD_PACKAGES,dh_listpackages)
 
 enable_system = $(if $(filter qemu-system,${BUILD_PACKAGES}),enable,disable)
-enable_linux_user = $(if $(filter qemu-user,${BUILD_PACKAGES}),enable,disable)
+#enable_linux_user = $(if $(filter qemu-user,${BUILD_PACKAGES}),enable,disable)
+enable_linux_user = disable
 
 DATAPATH = /usr/share/qemu:/usr/share/seabios:/usr/lib/ipxe/qemu
 
