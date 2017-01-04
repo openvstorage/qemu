@@ -1,3 +1,9 @@
+qemu (99:2.5+dfsg-0ovs2.0-5ubuntu10.2) unstable; urgency=medium
+
+  * Compile against the latest libovsvolumedriver version.
+
+ -- Chrysostomos Nanakos <cnanakos@openvstorage.com>  Tue, 03 Jan 2017 15:08:01 -0500
+
 qemu (99:2.5+dfsg-0ovs1.0-5ubuntu10.2) unstable; urgency=medium
 
   * Bump version that denotes OpenvStorage block support
